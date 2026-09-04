@@ -27,14 +27,26 @@ function payload(formData: FormData) {
   return result;
 }
 
+function slugify(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export async function saveResource(formData: FormData) {
   const resource = String(formData.get("_resource") ?? "");
   const id = String(formData.get("_id") ?? "");
   const returnTo = String(formData.get("_returnTo") ?? "/dashboard");
   if (!allowedResources.has(resource)) throw new Error("Unsupported resource.");
+  const body = payload(formData);
+  if (resource === "collections" && !body.slug && typeof body.name === "string") body.slug = slugify(body.name);
   await retailRequest(`/${resource}${id ? `/${encodeURIComponent(id)}` : ""}`, {
     method: id ? "PATCH" : "POST",
-    body: JSON.stringify(payload(formData)),
+    body: JSON.stringify(body),
   });
   revalidatePath("/dashboard", "layout");
   redirect(returnTo);

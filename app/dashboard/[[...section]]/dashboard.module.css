@@ -11,8 +11,11 @@
 
 /* Product search and status filter */
 .search{width:min(680px,100%)}
+.inventorySearch{width:min(980px,100%)}
+.inventorySearch select:last-of-type{flex-basis:220px}
 .search input{min-width:0;flex:1}
 .search select{height:100%;flex:0 0 150px;padding:0 14px;border:0;border-left:1px solid #dbe6e4;background:#f9fbfa;color:#34585b;font:inherit;font-size:14px;font-weight:600;outline:0;cursor:pointer}
 .search select:focus{background:#f0f8f5;box-shadow:inset 0 0 0 2px #28b881}
 .search button{padding-inline:20px;border-left:1px solid #dbe6e4;font:inherit;font-weight:800}
 .search button:hover{background:#d8efe8}
+@media(max-width:760px){.inventorySearch{height:auto;align-items:stretch;flex-direction:column;overflow:visible;border:0;background:transparent}.inventorySearch span{display:none}.inventorySearch input,.inventorySearch select,.inventorySearch select:last-of-type,.inventorySearch button{width:100%;min-height:44px;flex-basis:auto;border:1px solid #ccdcda;border-radius:9px;background:#fff}.inventorySearch button{background:#e5f5f0}}

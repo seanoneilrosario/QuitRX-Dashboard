@@ -3,9 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteResource, saveResource } from "../actions";
 import { safeRetailAll, safeRetailList, safeRetailPage, safeRetailRecord, type RetailPagination, type RetailRecord } from "@/lib/quithero-admin";
-import CollectionCreator from "./CollectionCreator";
-import { client } from "@/sanity/lib/client";
-import { productMatchesCollectionRules, type CollectionRule, type QuitHeroProduct } from "@/lib/quithero";
 import styles from "./dashboard.module.css";
 import { logoutStaff } from "../login/actions";
 
@@ -107,37 +104,6 @@ function ResourcePage({ kind, items, error, path = `/dashboard/products/${kind}`
   return <><Header title={config.title} description={config.description}/><Notice message={error}/><details className={styles.creator}><summary>+ Add {config.title.toLowerCase().replace(/s$/, "")}</summary><form action={saveResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_returnTo" value={path}/><div className={styles.inlineForm}>{config.fields.map(([name, label, type]) => <label key={name}>{label}<input required={["productId","name","sku","price","url","slug"].includes(name)} type={type ?? "text"} step={type === "number" ? "any" : undefined} name={name}/></label>)}</div><button className={styles.primary}>Save</button></form></details><Table heads={config.heads}>{items.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.name ?? item.url)}</strong><small>{text(item.productId)}</small></td><td>{text(item.sku ?? item.slug ?? item.productId)}</td><td>{kind === "variants" ? money(item.price) : text(item.altText ?? item.seoTitle ?? item.id)}</td><td>{text(item.inventory ?? item.sortOrder, "")}</td><td className={styles.actions}><form action={deleteResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_id" value={text(item.id)}/><button>Delete</button></form></td></tr>)}</Table></>;
 }
 
-type CollectionAssignment = { quitHeroCollectionId?: string; slug?: string; productIds?: string[]; selectionMode?: "manual" | "dynamic"; dynamicTag?: string; ruleMatch?: "all" | "any"; dynamicRules?: CollectionRule[] };
-
-function collectionAssignment(item: RetailRecord, assignments: CollectionAssignment[]) {
-  return assignments.find((assignment) =>
-    (typeof item.id === "string" && assignment.quitHeroCollectionId === item.id) ||
-    (typeof item.slug === "string" && assignment.slug === item.slug));
-}
-
-function collectionProducts(products: RetailRecord[], assignment?: CollectionAssignment) {
-  if (assignment?.selectionMode === "dynamic" && assignment.dynamicTag) {
-    const rules = assignment.dynamicRules?.length ? assignment.dynamicRules : [{ field: "tag", operator: "equals", value: assignment.dynamicTag } satisfies CollectionRule];
-    return products.filter((product) => productMatchesCollectionRules(product as QuitHeroProduct, rules, assignment.ruleMatch ?? "all"));
-  }
-  if (assignment?.selectionMode === "dynamic" && assignment.dynamicRules?.length) {
-    return products.filter((product) => productMatchesCollectionRules(product as QuitHeroProduct, assignment.dynamicRules!, assignment.ruleMatch ?? "all"));
-  }
-  const selected = new Set(assignment?.productIds ?? []);
-  return products.filter((product) => typeof product.id === "string" && selected.has(product.id));
-}
-
-function CollectionsPage({ items, products, assignments, error }: { items: RetailRecord[]; products: RetailRecord[]; assignments: CollectionAssignment[]; error?: string }) {
-  const options = products.flatMap((product) => typeof product.id === "string" ? [{ id: product.id, name: text(product.name, "Unnamed product"), slug: text(product.slug, "") }] : []);
-  return <><Header title="Collections" description="Group products into storefront collections."/><Notice message={error}/><CollectionCreator products={options}/><Table heads={["Collection", "Slug", "Type", "Products", "Actions"]}>{items.map((item, index) => { const assignment = collectionAssignment(item, assignments); const count = collectionProducts(products, assignment).length; const ruleCount = assignment?.dynamicRules?.length ?? (assignment?.dynamicTag ? 1 : 0); return <tr key={text(item.id, String(index))}><td><strong>{text(item.name)}</strong><small>{text(item.id)}</small></td><td>{text(item.slug)}</td><td>{assignment?.selectionMode === "dynamic" ? `Dynamic · ${ruleCount} rule${ruleCount === 1 ? "" : "s"}` : "Manual"}</td><td>{count}</td><td className={styles.actions}><Link href={`/dashboard/collections/details?id=${text(item.id)}`}>View</Link><form action={deleteResource}><input type="hidden" name="_resource" value="collections"/><input type="hidden" name="_id" value={text(item.id)}/><button>Delete</button></form></td></tr>; })}</Table></>;
-}
-
-function CollectionDetail({ item, products, assignment }: { item?: RetailRecord; products: RetailRecord[]; assignment?: CollectionAssignment }) {
-  if (!item) return <><Header title="Collection not found" description="Choose a collection from the collection list."/><Link className={styles.primary} href="/dashboard/collections">Back to collections</Link></>;
-  const assignedProducts = collectionProducts(products, assignment);
-  return <><Header title={text(item.name)} description={text(item.description, "Products assigned to this collection.")} action={<Link className={styles.secondary} href="/dashboard/collections">Back</Link>}/><Table heads={["Product", "Slug", "Brand", "Status", "Action"]}>{assignedProducts.map((product, index) => <tr key={text(product.id, String(index))}><td><strong>{text(product.name)}</strong><small>{text(product.id)}</small></td><td>{text(product.slug)}</td><td>{text(nested(product, "brand")?.name)}</td><td><Status value={product.status}/></td><td><Link href={`/dashboard/products/edit?id=${text(product.id)}`}>Edit product</Link></td></tr>)}</Table>{!assignedProducts.length ? <div className={styles.notice}><strong>No products assigned</strong><span>Create a new collection and select products from the product picker.</span></div> : null}</>;
-}
-
 function Customers({ items, query, pagination, error }: { items: RetailRecord[]; query: string; pagination: RetailPagination; error?: string }) {
   const filtered = items.filter((item) => !query || `${text(item.firstName)} ${text(item.lastName)} ${text(item.email)}`.toLowerCase().includes(query.toLowerCase()));
   return <><Header title="Customers" description="Search customer accounts, purchase history and prescription status."/><Notice message={error}/><div className={styles.toolbar}><Search placeholder="Search name or email"/></div><Table heads={["Customer", "Contact", "Orders", "Total spent", "Status", ""]}>{filtered.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.firstName)} {text(item.lastName, "")}</strong><small>{text(item.id)}</small></td><td>{text(item.email)}<small>{text(item.phone)}</small></td><td>{text(item.numberOfOrders, "0")}</td><td>{money(item.totalSpent)}</td><td><Status value={item.state}/></td><td><Link href={`/dashboard/customers/details?id=${text(item.id)}`}>View</Link></td></tr>)}</Table><Pagination pagination={pagination} path="/dashboard/customers" query={query}/></>;
@@ -172,15 +138,8 @@ export default async function DashboardPage({ params, searchParams }: Props) {
   else if (area === "products" && sub === "edit") { const result = await safeRetailRecord(`/products/${encodeURIComponent(id)}`); content = <ProductForm item={result.data}/>; }
   else if (area === "products" && resourceConfig[sub]) { const config = resourceConfig[sub]; const result = await safeRetailList(`/${config.resource}`); content = <ResourcePage kind={sub} items={result.data} error={result.error}/>; }
   else if (area === "collections") {
-    const [collections, products, assignments] = await Promise.all([
-      safeRetailList("/collections"),
-      safeRetailAll("/products"),
-      client.withConfig({ useCdn: false }).fetch<CollectionAssignment[]>(`*[_type == "productCollection"]{"slug": slug.current, quitHeroCollectionId, productIds, selectionMode, dynamicTag, ruleMatch, dynamicRules}`).catch(() => []),
-    ]);
-    const item = collections.data.find((collection) => collection.id === id);
-    content = sub === "details"
-      ? <CollectionDetail item={item} products={products.data} assignment={item ? collectionAssignment(item, assignments) : undefined}/>
-      : <CollectionsPage items={collections.data} products={products.data} assignments={assignments} error={collections.error ?? products.error}/>;
+    const result = await safeRetailList("/collections");
+    content = <ResourcePage kind="collections" items={result.data} error={result.error} path="/dashboard/collections"/>;
   }
   else if (area === "customers" && !sub) { const result = await safeRetailPage("/customers", page, 50); content = <Customers items={result.data} query={q} pagination={result.pagination} error={result.error}/>; }
   else if (area === "customers") { const result = await safeRetailRecord(`/customers/${encodeURIComponent(id)}`); content = <CustomerDetail item={result.data} editing={sub === "edit"}/>; }

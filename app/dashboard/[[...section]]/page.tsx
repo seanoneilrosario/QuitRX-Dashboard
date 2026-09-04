@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 const routes = [
   [], ["products"], ["products", "create"], ["products", "edit"], ["products", "variants"],
   ["products", "images"], ["products", "options"], ["products", "tags"], ["products", "collections"],
-  ["collections"], ["collections", "details"],
+  ["collections"],
   ["customers"], ["customers", "details"], ["customers", "edit"],
   ["orders"], ["orders", "details"], ["inventory"], ["inventory", "history"],
 ];

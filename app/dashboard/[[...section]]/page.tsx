@@ -112,7 +112,7 @@ function ProductForm({ item, brands, productTypes, collections }: { item?: Retai
 }
 
 const resourceConfig: Record<string, { title: string; description: string; resource: string; heads: string[]; fields: [string, string, string?][] }> = {
-  variants: { title: "Product variants", description: "Manage pricing, SKUs and inventory by variant.", resource: "product-variants", heads: ["Variant", "SKU", "Price", "Available", "Actions"], fields: [["productId","Product ID"],["name","Variant name"],["sku","SKU"],["price","Price","number"],["cost","Cost","number"],["inventory","Inventory","number"]] },
+  variants: { title: "Product variants", description: "Manage pricing, SKUs and inventory by variant.", resource: "product-variants", heads: ["Variant", "SKU", "Price", "Available", "Actions"], fields: [["productId","Product ID"],["name","Variant name"],["sku","SKU"],["price","Price","number"],["inventory","Inventory","number"]] },
   images: { title: "Product images", description: "Add image URLs, alt text and display order.", resource: "product-images", heads: ["Image URL", "Product", "Alt text", "Order", "Actions"], fields: [["productId","Product ID"],["url","Image URL","url"],["altText","Alt text"],["sortOrder","Sort order","number"]] },
   options: { title: "Options & attributes", description: "Create reusable options such as strength, flavour or size.", resource: "product-options", heads: ["Option", "Slug", "ID", "", "Actions"], fields: [["name","Option name"],["slug","Slug"]] },
   tags: { title: "Tags", description: "Organise and merchandise products with tags.", resource: "tags", heads: ["Tag", "Slug", "SEO title", "", "Actions"], fields: [["name","Tag name"],["slug","Slug"],["image","Image URL","url"],["seoTitle","SEO title"]] },

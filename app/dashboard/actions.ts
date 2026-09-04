@@ -18,7 +18,7 @@ function payload(formData: FormData) {
       continue;
     }
     if (value === "") continue;
-    if (["price", "cost", "inventory", "allocatedInventory", "incomingInventory", "weight", "sortOrder"].includes(key)) {
+    if (["price", "inventory", "allocatedInventory", "incomingInventory", "weight", "sortOrder"].includes(key)) {
       result[key] = Number(value);
     } else if (["requiresShipping", "isPrimary", "consultPurchase", "scriptActive"].includes(key)) {
       result[key] = value === "true" || value === "on";

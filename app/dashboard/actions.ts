@@ -10,12 +10,17 @@ const allowedResources = new Set([
 ]);
 
 function payload(formData: FormData) {
-  const result: Record<string, string | number | boolean> = {};
+  const result: Record<string, unknown> = {};
   for (const [key, value] of formData.entries()) {
-    if (key.startsWith("_") || typeof value !== "string" || value === "") continue;
+    if (key.startsWith("_") || typeof value !== "string") continue;
+    if (key === "tags") {
+      result[key] = value.split(",").map((tag) => tag.trim()).filter(Boolean);
+      continue;
+    }
+    if (value === "") continue;
     if (["price", "cost", "inventory", "allocatedInventory", "incomingInventory", "weight", "sortOrder"].includes(key)) {
       result[key] = Number(value);
-    } else if (["requiresShipping", "isPrimary", "scriptActive"].includes(key)) {
+    } else if (["requiresShipping", "isPrimary", "consultPurchase", "scriptActive"].includes(key)) {
       result[key] = value === "true" || value === "on";
     } else result[key] = value;
   }

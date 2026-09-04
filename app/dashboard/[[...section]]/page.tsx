@@ -47,8 +47,8 @@ function Notice({ message }: { message?: string }) {
   return message ? <div className={styles.notice}><strong>API connection needed</strong><span>{message}</span></div> : null;
 }
 
-function Search({ placeholder }: { placeholder: string }) {
-  return <form className={styles.search}><span>⌕</span><input name="q" aria-label="Search" placeholder={placeholder}/><button>Search</button></form>;
+function Search({ placeholder, query }: { placeholder: string; query?: string }) {
+  return <form className={styles.search}><span>⌕</span><input name="q" aria-label="Search" placeholder={placeholder} defaultValue={query}/><button>Search</button></form>;
 }
 
 function Status({ value }: { value: unknown }) {
@@ -60,9 +60,9 @@ function Table({ heads, children }: { heads: string[]; children: React.ReactNode
   return <div className={styles.tableWrap}><table><thead><tr>{heads.map((head) => <th key={head}>{head}</th>)}</tr></thead><tbody>{children}</tbody></table></div>;
 }
 
-function Pagination({ pagination, path, query }: { pagination: RetailPagination; path: string; query?: string }) {
+function Pagination({ pagination, path, query, status }: { pagination: RetailPagination; path: string; query?: string; status?: string }) {
   if (pagination.totalPages <= 1) return null;
-  const href = (page: number) => `${path}?page=${page}${query ? `&q=${encodeURIComponent(query)}` : ""}`;
+  const href = (page: number) => `${path}?page=${page}${query ? `&q=${encodeURIComponent(query)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}`;
   return <nav className={styles.pagination} aria-label="Pagination"><span>Showing page {pagination.page} of {pagination.totalPages} · {pagination.total.toLocaleString()} records</span><div>{pagination.page > 1 ? <Link href={href(pagination.page - 1)}>Previous</Link> : <span>Previous</span>}{pagination.page < pagination.totalPages ? <Link href={href(pagination.page + 1)}>Next</Link> : <span>Next</span>}</div></nav>;
 }
 
@@ -78,9 +78,16 @@ function Dashboard({ productTotal, customerTotal, orders, variants, error }: { p
     <section className={styles.card}><div className={styles.cardTitle}><div><h2>Inventory health</h2><p>Variants needing attention</p></div><Link href="/dashboard/inventory">Manage</Link></div><div className={styles.stockList}>{variants.slice(0, 6).map((variant, index) => <div key={text(variant.id, String(index))}><span><strong>{text(variant.name)}</strong><small>{text(variant.sku)}</small></span><b>{text(variant.inventory, "0")} units</b></div>)}</div></section></div></>;
 }
 
-function Products({ items, query, pagination, error }: { items: RetailRecord[]; query: string; pagination: RetailPagination; error?: string }) {
-  const filtered = items.filter((item) => !query || `${text(item.name)} ${text(item.slug)} ${text(item.status)}`.toLowerCase().includes(query.toLowerCase()));
-  return <><Header title="Products" description="Manage products and everything customers see in your store." action={<Link className={styles.primary} href="/dashboard/products/create">+ Create product</Link>}/><Notice message={error}/><div className={styles.toolbar}><Search placeholder="Search products"/><div className={styles.subnav}>{[["Variants","variants"],["Images","images"],["Options","options"],["Tags","tags"]].map(([label, path]) => <Link key={path} href={`/dashboard/products/${path}`}>{label}</Link>)}</div></div><Table heads={["Product", "Brand", "Type", "Status", "Actions"]}>{filtered.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.name)}</strong><small>{text(item.slug)}</small></td><td>{text(nested(item, "brand")?.name ?? item.brandId)}</td><td>{text(nested(item, "productType")?.name ?? item.productTypeId)}</td><td><Status value={item.status}/></td><td className={styles.actions}><Link href={`/dashboard/products/edit?id=${text(item.id)}`}>Edit</Link><form action={deleteResource}><input type="hidden" name="_resource" value="products"/><input type="hidden" name="_id" value={text(item.id)}/><button>Delete</button></form></td></tr>)}</Table><Pagination pagination={pagination} path="/dashboard/products" query={query}/></>;
+function Products({ items, query, status, page, pagination, error }: { items: RetailRecord[]; query: string; status: string; page: number; pagination: RetailPagination; error?: string }) {
+  const filtered = items.filter((item) => {
+    const matchesQuery = !query || `${text(item.name)} ${text(item.slug)} ${text(item.status)} ${text(nested(item, "brand")?.name)} ${text(nested(item, "productType")?.name)}`.toLowerCase().includes(query.toLowerCase());
+    const matchesStatus = !status || text(item.status, "").toLowerCase() === status.toLowerCase();
+    return matchesQuery && matchesStatus;
+  });
+  const isFiltered = Boolean(query || status);
+  const filteredPagination = isFiltered ? { page, limit: 50, total: filtered.length, totalPages: Math.max(1, Math.ceil(filtered.length / 50)) } : pagination;
+  const visibleItems = isFiltered ? filtered.slice((page - 1) * 50, page * 50) : filtered;
+  return <><Header title="Products" description="Manage products and everything customers see in your store." action={<Link className={styles.primary} href="/dashboard/products/create">+ Create product</Link>}/><Notice message={error}/><div className={styles.toolbar}><form className={styles.search}><span>⌕</span><input name="q" aria-label="Search products" placeholder="Search name, handle, brand or type" defaultValue={query}/><select name="status" aria-label="Filter by status" defaultValue={status}><option value="">All statuses</option><option value="ACTIVE">Active</option><option value="DRAFT">Draft</option><option value="ARCHIVED">Archived</option></select><button>Apply</button></form><div className={styles.subnav}>{[["Variants","variants"],["Images","images"],["Options","options"],["Tags","tags"]].map(([label, path]) => <Link key={path} href={`/dashboard/products/${path}`}>{label}</Link>)}</div></div><Table heads={["Product", "Brand", "Type", "Status", "Actions"]}>{visibleItems.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.name)}</strong><small>{text(item.slug)}</small></td><td>{text(nested(item, "brand")?.name ?? item.brandId)}</td><td>{text(nested(item, "productType")?.name ?? item.productTypeId)}</td><td><Status value={item.status}/></td><td className={styles.actions}><Link href={`/dashboard/products/edit?id=${text(item.id)}`}>Edit</Link><form action={deleteResource}><input type="hidden" name="_resource" value="products"/><input type="hidden" name="_id" value={text(item.id)}/><button>Delete</button></form></td></tr>)}</Table>{!visibleItems.length ? <div className={styles.notice}><strong>No products found</strong><span>Try changing the search text or status filter.</span></div> : null}<Pagination pagination={filteredPagination} path="/dashboard/products" query={query} status={status}/></>;
 }
 
 function ProductForm({ item }: { item?: RetailRecord }) {
@@ -156,11 +163,11 @@ function Inventory({ variants, history, error }: { variants: RetailRecord[]; his
 export default async function DashboardPage({ params, searchParams }: Props) {
   const { section = [] } = await params; const queryParams = await searchParams;
   if (!routes.some((route) => route.join("/") === section.join("/"))) notFound();
-  const [area = "dashboard", sub] = section; const q = typeof queryParams.q === "string" ? queryParams.q : ""; const id = typeof queryParams.id === "string" ? queryParams.id : ""; const page = Math.max(1, Number(queryParams.page) || 1);
+  const [area = "dashboard", sub] = section; const q = typeof queryParams.q === "string" ? queryParams.q.trim() : ""; const status = typeof queryParams.status === "string" ? queryParams.status : ""; const id = typeof queryParams.id === "string" ? queryParams.id : ""; const page = Math.max(1, Number(queryParams.page) || 1);
   const active = area === "dashboard" ? "/dashboard" : `/dashboard/${area}`;
   let content: React.ReactNode;
   if (area === "dashboard") { const [p,c,o,v] = await Promise.all([safeRetailPage("/products",1),safeRetailPage("/customers",1),safeRetailList("/orders"),safeRetailList("/product-variants")]); content = <Dashboard productTotal={p.pagination.total} customerTotal={c.pagination.total} orders={o.data} variants={v.data} error={p.error ?? c.error ?? o.error ?? v.error}/>; }
-  else if (area === "products" && !sub) { const result = await safeRetailPage("/products", page, 50); content = <Products items={result.data} query={q} pagination={result.pagination} error={result.error}/>; }
+  else if (area === "products" && !sub) { const result = q || status ? await safeRetailAll("/products") : await safeRetailPage("/products", page, 50); content = <Products items={result.data} query={q} status={status} page={page} pagination={result.pagination} error={result.error}/>; }
   else if (area === "products" && sub === "create") content = <ProductForm/>;
   else if (area === "products" && sub === "edit") { const result = await safeRetailRecord(`/products/${encodeURIComponent(id)}`); content = <ProductForm item={result.data}/>; }
   else if (area === "products" && resourceConfig[sub]) { const config = resourceConfig[sub]; const result = await safeRetailList(`/${config.resource}`); content = <ResourcePage kind={sub} items={result.data} error={result.error}/>; }

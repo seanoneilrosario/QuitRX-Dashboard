@@ -74,3 +74,19 @@ test("successful saves and deletes expire the catalog; failed writes do not", as
     fail = false;
   }
 });
+
+test("collection saves serialize selected product IDs", async () => {
+  let request;
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
+    "next/navigation": { redirect: () => {} },
+    "@/lib/quithero-admin": { RETAIL_CATALOG_TAG: "retail-catalog", retailRequest: async (path, options) => { request = { path, options }; } },
+  });
+  const form = new FormData();
+  form.set("_resource", "collections");
+  form.set("name", "Quit Kits");
+  form.set("productIds", JSON.stringify(["product-1", "product-2", "product-1"]));
+  await actions.saveResource(form);
+  assert.equal(request.path, "/collections");
+  assert.deepEqual(JSON.parse(request.options.body).productIds, ["product-1", "product-2"]);
+});

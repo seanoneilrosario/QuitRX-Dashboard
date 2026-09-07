@@ -27,6 +27,14 @@ test("bundle validation rejects malformed data, duplicates, self references and 
   assert.equal(validation.bundleComponents([component], "parent")[0].quantity, 2);
 });
 
+test("bundle responses support API wrappers and empty bundles", () => {
+  assert.equal(validation.bundleComponentResponse(null, "parent").length, 0);
+  assert.equal(validation.bundleComponentResponse({ data: null }, "parent").length, 0);
+  assert.equal(validation.bundleComponentResponse({ data: { components: [component] } }, "parent")[0].componentVariantId, "child");
+  assert.equal(validation.bundleComponentResponse({ bundleComponents: [component] }, "parent")[0].quantity, 2);
+  assert.throws(() => validation.bundleComponentResponse({}, "parent"));
+});
+
 test("bundle saves use documented PATCH array, clear cache only on success, and require staff", async () => {
   let staff = true;
   let fail = false;

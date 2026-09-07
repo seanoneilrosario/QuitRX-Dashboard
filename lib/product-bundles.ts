@@ -1,5 +1,17 @@
 export type BundleComponent = { componentVariantId: string; quantity: number; position: number };
 
+export function bundleComponentResponse(value: unknown, parentId: string): BundleComponent[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) return bundleComponents(value, parentId);
+  if (typeof value !== "object") throw new Error("Unexpected bundle response. The bundle was not loaded.");
+
+  const response = value as Record<string, unknown>;
+  for (const key of ["data", "components", "bundleComponents", "items"]) {
+    if (key in response) return bundleComponentResponse(response[key], parentId);
+  }
+  throw new Error("Unexpected bundle response. The bundle was not loaded.");
+}
+
 export function bundleComponents(value: unknown, parentId: string): BundleComponent[] {
   if (!Array.isArray(value)) throw new Error("Unexpected bundle response. The bundle was not loaded.");
   const seen = new Set<string>();

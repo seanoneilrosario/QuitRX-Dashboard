@@ -1,5 +1,5 @@
 import { retailRequest, safeRetailAll } from "@/lib/quithero-admin";
-import { bundleComponents, type BundleComponent } from "@/lib/product-bundles";
+import { bundleComponentResponse, type BundleComponent } from "@/lib/product-bundles";
 import BundleEditor, { type BundleProduct, type BundleVariant } from "./bundle-editor";
 import BundleVariantPicker from "./bundle-variant-picker";
 import styles from "./dashboard.module.css";
@@ -22,8 +22,7 @@ export default async function BundlesPage({ variantId }: { variantId: string }) 
   if (!error && parent) {
     try {
       const response = await retailRequest<unknown>(`/products/${encodeURIComponent(parent.productId)}/variants/${encodeURIComponent(parent.id)}/bundle`);
-      const data = response && typeof response === "object" && !Array.isArray(response) && "data" in response ? response.data : response;
-      components = bundleComponents(data, parent.id);
+      components = bundleComponentResponse(response, parent.id);
     } catch (cause) { error = cause instanceof Error ? cause.message : "Unable to load bundle."; }
   } else if (!error && variantId) error = "The selected variant was not found.";
   return <>

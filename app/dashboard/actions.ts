@@ -17,6 +17,12 @@ function payload(formData: FormData) {
       result[key] = value.split(",").map((tag) => tag.trim()).filter(Boolean);
       continue;
     }
+    if (key === "productIds") {
+      const ids: unknown = JSON.parse(value);
+      if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string" || !id.trim())) throw new Error("Invalid collection products.");
+      result[key] = [...new Set(ids)];
+      continue;
+    }
     if (value === "") continue;
     if (["price", "inventory", "allocatedInventory", "incomingInventory", "weight", "sortOrder"].includes(key)) {
       result[key] = Number(value);

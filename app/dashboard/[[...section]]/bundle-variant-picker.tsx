@@ -13,7 +13,7 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
 
   return <form action="/dashboard/bundles" className={styles.form}>
     <section className={styles.formCard}>
-      <h2>Select the main bundle product</h2>
+      <h2>Select an existing bundle product</h2>
       <div className={styles.productPicker}>
         <label>Search products<input type="search" placeholder="Search product name" value={query} disabled={disabled} onChange={(event) => {
           const nextQuery = event.target.value;
@@ -31,7 +31,7 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
           <option value="">{productId ? (productVariants.length ? "Select a variant" : "No variants available") : "Select a product first"}</option>
           {productVariants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
         </select></label>
-        {!disabled && <small role="status">{filteredProducts.length ? `${filteredProducts.length} of ${products.length} products` : "No products found. Try another name."}</small>}
+        {!disabled && <small role="status">{filteredProducts.length ? `${filteredProducts.length} of ${products.length} bundle products` : "No tagged bundle products found. Try another name."}</small>}
       </div>
       <div className={styles.formActions}><button className={styles.primary} disabled={disabled || !selectedId}>Open bundle</button></div>
     </section>

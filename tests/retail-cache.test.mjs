@@ -28,7 +28,7 @@ test("only catalog list reads use the short-lived cache", async () => {
       return { ok: true, text: async () => "{}" };
     },
   });
-  for (const endpoint of ["/products?page=2&limit=100", "/brands", "/product-type", "/collections", "/tags", "/product-options"]) {
+  for (const endpoint of ["/products?page=2&limit=100", "/products?tags=bundle&page=1&limit=100", "/brands", "/product-type", "/collections", "/tags", "/product-options"]) {
     await api.retailRequest(endpoint);
     const options = calls.at(-1);
     assert.equal(options.cache, "force-cache");

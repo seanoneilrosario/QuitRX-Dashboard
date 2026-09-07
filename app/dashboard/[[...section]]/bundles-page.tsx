@@ -19,7 +19,7 @@ export default async function BundlesPage({ variantId }: { variantId: string }) 
   const productNames = new Map(products.map((product) => [product.id, product.label]));
   const variants: BundleVariant[] = variantResult.data.flatMap((v) => typeof v.id === "string" && typeof v.productId === "string" ? [{
     id: v.id, productId: v.productId,
-    label: [v.name || v.id, v.sku].filter(Boolean).join(" · "),
+    label: typeof v.name === "string" && v.name ? v.name : typeof v.sku === "string" && v.sku ? v.sku : v.id,
     productLabel: productNames.get(v.productId) ?? v.productId,
   }] : []);
   const parent = variants.find((variant) => variant.id === variantId && bundleProductIds.has(variant.productId));

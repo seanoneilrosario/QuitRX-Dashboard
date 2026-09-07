@@ -28,7 +28,7 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
           {filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.label}</option>)}
         </select></label>
         <label>Bundle variant<select name="variantId" required value={selectedId} onChange={(event) => setSelectedId(event.target.value)} disabled={disabled || !productVariants.length}>
-          <option value="">{productId ? (productVariants.length ? "Select a variant" : "No variants available") : "Select a product first"}</option>
+          <option value="">{productId ? (productVariants.length ? "Please select an option" : "No variants available") : "Select a product first"}</option>
           {productVariants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
         </select></label>
         {!disabled && <small role="status">{filteredProducts.length ? `${filteredProducts.length} of ${products.length} bundle products` : "No tagged bundle products found. Try another name."}</small>}

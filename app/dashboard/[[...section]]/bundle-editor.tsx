@@ -9,19 +9,14 @@ export type BundleProduct = { id: string; label: string };
 export type BundleVariant = { id: string; productId: string; productLabel: string; label: string };
 
 export default function BundleEditor({ parent, products, variants, initial }: { parent: BundleVariant; products: BundleProduct[]; variants: BundleVariant[]; initial: BundleComponent[] }) {
-  const [slots, setSlots] = useState(() => initial.flatMap((component) => Array.from({ length: component.quantity }, () => component.componentVariantId)));
+  const [components, setComponents] = useState(() => initial.map((component) => ({ ...component })));
   const [state, action, pending] = useActionState(saveBundle, { message: "", success: false });
   const availableVariants = variants.filter((variant) => variant.id !== parent.id);
   const productGroups = products.map((product) => ({ ...product, variants: availableVariants.filter((variant) => variant.productId === product.id) })).filter((product) => product.variants.length);
-  const components = slots.reduce<BundleComponent[]>((items, componentVariantId) => {
-    const existing = items.find((item) => item.componentVariantId === componentVariantId);
-    if (existing) existing.quantity += 1;
-    else items.push({ componentVariantId, quantity: 1, position: items.length });
-    return items;
-  }, []);
+  const nextVariant = availableVariants.find((variant) => !components.some((component) => component.componentVariantId === variant.id));
 
   function addComponent() {
-    if (availableVariants[0]) setSlots((current) => [...current, availableVariants[0].id]);
+    if (nextVariant) setComponents((current) => [...current, { componentVariantId: nextVariant.id, quantity: 1, position: current.length }]);
   }
 
   return <form action={action} className={styles.form}>
@@ -33,22 +28,23 @@ export default function BundleEditor({ parent, products, variants, initial }: { 
         <h2>Components for {parent.productLabel} · {parent.label}</h2>
         <p className={styles.bundleIntro}>Choose each variant included in this bundle and set how many units it contains.</p>
         <div className={styles.bundleSlots}>
-          {slots.map((componentVariantId, index) => {
-            const selectedVariant = availableVariants.find((variant) => variant.id === componentVariantId);
+          {components.map((component, index) => {
+            const selectedVariant = availableVariants.find((variant) => variant.id === component.componentVariantId);
             return <div className={styles.bundleSlot} key={index}>
               <label htmlFor={`bundle-component-${index}`}>Component {index + 1}{selectedVariant ? ` — ${selectedVariant.productLabel}` : ""}</label>
               <div className={styles.bundleSlotFields}>
-                <select id={`bundle-component-${index}`} aria-label={`Product variant for component ${index + 1}`} value={componentVariantId} onChange={(event) => setSlots((current) => current.map((slot, slotIndex) => slotIndex === index ? event.target.value : slot))}>
-                  {!selectedVariant && <option value={componentVariantId}>{componentVariantId}</option>}
-                  {productGroups.map((product) => <optgroup key={product.id} label={product.label}>{product.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}</option>)}</optgroup>)}
+                <select id={`bundle-component-${index}`} aria-label={`Product variant for component ${index + 1}`} value={component.componentVariantId} onChange={(event) => setComponents((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, componentVariantId: event.target.value } : item))}>
+                  {!selectedVariant && <option value={component.componentVariantId}>{component.componentVariantId}</option>}
+                  {productGroups.map((product) => <optgroup key={product.id} label={product.label}>{product.variants.map((variant) => <option key={variant.id} value={variant.id} disabled={variant.id !== component.componentVariantId && components.some((item) => item.componentVariantId === variant.id)}>{variant.label}</option>)}</optgroup>)}
                 </select>
-                <button type="button" className={styles.bundleRemove} aria-label={`Remove bundle component ${index + 1}`} onClick={() => setSlots((current) => current.filter((_, slotIndex) => slotIndex !== index))}>Remove</button>
+                <label className={styles.bundleQuantity}>Quantity<input type="number" min="1" step="1" value={component.quantity} onChange={(event) => setComponents((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: Math.max(1, Math.floor(event.target.valueAsNumber || 1)) } : item))}/></label>
+                <button type="button" className={styles.bundleRemove} aria-label={`Remove bundle component ${index + 1}`} onClick={() => setComponents((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>
               </div>
             </div>;
           })}
         </div>
-        {!slots.length && <p className={styles.bundleEmpty}>No components selected. Add the first bundle component below.</p>}
-        <button type="button" className={styles.secondary} disabled={!availableVariants.length} onClick={addComponent}>+ Add component</button>
+        {!components.length && <p className={styles.bundleEmpty}>No components selected. Add the first bundle component below.</p>}
+        <button type="button" className={styles.secondary} disabled={!nextVariant} onClick={addComponent}>+ Add component</button>
         <div className={styles.formActions}><button className={styles.primary} type="submit">{pending ? "Saving…" : "Save bundle"}</button></div>
       </section>
     </fieldset>

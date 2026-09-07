@@ -90,3 +90,24 @@ test("collection saves serialize selected product IDs", async () => {
   assert.equal(request.path, "/collections");
   assert.deepEqual(JSON.parse(request.options.body).productIds, ["product-1", "product-2"]);
 });
+
+test("dynamic collections save a tag condition and current matching products", async () => {
+  let request;
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
+    "next/navigation": { redirect: () => {} },
+    "@/lib/quithero-admin": { RETAIL_CATALOG_TAG: "retail-catalog", retailRequest: async (_path, options) => { request = options; } },
+  });
+  const form = new FormData();
+  form.set("_resource", "collections");
+  form.set("name", "Test products");
+  form.set("selectionMode", "dynamic");
+  form.set("ruleMatch", "all");
+  form.set("dynamicRules", JSON.stringify([{ field: "tag", operator: "equals", value: "test" }]));
+  form.set("productIds", JSON.stringify(["product-1"]));
+  await actions.saveResource(form);
+  const body = JSON.parse(request.body);
+  assert.equal(body.selectionMode, "dynamic");
+  assert.equal(body.dynamicRules[0].value, "test");
+  assert.deepEqual(body.productIds, ["product-1"]);
+});

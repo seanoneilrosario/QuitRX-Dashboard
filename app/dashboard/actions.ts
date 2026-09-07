@@ -23,6 +23,12 @@ function payload(formData: FormData) {
       result[key] = [...new Set(ids)];
       continue;
     }
+    if (key === "dynamicRules") {
+      const rules: unknown = JSON.parse(value);
+      if (!Array.isArray(rules) || rules.some((rule) => !rule || typeof rule !== "object" || (rule as Record<string, unknown>).field !== "tag" || (rule as Record<string, unknown>).operator !== "equals" || typeof (rule as Record<string, unknown>).value !== "string" || !(rule as Record<string, string>).value.trim())) throw new Error("Invalid collection conditions.");
+      result[key] = rules;
+      continue;
+    }
     if (value === "") continue;
     if (["price", "inventory", "allocatedInventory", "incomingInventory", "weight", "sortOrder"].includes(key)) {
       result[key] = Number(value);
@@ -50,6 +56,14 @@ export async function saveResource(formData: FormData) {
   if (!allowedResources.has(resource)) throw new Error("Unsupported resource.");
   const body = payload(formData);
   if (resource === "collections" && !body.slug && typeof body.name === "string") body.slug = slugify(body.name);
+  if (resource === "collections") {
+    const dynamic = body.selectionMode === "dynamic";
+    if (dynamic && (!Array.isArray(body.dynamicRules) || !body.dynamicRules.length)) throw new Error("Select a tag for the dynamic collection.");
+    if (!dynamic) {
+      body.selectionMode = "manual";
+      body.dynamicRules = [];
+    }
+  }
   await retailRequest(`/${resource}${id ? `/${encodeURIComponent(id)}` : ""}`, {
     method: id ? "PATCH" : "POST",
     body: JSON.stringify(body),

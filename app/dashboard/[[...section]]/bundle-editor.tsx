@@ -11,7 +11,7 @@ export type BundleVariant = { id: string; productId: string; productLabel: strin
 export default function BundleEditor({ parent, products, variants, initial }: { parent: BundleVariant; products: BundleProduct[]; variants: BundleVariant[]; initial: BundleComponent[] }) {
   const [slots, setSlots] = useState(() => initial.flatMap((component) => Array.from({ length: component.quantity }, () => component.componentVariantId)));
   const [state, action, pending] = useActionState(saveBundle, { message: "", success: false });
-  const availableVariants = variants.filter((variant) => variant.id !== parent.id && variant.productId !== parent.productId);
+  const availableVariants = variants.filter((variant) => variant.id !== parent.id);
   const productGroups = products.map((product) => ({ ...product, variants: availableVariants.filter((variant) => variant.productId === product.id) })).filter((product) => product.variants.length);
   const components = slots.reduce<BundleComponent[]>((items, componentVariantId) => {
     const existing = items.find((item) => item.componentVariantId === componentVariantId);
@@ -36,9 +36,9 @@ export default function BundleEditor({ parent, products, variants, initial }: { 
           {slots.map((componentVariantId, index) => {
             const selectedVariant = availableVariants.find((variant) => variant.id === componentVariantId);
             return <div className={styles.bundleSlot} key={index}>
-              <label htmlFor={`bundle-component-${index}`}>{parent.productLabel} — {index + 1}</label>
+              <label htmlFor={`bundle-component-${index}`}>Component {index + 1}{selectedVariant ? ` — ${selectedVariant.productLabel}` : ""}</label>
               <div className={styles.bundleSlotFields}>
-                <select id={`bundle-component-${index}`} aria-label={`Variant for ${parent.productLabel} ${index + 1}`} value={componentVariantId} onChange={(event) => setSlots((current) => current.map((slot, slotIndex) => slotIndex === index ? event.target.value : slot))}>
+                <select id={`bundle-component-${index}`} aria-label={`Product variant for component ${index + 1}`} value={componentVariantId} onChange={(event) => setSlots((current) => current.map((slot, slotIndex) => slotIndex === index ? event.target.value : slot))}>
                   {!selectedVariant && <option value={componentVariantId}>{componentVariantId}</option>}
                   {productGroups.map((product) => <optgroup key={product.id} label={product.label}>{product.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}</option>)}</optgroup>)}
                 </select>

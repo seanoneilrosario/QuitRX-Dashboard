@@ -1,8 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
-import { retailRequest } from "@/lib/quithero-admin";
+import { RETAIL_CATALOG_TAG, retailRequest } from "@/lib/quithero-admin";
 
 const allowedResources = new Set([
   "products", "product-variants", "product-images", "product-options",
@@ -48,6 +48,7 @@ export async function saveResource(formData: FormData) {
     method: id ? "PATCH" : "POST",
     body: JSON.stringify(body),
   });
+  updateTag(RETAIL_CATALOG_TAG);
   revalidatePath("/dashboard", "layout");
   redirect(returnTo);
 }
@@ -57,5 +58,6 @@ export async function deleteResource(formData: FormData) {
   const id = String(formData.get("_id") ?? "");
   if (!allowedResources.has(resource) || !id) throw new Error("Unsupported delete request.");
   await retailRequest(`/${resource}/${encodeURIComponent(id)}`, { method: "DELETE" });
+  updateTag(RETAIL_CATALOG_TAG);
   revalidatePath("/dashboard", "layout");
 }

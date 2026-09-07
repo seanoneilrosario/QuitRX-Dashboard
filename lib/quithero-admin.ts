@@ -2,6 +2,11 @@ import "server-only";
 
 const API_BASE = (process.env.QUITHERO_API_BASE_URL ?? "https://retail-api.quithero.com.au").replace(/\/$/, "");
 
+export const RETAIL_CATALOG_TAG = "retail-catalog";
+const cachedCatalogPaths = new Set([
+  "/products", "/brands", "/product-type", "/collections", "/tags", "/product-options",
+]);
+
 export type RetailRecord = Record<string, unknown> & { id?: string };
 export type RetailPagination = { page: number; limit: number; total: number; totalPages: number };
 
@@ -25,6 +30,10 @@ function apiKey() {
 }
 
 export async function retailRequest<T = unknown>(path: string, init: RequestInit = {}) {
+  // Cache catalog lists briefly; keep edit records and operational data fresh.
+  const cacheCatalog = (init.method ?? "GET").toUpperCase() === "GET"
+    && cachedCatalogPaths.has(path.split("?")[0])
+    && init.cache !== "no-store";
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
@@ -32,7 +41,8 @@ export async function retailRequest<T = unknown>(path: string, init: RequestInit
       "x-api-key": apiKey(),
       ...init.headers,
     },
-    cache: "no-store",
+    cache: cacheCatalog ? "force-cache" : "no-store",
+    next: cacheCatalog ? { revalidate: 30, tags: [RETAIL_CATALOG_TAG] } : undefined,
   });
 
   const text = await response.text();

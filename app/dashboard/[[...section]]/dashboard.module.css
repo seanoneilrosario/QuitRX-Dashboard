@@ -10,6 +10,13 @@
 .profile{flex-wrap:wrap;row-gap:4px}.profile form{flex:0 0 calc(100% - 47px);margin-left:47px}.profile button,.mobileTop form button{padding:0;border:0;background:none;color:#b9d4d1;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}.profile button:hover,.mobileTop form button:hover{color:#fff}
 
 /* Product search and status filter */
+.bundleFields{min-width:0;margin:20px 0 0;padding:0;border:0}
+.bundleList{display:grid;gap:14px;padding:0;list-style:none}
+.bundleRow{display:grid;grid-template-columns:minmax(0,1fr) 100px auto;gap:16px;align-items:center;padding:16px 0;border-bottom:1px solid #dbe6e4}
+.bundleRow strong{overflow-wrap:anywhere}
+.bundleControls{display:flex;gap:8px;flex-wrap:wrap}
+.bundleControls button:disabled,.bundleFields:disabled{opacity:.55}
+@media(max-width:760px){.bundleRow{grid-template-columns:1fr}.bundleControls{justify-content:flex-start}}
 .search{width:min(680px,100%)}
 .inventorySearch{width:min(980px,100%)}
 .inventorySearch select:last-of-type{flex-basis:220px}

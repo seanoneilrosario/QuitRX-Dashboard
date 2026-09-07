@@ -6,6 +6,7 @@ import { safeRetailAll, safeRetailList, safeRetailPage, safeRetailRecord, type R
 import styles from "./dashboard.module.css";
 import TagsInput from "./tags-input";
 import CollectionCreateFields from "./collection-create-fields";
+import BundlesPage from "./bundles-page";
 import { logoutStaff } from "../login/actions";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
@@ -13,7 +14,7 @@ export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 const routes = [
   [], ["products"], ["products", "create"], ["products", "edit"], ["products", "variants"],
   ["products", "images"], ["products", "options"], ["products", "tags"], ["products", "collections"],
-  ["collections"],
+  ["collections"], ["bundles"],
   ["customers"], ["customers", "details"], ["customers", "edit"],
   ["orders"], ["orders", "details"], ["inventory"], ["inventory", "history"],
 ];
@@ -29,6 +30,7 @@ const nav = [
   { label: "Dashboard", href: "/dashboard", icon: "⌂" },
   { label: "Products", href: "/dashboard/products", icon: "□" },
   { label: "Collections", href: "/dashboard/collections", icon: "◇" },
+  { label: "Bundles", href: "/dashboard/bundles", icon: "+" },
   { label: "Customers", href: "/dashboard/customers", icon: "♙" },
   { label: "Orders", href: "/dashboard/orders", icon: "▤" },
   { label: "Inventory", href: "/dashboard/inventory", icon: "▥" },
@@ -174,6 +176,7 @@ export default async function DashboardPage({ params, searchParams }: Props) {
   else if (area === "products" && sub === "create") { const [brands, productTypes, collections] = await Promise.all([safeRetailList("/brands"), safeRetailList("/product-type"), safeRetailList("/collections")]); content = <ProductForm brands={brands.data} productTypes={productTypes.data} collections={collections.data}/>; }
   else if (area === "products" && sub === "edit") { const [result, brands, productTypes, collections] = await Promise.all([safeRetailRecord(`/products/${encodeURIComponent(id)}`), safeRetailList("/brands"), safeRetailList("/product-type"), safeRetailList("/collections")]); content = <ProductForm item={result.data} brands={brands.data} productTypes={productTypes.data} collections={collections.data}/>; }
   else if (area === "products" && resourceConfig[sub]) { const config = resourceConfig[sub]; const result = await safeRetailList(`/${config.resource}`); content = <ResourcePage kind={sub} items={result.data} error={result.error}/>; }
+  else if (area === "bundles") { content = <BundlesPage variantId={typeof queryParams.variantId === "string" ? queryParams.variantId : ""}/>; }
   else if (area === "collections") {
     const result = await safeRetailList("/collections");
     content = <ResourcePage kind="collections" items={result.data} error={result.error} path="/dashboard/collections"/>;

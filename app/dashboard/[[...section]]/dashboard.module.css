@@ -16,6 +16,7 @@
 .bundleRow strong{overflow-wrap:anywhere}
 .bundleControls{display:flex;gap:8px;flex-wrap:wrap}
 .bundleControls button:disabled,.bundleFields:disabled{opacity:.55}
+.bundleProducts{display:grid;gap:18px;margin-top:20px}.bundleProduct{padding:18px;border:1px solid #dbe6e4;border-radius:12px;background:#f9fbfa}.bundleProductHeader{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.bundleProductHeader>div{display:grid}.bundleProductHeader small{color:#829698}.bundleProduct .productChoices{margin-bottom:12px;background:#fff}
 @media(max-width:760px){.bundleRow{grid-template-columns:1fr}.bundleControls{justify-content:flex-start}}
 .search{width:min(680px,100%)}
 .inventorySearch{width:min(980px,100%)}

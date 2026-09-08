@@ -10,6 +10,18 @@ const cachedCatalogPaths = new Set([
 export type RetailRecord = Record<string, unknown> & { id?: string };
 export type RetailPagination = { page: number; limit: number; total: number; totalPages: number };
 
+const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+function retryDelay(response: Response, attempt: number) {
+  const retryAfter = response.headers.get("retry-after");
+  const seconds = retryAfter ? Number(retryAfter) : Number.NaN;
+  if (Number.isFinite(seconds)) return Math.min(Math.max(seconds * 1000, 0), 5000);
+
+  const date = retryAfter ? Date.parse(retryAfter) : Number.NaN;
+  if (Number.isFinite(date)) return Math.min(Math.max(date - Date.now(), 0), 5000);
+  return 500 * (attempt + 1);
+}
+
 function apiKey() {
   let value = process.env.QUITHERO_API_KEY?.trim();
   if (!value) throw new Error("QUITHERO_API_KEY is not configured.");
@@ -34,16 +46,23 @@ export async function retailRequest<T = unknown>(path: string, init: RequestInit
   const cacheCatalog = (init.method ?? "GET").toUpperCase() === "GET"
     && cachedCatalogPaths.has(path.split("?")[0])
     && init.cache !== "no-store";
-  const response = await fetch(`${API_BASE}${path}`, {
+  const request = {
     ...init,
     headers: {
       "content-type": "application/json",
       "x-api-key": apiKey(),
       ...init.headers,
     },
-    cache: cacheCatalog ? "force-cache" : "no-store",
+    cache: cacheCatalog ? "force-cache" as const : "no-store" as const,
     next: cacheCatalog ? { revalidate: 30, tags: [RETAIL_CATALOG_TAG] } : undefined,
-  });
+  };
+  let response = await fetch(`${API_BASE}${path}`, request);
+  if ((init.method ?? "GET").toUpperCase() === "GET") {
+    for (let attempt = 0; response.status === 429 && attempt < 2; attempt += 1) {
+      await wait(retryDelay(response, attempt));
+      response = await fetch(`${API_BASE}${path}`, request);
+    }
+  }
 
   const text = await response.text();
   let body: unknown;

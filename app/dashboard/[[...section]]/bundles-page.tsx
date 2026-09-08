@@ -5,11 +5,11 @@ import BundleVariantPicker from "./bundle-variant-picker";
 import styles from "./dashboard.module.css";
 
 export default async function BundlesPage({ variantId }: { variantId: string }) {
-  const [bundleProductResult, productResult, variantResult] = await Promise.all([
-    safeRetailAll("/products?tags=bundle"),
-    safeRetailAll("/products"),
-    safeRetailAll("/product-variants"),
-  ]);
+  // Keep these reads sequential so opening this page does not burst through the
+  // QuitHero API's per-client rate limit.
+  const bundleProductResult = await safeRetailAll("/products?tags=bundle");
+  const productResult = await safeRetailAll("/products");
+  const variantResult = await safeRetailAll("/product-variants");
   const products: BundleProduct[] = productResult.data.flatMap((product) => typeof product.id === "string" ? [{
     id: product.id,
     label: typeof product.name === "string" && product.name ? product.name : product.id,

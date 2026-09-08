@@ -8,7 +8,7 @@ export function bundleComponentResponse(value: unknown, parentId: string): Bundl
 
   const response = value as Record<string, unknown>;
   if (!Object.keys(response).length) return [];
-  for (const key of ["data", "bundle", "selections", "bundleSelections", "components", "bundleComponents", "items"]) {
+  for (const key of ["data", "bundle", "bundleDropdowns", "selections", "bundleSelections", "components", "bundleComponents", "items"]) {
     if (key in response) return bundleComponentResponse(response[key], parentId);
   }
   throw new Error(`Unexpected bundle response (keys: ${Object.keys(response).join(", ")}). The bundle was not loaded.`);

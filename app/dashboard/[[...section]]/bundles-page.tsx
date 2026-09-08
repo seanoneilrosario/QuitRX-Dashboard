@@ -1,5 +1,5 @@
 import { retailRequest, safeRetailAll } from "@/lib/quithero-admin";
-import { bundleComponentResponse, type BundleComponent } from "@/lib/product-bundles";
+import { bundleComponentResponse, type BundleSelection } from "@/lib/product-bundles";
 import BundleEditor, { type BundleProduct, type BundleVariant } from "./bundle-editor";
 import BundleVariantPicker from "./bundle-variant-picker";
 import styles from "./dashboard.module.css";
@@ -25,7 +25,7 @@ export default async function BundlesPage({ variantId }: { variantId: string }) 
   }] : []);
   const parent = variants.find((variant) => variant.id === variantId && bundleProductIds.has(variant.productId));
   let error = bundleProductResult.error ?? productResult.error ?? variantResult.error;
-  let components: BundleComponent[] = [];
+  let components: BundleSelection[] = [];
   if (!error && parent) {
     try {
       const response = await retailRequest<unknown>(`/products/${encodeURIComponent(parent.productId)}/variants/${encodeURIComponent(parent.id)}/bundle`);

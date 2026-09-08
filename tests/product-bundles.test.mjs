@@ -17,26 +17,27 @@ function load(file, mocks = {}) {
   return exports;
 }
 const validation = load("lib/product-bundles.ts");
-const component = { componentVariantId: "child", quantity: 2, position: 0 };
+const selection = { position: 0, name: "POD 1", options: [{ componentVariantId: "child" }, { componentVariantId: "child-2" }] };
 
-test("bundle validation rejects malformed data, duplicate positions, self references and invalid quantities", () => {
-  for (const value of [null, {}, [null], [{ ...component, quantity: 0 }], [{ ...component, quantity: 1.5 }], [{ ...component, position: -1 }], [component, component], [{ ...component, componentVariantId: "parent" }]]) {
+test("bundle validation accepts multiple options and rejects malformed selections", () => {
+  for (const value of [null, {}, [null], [{ ...selection, options: [] }], [{ ...selection, position: -1 }], [selection, selection], [{ ...selection, options: [{ componentVariantId: "parent" }] }], [{ ...selection, options: [{ componentVariantId: "child" }, { componentVariantId: "child" }] }]]) {
     assert.throws(() => validation.bundleComponents(value, "parent"));
   }
   assert.equal(validation.bundleComponents([], "parent").length, 0);
-  assert.equal(validation.bundleComponents([component], "parent")[0].quantity, 2);
-  assert.equal(validation.bundleComponents([component, { ...component, position: 1 }], "parent").length, 2);
+  assert.equal(validation.bundleComponents([selection], "parent")[0].options.length, 2);
+  assert.equal(validation.bundleComponents([selection, { ...selection, position: 1 }], "parent").length, 2);
 });
 
 test("bundle responses support API wrappers and empty bundles", () => {
   assert.equal(validation.bundleComponentResponse(null, "parent").length, 0);
   assert.equal(validation.bundleComponentResponse({ data: null }, "parent").length, 0);
-  assert.equal(validation.bundleComponentResponse({ data: { components: [component] } }, "parent")[0].componentVariantId, "child");
-  assert.equal(validation.bundleComponentResponse({ bundleComponents: [component] }, "parent")[0].quantity, 2);
+  assert.equal(validation.bundleComponentResponse({ data: { components: [selection] } }, "parent")[0].options[0].componentVariantId, "child");
+  assert.equal(validation.bundleComponentResponse({ bundleComponents: [selection] }, "parent")[0].options.length, 2);
+  assert.equal(validation.bundleComponentResponse([{ componentVariantId: "legacy-child", quantity: 1, position: 0 }], "parent")[0].options[0].componentVariantId, "legacy-child");
   assert.throws(() => validation.bundleComponentResponse({}, "parent"));
 });
 
-test("bundle saves require one uniquely positioned variant per selection", async () => {
+test("bundle saves multiple variant options per uniquely positioned selection", async () => {
   let staff = true;
   let fail = false;
   const calls = [];
@@ -44,23 +45,23 @@ test("bundle saves require one uniquely positioned variant per selection", async
     "@/auth": { auth: async () => ({ user: { isStaff: staff } }) },
     "@/lib/product-bundles": validation,
     "@/lib/quithero-admin": {
-      retailRequest: async (path, options = {}) => { if (fail) throw new Error("API failed"); calls.push({ path, ...options }); return options.method === "PATCH" ? undefined : [component]; },
+      retailRequest: async (path, options = {}) => { if (fail) throw new Error("API failed"); calls.push({ path, ...options }); return options.method === "PATCH" ? undefined : [selection]; },
     },
   });
   const form = new FormData();
   form.set("productId", "product/1");
   form.set("variantId", "parent");
-  form.set("components", JSON.stringify([component]));
+  form.set("components", JSON.stringify([selection]));
   const previous = { message: "", success: false };
   assert.equal((await actions.saveBundle(previous, form)).success, true);
   assert.equal(calls[0].path, "/products/product%2F1/variants/parent/bundle");
   assert.equal(calls[0].method, "PATCH");
-  assert.deepEqual(JSON.parse(calls[0].body), [component]);
+  assert.deepEqual(JSON.parse(calls[0].body), [selection]);
   assert.equal(calls.length, 2);
   assert.equal(calls[1].path, calls[0].path);
   assert.equal(calls[1].method, undefined);
   calls.length = 0;
-  const slots = [component, { ...component, componentVariantId: "child-2", position: 0 }];
+  const slots = [selection, { ...selection, position: 0 }];
   form.set("components", JSON.stringify(slots));
   assert.equal((await actions.saveBundle(previous, form)).success, false);
   assert.equal(calls.length, 0);

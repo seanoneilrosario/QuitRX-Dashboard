@@ -2,9 +2,9 @@
 
 import { auth } from "@/auth";
 import { retailRequest } from "@/lib/quithero-admin";
-import { bundleComponentResponse, bundleComponents, type BundleComponent } from "@/lib/product-bundles";
+import { bundleComponentResponse, bundleComponents, type BundleSelection } from "@/lib/product-bundles";
 
-export type BundleActionState = { message: string; success: boolean; components?: BundleComponent[] };
+export type BundleActionState = { message: string; success: boolean; selections?: BundleSelection[] };
 
 export async function saveBundle(_previous: BundleActionState, form: FormData): Promise<BundleActionState> {
   const session = await auth();
@@ -20,7 +20,7 @@ export async function saveBundle(_previous: BundleActionState, form: FormData): 
       method: "PATCH", body: JSON.stringify(components),
     });
     const saved = await retailRequest<unknown>(`/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}/bundle`);
-    return { message: "Bundle saved.", success: true, components: bundleComponentResponse(saved, variantId) };
+    return { message: "Bundle saved.", success: true, selections: bundleComponentResponse(saved, variantId) };
   } catch (error) {
     return { message: error instanceof Error ? error.message : "Unable to save bundle.", success: false };
   }

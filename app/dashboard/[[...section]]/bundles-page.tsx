@@ -33,8 +33,8 @@ export default async function BundlesPage({ variantId }: { variantId: string }) 
     } catch (cause) { error = cause instanceof Error ? cause.message : "Unable to load bundle."; }
   }
   return <>
-    <header className={styles.pageHeader}><div><p className={styles.eyebrow}>QuitRX operations</p><h1>Bundles</h1><p>Configure the fixed products and quantities included in each bundle option.</p></div></header>
+    <header className={styles.pageHeader}><div><p className={styles.eyebrow}>QuitRX operations</p><h1>Bundles</h1><p>Configure the fixed products and quantities included in each bundle group.</p></div></header>
     <BundleVariantPicker key={variantId} products={bundleProducts} variants={variants} variantId={variantId} disabled={Boolean(bundleProductResult.error ?? productResult.error ?? variantResult.error)}/>
-    {error ? <p role="alert" className={styles.notice}>{error} Reload this page to try again.</p> : parent ? <BundleEditor key={parent.id} parent={parent} products={products} variants={variants} bundleProductIds={[...bundleProductIds]} initial={components}/> : <p className={styles.notice}>{variantId ? "The selected bundle variant was not found. Choose another bundle product and variant." : bundleProducts.length ? "Select a bundle product and variant to configure its contents." : "No products tagged bundle are available."}</p>}
+    {error ? <p role="alert" className={styles.notice}>{error} Reload this page to try again.</p> : parent ? <BundleEditor key={parent.id} parent={parent} products={products} variants={variants} bundleProductIds={[...bundleProductIds]} initial={components}/> : <p className={styles.notice}>{variantId ? "The selected bundle group was not found. Choose another bundle product and group." : bundleProducts.length ? "Select a bundle product and group to configure its fixed contents." : "No products tagged bundle are available."}</p>}
   </>;
 }

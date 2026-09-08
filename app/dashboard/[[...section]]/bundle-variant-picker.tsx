@@ -23,7 +23,7 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
 
   return <div className={styles.form}>
     <section className={styles.formCard}>
-      <h2>Select a bundle configuration</h2>
+      <h2>Select a bundle group</h2>
       <div className={styles.productPicker}>
         <label>Search products<input type="search" placeholder="Search product name" value={query} disabled={disabled} onChange={(event) => {
           const nextQuery = event.target.value;
@@ -37,7 +37,7 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
           <option value="">{filteredProducts.length ? "Select a product" : "No matching products"}</option>
           {filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.label}</option>)}
         </select></label>
-        <label>Bundle option<select value={selectedId} onChange={(event) => openVariant(event.target.value)} disabled={disabled || !productVariants.length}>
+        <label>Bundle group<select value={selectedId} onChange={(event) => openVariant(event.target.value)} disabled={disabled || !productVariants.length}>
           <option value="">{productId ? (productVariants.length ? "Please select an option" : "No variants available") : "Select a product first"}</option>
           {productVariants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
         </select></label>

@@ -15,8 +15,7 @@ export async function saveBundle(_previous: BundleActionState, form: FormData): 
     const productId = String(form.get("productId") ?? "").trim();
     const variantId = String(form.get("variantId") ?? "").trim();
     if (!productId || !variantId) throw new Error("Select a bundle variant first.");
-    const components = bundleComponents(JSON.parse(String(form.get("components") ?? "")), variantId)
-      .map((item, position) => ({ ...item, position }));
+    const components = bundleComponents(JSON.parse(String(form.get("components") ?? "")), variantId);
     await retailRequest(`/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}/bundle`, {
       method: "PATCH", body: JSON.stringify(components),
     });

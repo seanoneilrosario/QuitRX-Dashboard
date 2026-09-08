@@ -19,12 +19,13 @@ function load(file, mocks = {}) {
 const validation = load("lib/product-bundles.ts");
 const component = { componentVariantId: "child", quantity: 2, position: 0 };
 
-test("bundle validation rejects malformed data, duplicates, self references and invalid quantities", () => {
+test("bundle validation rejects malformed data, same-slot duplicates, self references and invalid quantities", () => {
   for (const value of [null, {}, [null], [{ ...component, quantity: 0 }], [{ ...component, quantity: 1.5 }], [{ ...component, position: -1 }], [component, component], [{ ...component, componentVariantId: "parent" }]]) {
     assert.throws(() => validation.bundleComponents(value, "parent"));
   }
   assert.equal(validation.bundleComponents([], "parent").length, 0);
   assert.equal(validation.bundleComponents([component], "parent")[0].quantity, 2);
+  assert.equal(validation.bundleComponents([component, { ...component, position: 1 }], "parent").length, 2);
 });
 
 test("bundle responses support API wrappers and empty bundles", () => {
@@ -58,6 +59,11 @@ test("bundle saves use the documented PATCH array without refreshing catalog dat
   assert.equal(calls.length, 2);
   assert.equal(calls[1].path, calls[0].path);
   assert.equal(calls[1].method, undefined);
+  calls.length = 0;
+  const slots = [component, { ...component, position: 1 }];
+  form.set("components", JSON.stringify(slots));
+  assert.equal((await actions.saveBundle(previous, form)).success, true);
+  assert.deepEqual(JSON.parse(calls[0].body), slots);
   calls.length = 0;
   form.set("components", "[]");
   assert.equal((await actions.saveBundle(previous, form)).success, true);

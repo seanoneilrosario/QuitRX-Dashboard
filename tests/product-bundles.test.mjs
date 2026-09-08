@@ -30,11 +30,14 @@ test("bundle validation accepts multiple options and rejects malformed selection
 
 test("bundle responses support API wrappers and empty bundles", () => {
   assert.equal(validation.bundleComponentResponse(null, "parent").length, 0);
+  assert.equal(validation.bundleComponentResponse({}, "parent").length, 0);
   assert.equal(validation.bundleComponentResponse({ data: null }, "parent").length, 0);
+  assert.equal(validation.bundleComponentResponse({ data: {} }, "parent").length, 0);
+  assert.equal(validation.bundleComponentResponse({ bundle: [selection] }, "parent")[0].options.length, 2);
   assert.equal(validation.bundleComponentResponse({ data: { components: [selection] } }, "parent")[0].options[0].componentVariantId, "child");
   assert.equal(validation.bundleComponentResponse({ bundleComponents: [selection] }, "parent")[0].options.length, 2);
   assert.equal(validation.bundleComponentResponse([{ componentVariantId: "legacy-child", quantity: 1, position: 0 }], "parent")[0].options[0].componentVariantId, "legacy-child");
-  assert.throws(() => validation.bundleComponentResponse({}, "parent"));
+  assert.throws(() => validation.bundleComponentResponse({ unexpected: true }, "parent"));
 });
 
 test("bundle saves multiple variant options per uniquely positioned selection", async () => {

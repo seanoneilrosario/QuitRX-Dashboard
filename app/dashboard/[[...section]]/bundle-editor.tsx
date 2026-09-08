@@ -16,7 +16,7 @@ function signature(components: BundleComponent[]) {
   return JSON.stringify(normalized(components));
 }
 
-export default function BundleEditor({ parent, products, variants, bundleProductIds, initial }: { parent: BundleVariant; products: BundleProduct[]; variants: BundleVariant[]; bundleProductIds: string[]; initial: BundleComponent[] }) {
+export default function BundleEditor({ parent, groupNumber, products, variants, bundleProductIds, initial }: { parent: BundleVariant; groupNumber: number; products: BundleProduct[]; variants: BundleVariant[]; bundleProductIds: string[]; initial: BundleComponent[] }) {
   const initialComponents = useMemo(() => normalized(initial), [initial]);
   const [components, setComponents] = useState(initialComponents);
   const [savedComponents, setSavedComponents] = useState(initialComponents);
@@ -78,7 +78,7 @@ export default function BundleEditor({ parent, products, variants, bundleProduct
     <input type="hidden" name="components" value={JSON.stringify(normalized(components))}/>
     <fieldset disabled={pending} className={styles.bundleFields}>
       <section className={styles.formCard}>
-        <div className={styles.bundleEditorHeader}><div><h2>Components for group: {parent.label}</h2><p>{parent.productLabel}</p></div><strong>{components.length} fixed {components.length === 1 ? "component" : "components"}</strong></div>
+        <div className={styles.bundleEditorHeader}><div><h2>Group {groupNumber}: {parent.label}</h2><p>{parent.productLabel}</p></div><strong>{components.length} fixed {components.length === 1 ? "component" : "components"}</strong></div>
         <p className={styles.bundleIntro}>This bundle group has fixed contents. Add each included product variant and set how many units the customer receives.</p>
         <div className={styles.bundleSlots}>
           {components.map((component, index) => {

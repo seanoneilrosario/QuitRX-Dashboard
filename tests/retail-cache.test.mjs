@@ -46,6 +46,30 @@ test("only catalog list reads use the short-lived cache", async () => {
   }
 });
 
+test("rate-limited reads and idempotent bundle saves are retried", async () => {
+  const calls = [];
+  const api = load("lib/quithero-admin.ts", { "server-only": {} }, {
+    process: { env: { QUITHERO_API_KEY: "test-key" } },
+    setTimeout: (callback) => callback(),
+    fetch: async (_url, options) => {
+      calls.push(options.method ?? "GET");
+      const limited = calls.length === 1;
+      return {
+        ok: !limited,
+        status: limited ? 429 : 200,
+        headers: { get: () => "0" },
+        text: async () => "{}",
+      };
+    },
+  });
+  await api.retailRequest("/products");
+  assert.deepEqual(calls, ["GET", "GET"]);
+
+  calls.length = 0;
+  await api.retailRequest("/products/product/variants/variant/bundle", { method: "PATCH", body: "[]" });
+  assert.deepEqual(calls, ["PATCH", "PATCH"]);
+});
+
 test("successful saves and deletes expire the catalog; failed writes do not", async () => {
   const events = [];
   let fail = false;

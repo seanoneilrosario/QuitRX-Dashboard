@@ -57,7 +57,9 @@ export async function retailRequest<T = unknown>(path: string, init: RequestInit
     next: cacheCatalog ? { revalidate: 30, tags: [RETAIL_CATALOG_TAG] } : undefined,
   };
   let response = await fetch(`${API_BASE}${path}`, request);
-  if ((init.method ?? "GET").toUpperCase() === "GET") {
+  const method = (init.method ?? "GET").toUpperCase();
+  const canRetry = method === "GET" || (method === "PATCH" && path.endsWith("/bundle"));
+  if (canRetry) {
     for (let attempt = 0; response.status === 429 && attempt < 2; attempt += 1) {
       await wait(retryDelay(response, attempt));
       response = await fetch(`${API_BASE}${path}`, request);

@@ -1,11 +1,12 @@
 "use server";
 
 import { auth } from "@/auth";
-import { revalidatePath, updateTag } from "next/cache";
-import { retailRequest, RETAIL_CATALOG_TAG } from "@/lib/quithero-admin";
-import { bundleComponents } from "@/lib/product-bundles";
+import { retailRequest } from "@/lib/quithero-admin";
+import { bundleComponentResponse, bundleComponents, type BundleComponent } from "@/lib/product-bundles";
 
-export async function saveBundle(_previous: { message: string; success: boolean }, form: FormData) {
+export type BundleActionState = { message: string; success: boolean; components?: BundleComponent[] };
+
+export async function saveBundle(_previous: BundleActionState, form: FormData): Promise<BundleActionState> {
   const session = await auth();
   if (!(session?.user as { isStaff?: boolean } | undefined)?.isStaff) {
     return { message: "Please sign in as staff to save bundles.", success: false };
@@ -19,9 +20,8 @@ export async function saveBundle(_previous: { message: string; success: boolean 
     await retailRequest(`/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}/bundle`, {
       method: "PATCH", body: JSON.stringify(components),
     });
-    updateTag(RETAIL_CATALOG_TAG);
-    revalidatePath("/dashboard/bundles");
-    return { message: "Bundle saved.", success: true };
+    const saved = await retailRequest<unknown>(`/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}/bundle`);
+    return { message: "Bundle saved.", success: true, components: bundleComponentResponse(saved, variantId) };
   } catch (error) {
     return { message: error instanceof Error ? error.message : "Unable to save bundle.", success: false };
   }

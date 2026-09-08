@@ -35,17 +35,15 @@ test("bundle responses support API wrappers and empty bundles", () => {
   assert.throws(() => validation.bundleComponentResponse({}, "parent"));
 });
 
-test("bundle saves use documented PATCH array, clear cache only on success, and require staff", async () => {
+test("bundle saves use the documented PATCH array without refreshing catalog data", async () => {
   let staff = true;
   let fail = false;
   const calls = [];
   const actions = load("app/dashboard/bundle-actions.ts", {
     "@/auth": { auth: async () => ({ user: { isStaff: staff } }) },
-    "next/cache": { updateTag: () => calls.push("expire"), revalidatePath: () => calls.push("revalidate") },
     "@/lib/product-bundles": validation,
     "@/lib/quithero-admin": {
-      RETAIL_CATALOG_TAG: "retail-catalog",
-      retailRequest: async (path, options) => { if (fail) throw new Error("API failed"); calls.push({ path, ...options }); },
+      retailRequest: async (path, options = {}) => { if (fail) throw new Error("API failed"); calls.push({ path, ...options }); return options.method === "PATCH" ? undefined : [component]; },
     },
   });
   const form = new FormData();
@@ -57,7 +55,9 @@ test("bundle saves use documented PATCH array, clear cache only on success, and 
   assert.equal(calls[0].path, "/products/product%2F1/variants/parent/bundle");
   assert.equal(calls[0].method, "PATCH");
   assert.deepEqual(JSON.parse(calls[0].body), [component]);
-  assert.deepEqual(calls.slice(1), ["expire", "revalidate"]);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].path, calls[0].path);
+  assert.equal(calls[1].method, undefined);
   calls.length = 0;
   form.set("components", "[]");
   assert.equal((await actions.saveBundle(previous, form)).success, true);

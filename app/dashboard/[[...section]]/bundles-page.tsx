@@ -20,6 +20,7 @@ export default async function BundlesPage({ variantId }: { variantId: string }) 
   const variants: BundleVariant[] = variantResult.data.flatMap((v) => typeof v.id === "string" && typeof v.productId === "string" ? [{
     id: v.id, productId: v.productId,
     label: typeof v.name === "string" && v.name ? v.name : typeof v.sku === "string" && v.sku ? v.sku : v.id,
+    sku: typeof v.sku === "string" ? v.sku : "",
     productLabel: productNames.get(v.productId) ?? v.productId,
   }] : []);
   const parent = variants.find((variant) => variant.id === variantId && bundleProductIds.has(variant.productId));
@@ -30,10 +31,10 @@ export default async function BundlesPage({ variantId }: { variantId: string }) 
       const response = await retailRequest<unknown>(`/products/${encodeURIComponent(parent.productId)}/variants/${encodeURIComponent(parent.id)}/bundle`);
       components = bundleComponentResponse(response, parent.id);
     } catch (cause) { error = cause instanceof Error ? cause.message : "Unable to load bundle."; }
-  } else if (!error && variantId) error = "The selected variant was not found.";
+  }
   return <>
     <header className={styles.pageHeader}><div><p className={styles.eyebrow}>QuitRX operations</p><h1>Bundles</h1><p>Manage the component variants and quantities included in a product bundle.</p></div></header>
     <BundleVariantPicker key={variantId} products={bundleProducts} variants={variants} variantId={variantId} disabled={Boolean(bundleProductResult.error ?? productResult.error ?? variantResult.error)}/>
-    {error ? <p role="alert" className={styles.notice}>{error} Reload this page to try again.</p> : parent ? <BundleEditor key={parent.id} parent={parent} products={products} variants={variants} initial={components}/> : <p className={styles.notice}>{bundleProducts.length ? "Select a bundle product and variant to configure its contents." : "No products tagged bundle are available."}</p>}
+    {error ? <p role="alert" className={styles.notice}>{error} Reload this page to try again.</p> : parent ? <BundleEditor key={parent.id} parent={parent} products={products} variants={variants} bundleProductIds={[...bundleProductIds]} initial={components}/> : <p className={styles.notice}>{variantId ? "The selected bundle variant was not found. Choose another bundle product and variant." : bundleProducts.length ? "Select a bundle product and variant to configure its contents." : "No products tagged bundle are available."}</p>}
   </>;
 }

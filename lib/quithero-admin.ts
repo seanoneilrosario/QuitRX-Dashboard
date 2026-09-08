@@ -41,6 +41,17 @@ function apiKey() {
   return value;
 }
 
+function apiErrorMessage(body: unknown) {
+  if (typeof body === "string") return body.trim();
+  if (!body || typeof body !== "object") return "";
+
+  const { message, error } = body as Record<string, unknown>;
+  if (Array.isArray(message)) return message.filter((item): item is string => typeof item === "string").join(" ");
+  if (typeof message === "string") return message.trim();
+  if (typeof error === "string") return error.trim();
+  return "";
+}
+
 export async function retailRequest<T = unknown>(path: string, init: RequestInit = {}) {
   // Cache catalog lists briefly; keep edit records and operational data fresh.
   const cacheCatalog = (init.method ?? "GET").toUpperCase() === "GET"
@@ -69,7 +80,10 @@ export async function retailRequest<T = unknown>(path: string, init: RequestInit
   const text = await response.text();
   let body: unknown;
   try { body = text ? JSON.parse(text) : undefined; } catch { body = text; }
-  if (!response.ok) throw new Error(`QuitHero API returned ${response.status}.`);
+  if (!response.ok) {
+    const detail = apiErrorMessage(body);
+    throw new Error(detail ? `QuitHero API returned ${response.status}: ${detail}` : `QuitHero API returned ${response.status}.`);
+  }
   return body as T;
 }
 

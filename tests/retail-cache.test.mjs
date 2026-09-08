@@ -70,6 +70,27 @@ test("rate-limited reads and idempotent bundle saves are retried", async () => {
   assert.deepEqual(calls, ["PATCH", "PATCH"]);
 });
 
+test("API errors include QuitHero validation details", async () => {
+  const responses = [
+    JSON.stringify({ message: ["componentVariantId must be a UUID", "quantity must be positive"] }),
+    JSON.stringify({ error: "Bad Request" }),
+    "Request could not be processed",
+  ];
+  const api = load("lib/quithero-admin.ts", { "server-only": {} }, {
+    process: { env: { QUITHERO_API_KEY: "test-key" } },
+    fetch: async () => ({
+      ok: false,
+      status: 400,
+      headers: { get: () => null },
+      text: async () => responses.shift(),
+    }),
+  });
+
+  await assert.rejects(api.retailRequest("/products/123"), /400: componentVariantId must be a UUID quantity must be positive/);
+  await assert.rejects(api.retailRequest("/products/123"), /400: Bad Request/);
+  await assert.rejects(api.retailRequest("/products/123"), /400: Request could not be processed/);
+});
+
 test("successful saves and deletes expire the catalog; failed writes do not", async () => {
   const events = [];
   let fail = false;

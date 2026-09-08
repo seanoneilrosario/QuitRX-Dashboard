@@ -99,7 +99,7 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
 
   const selectedCount = selections.reduce((total, selection) => total + selection.options.length, 0);
 
-  return <form action={submit} className={styles.form}>
+  return <form id="bundle-editor" action={submit} className={styles.form}>
     <input type="hidden" name="productId" value={parent.productId}/>
     <input type="hidden" name="variantId" value={parent.id}/>
     <input type="hidden" name="components" value={JSON.stringify(componentsFromSelections(selections))}/>

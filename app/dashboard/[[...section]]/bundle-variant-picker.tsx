@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BundleProduct, BundleVariant } from "./bundle-editor";
 import styles from "./dashboard.module.css";
 
@@ -17,11 +17,19 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
     return matches ? [{ ...product, variants: productVariants }] : [];
   });
 
+  useEffect(() => {
+    if (!variantId) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("bundle-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [variantId]);
+
   function openVariant(nextId: string) {
     if (!nextId) return;
     const change = new Event("bundle-variant-change", { cancelable: true });
     if (!window.dispatchEvent(change)) return;
-    router.replace(`/dashboard/bundles?variantId=${encodeURIComponent(nextId)}`);
+    router.replace(`/dashboard/bundles?variantId=${encodeURIComponent(nextId)}`, { scroll: false });
   }
 
   return <div className={styles.form}>

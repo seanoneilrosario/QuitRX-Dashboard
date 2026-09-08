@@ -23,23 +23,18 @@ export default async function BundlesPage({ variantId }: { variantId: string }) 
     sku: typeof v.sku === "string" ? v.sku : "",
     productLabel: productNames.get(v.productId) ?? v.productId,
   }] : []);
-  const selectedParent = variants.find((variant) => variant.id === variantId && bundleProductIds.has(variant.productId));
-  const groupVariants = selectedParent ? variants.filter((variant) => variant.productId === selectedParent.productId) : [];
-  const error = bundleProductResult.error ?? productResult.error ?? variantResult.error;
-  const groups: Array<{ parent: BundleVariant; components: BundleComponent[]; error?: string }> = [];
-  if (!error) {
-    for (const parent of groupVariants) {
-      try {
-        const response = await retailRequest<unknown>(`/products/${encodeURIComponent(parent.productId)}/variants/${encodeURIComponent(parent.id)}/bundle`);
-        groups.push({ parent, components: bundleComponentResponse(response, parent.id) });
-      } catch (cause) {
-        groups.push({ parent, components: [], error: cause instanceof Error ? cause.message : "Unable to load bundle group." });
-      }
-    }
+  const parent = variants.find((variant) => variant.id === variantId && bundleProductIds.has(variant.productId));
+  let error = bundleProductResult.error ?? productResult.error ?? variantResult.error;
+  let components: BundleComponent[] = [];
+  if (!error && parent) {
+    try {
+      const response = await retailRequest<unknown>(`/products/${encodeURIComponent(parent.productId)}/variants/${encodeURIComponent(parent.id)}/bundle`);
+      components = bundleComponentResponse(response, parent.id);
+    } catch (cause) { error = cause instanceof Error ? cause.message : "Unable to load bundle group."; }
   }
   return <>
     <header className={styles.pageHeader}><div><p className={styles.eyebrow}>QuitRX operations</p><h1>Bundles</h1><p>Configure the fixed products and quantities included in each bundle group.</p></div></header>
     <BundleVariantPicker key={variantId} products={bundleProducts} variants={variants} variantId={variantId} disabled={Boolean(bundleProductResult.error ?? productResult.error ?? variantResult.error)}/>
-    {error ? <p role="alert" className={styles.notice}>{error} Reload this page to try again.</p> : groups.length ? groups.map((group, index) => group.error ? <p key={group.parent.id} role="alert" className={styles.notice}>Group {index + 1} ({group.parent.label}): {group.error}</p> : <BundleEditor key={group.parent.id} parent={group.parent} groupNumber={index + 1} products={products} variants={variants} bundleProductIds={[...bundleProductIds]} initial={group.components}/>) : <p className={styles.notice}>{variantId ? "The selected bundle product has no groups." : bundleProducts.length ? "Select a bundle product to configure all of its fixed groups." : "No products tagged bundle are available."}</p>}
+    {error ? <p role="alert" className={styles.notice}>{error} Reload this page to try again.</p> : parent ? <BundleEditor key={parent.id} parent={parent} groupNumber={variants.filter((variant) => variant.productId === parent.productId).findIndex((variant) => variant.id === parent.id) + 1} products={products} variants={variants} bundleProductIds={[...bundleProductIds]} initial={components}/> : <p className={styles.notice}>{variantId ? "The selected bundle group was not found. Choose another bundle product and group." : bundleProducts.length ? "Select a bundle product and group to configure its choices." : "No products tagged bundle are available."}</p>}
   </>;
 }

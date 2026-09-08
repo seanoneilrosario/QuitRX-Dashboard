@@ -19,7 +19,7 @@ function load(file, mocks = {}) {
 const validation = load("lib/product-bundles.ts");
 const component = { componentVariantId: "child", quantity: 2, position: 0 };
 
-test("bundle validation rejects malformed data, same-slot duplicates, self references and invalid quantities", () => {
+test("bundle validation rejects malformed data, duplicate positions, self references and invalid quantities", () => {
   for (const value of [null, {}, [null], [{ ...component, quantity: 0 }], [{ ...component, quantity: 1.5 }], [{ ...component, position: -1 }], [component, component], [{ ...component, componentVariantId: "parent" }]]) {
     assert.throws(() => validation.bundleComponents(value, "parent"));
   }
@@ -36,7 +36,7 @@ test("bundle responses support API wrappers and empty bundles", () => {
   assert.throws(() => validation.bundleComponentResponse({}, "parent"));
 });
 
-test("bundle saves preserve shared positions for the choices in each selection", async () => {
+test("bundle saves require one uniquely positioned variant per selection", async () => {
   let staff = true;
   let fail = false;
   const calls = [];
@@ -62,8 +62,8 @@ test("bundle saves preserve shared positions for the choices in each selection",
   calls.length = 0;
   const slots = [component, { ...component, componentVariantId: "child-2", position: 0 }];
   form.set("components", JSON.stringify(slots));
-  assert.equal((await actions.saveBundle(previous, form)).success, true);
-  assert.deepEqual(JSON.parse(calls[0].body), slots);
+  assert.equal((await actions.saveBundle(previous, form)).success, false);
+  assert.equal(calls.length, 0);
   calls.length = 0;
   form.set("components", "[]");
   assert.equal((await actions.saveBundle(previous, form)).success, true);

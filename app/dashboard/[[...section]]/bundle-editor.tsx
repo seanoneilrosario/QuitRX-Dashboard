@@ -75,12 +75,9 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
   function toggleVariant(selectionKey: number, variantId: string) {
     setSelections((current) => current.map((selection) => {
       if (selection.key !== selectionKey) return selection;
-      const selected = selection.components.some((component) => component.componentVariantId === variantId);
       return {
         ...selection,
-        components: selected
-          ? selection.components.filter((component) => component.componentVariantId !== variantId)
-          : [...selection.components, { componentVariantId: variantId, quantity: 1 }],
+        components: [{ componentVariantId: variantId, quantity: 1 }],
       };
     }));
   }
@@ -108,14 +105,14 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
     <fieldset disabled={pending} className={styles.bundleFields}>
       <section className={styles.formCard}>
         <div className={styles.bundleEditorHeader}><div><h2>Group {groupNumber}: {parent.label}</h2><p>{parent.productLabel}</p></div><strong>{selections.length} {selections.length === 1 ? "selection" : "selections"} · {selectedCount} allowed</strong></div>
-        <p className={styles.bundleIntro}>Each selection becomes one storefront choice. Choose every product variant the customer may pick in that selection; the same options can be used in multiple selections.</p>
+        <p className={styles.bundleIntro}>Each selection becomes one storefront choice. Choose one product variant for each selection; the same variant can be used in multiple selections.</p>
         <label className={styles.bundleSearch}>Search product variants<input type="search" placeholder="Search product, variant or SKU" value={query} onChange={(event) => setQuery(event.target.value)}/></label>
         <div className={styles.bundleSlots}>
           {selections.map((selection, selectionIndex) => <section className={styles.bundleComponent} key={selection.key}>
-            <div className={styles.bundleSlotHeader}><div><h3>Selection {selectionIndex + 1}</h3><small>{selection.components.length} {selection.components.length === 1 ? "allowed variant" : "allowed variants"}</small></div><button type="button" className={styles.bundleRemove} onClick={() => removeSelection(selection.key)}>Remove selection</button></div>
+            <div className={styles.bundleSlotHeader}><div><h3>Selection {selectionIndex + 1}</h3><small>{selection.components.length ? "1 selected variant" : "No variant selected"}</small></div><button type="button" className={styles.bundleRemove} onClick={() => removeSelection(selection.key)}>Remove selection</button></div>
             <div className={styles.bundleAvailable}>
               {availableProducts.map((product) => <article className={styles.bundleProduct} key={product.id}><strong>{product.label}</strong><div>
-                {product.variants.map((variant) => { const checked = selection.components.some((component) => component.componentVariantId === variant.id); return <label key={variant.id}><input type="checkbox" checked={checked} onChange={() => toggleVariant(selection.key, variant.id)}/><span>{variant.label}{variant.sku && <small>SKU: {variant.sku}</small>}</span></label>; })}
+                {product.variants.map((variant) => { const checked = selection.components.some((component) => component.componentVariantId === variant.id); return <label key={variant.id}><input type="radio" name={`selection-${selection.key}`} checked={checked} onChange={() => toggleVariant(selection.key, variant.id)}/><span>{variant.label}{variant.sku && <small>SKU: {variant.sku}</small>}</span></label>; })}
               </div></article>)}
               {!availableProducts.length && <p className={styles.bundleEmpty}>No available variants match your search.</p>}
             </div>

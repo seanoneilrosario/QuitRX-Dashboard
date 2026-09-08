@@ -14,17 +14,17 @@ export function bundleComponentResponse(value: unknown, parentId: string): Bundl
 
 export function bundleComponents(value: unknown, parentId: string): BundleComponent[] {
   if (!Array.isArray(value)) throw new Error("Unexpected bundle response. The bundle was not loaded.");
-  const seen = new Set<string>();
+  const seenPositions = new Set<number>();
   return value.map((item: unknown) => {
     if (!item || typeof item !== "object") throw new Error("Invalid bundle component.");
     const { componentVariantId, quantity, position } = item as Record<string, unknown>;
     if (typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity < 1) throw new Error("Component quantities must be positive whole numbers.");
     if (typeof position !== "number" || !Number.isSafeInteger(position) || position < 0) throw new Error("Invalid component position.");
-    const slotVariant = `${position}:${componentVariantId}`;
-    if (typeof componentVariantId !== "string" || !componentVariantId.trim() || componentVariantId === parentId || seen.has(slotVariant)) {
-      throw new Error("Choose unique component variants within each slot, different from the bundle variant.");
+    if (typeof componentVariantId !== "string" || !componentVariantId.trim() || componentVariantId === parentId) {
+      throw new Error("Choose a component variant different from the bundle variant.");
     }
-    seen.add(slotVariant);
+    if (seenPositions.has(position)) throw new Error("Each bundle selection must have a unique position.");
+    seenPositions.add(position);
     return { componentVariantId, quantity, position };
   }).sort((a, b) => a.position - b.position);
 }

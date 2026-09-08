@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 const routes = [
   [], ["products"], ["products", "create"], ["products", "edit"], ["products", "variants"],
   ["products", "images"], ["products", "options"], ["products", "tags"], ["products", "collections"],
-  ["collections"], ["bundles"],
+  ["collections"], ["collections", "edit"], ["bundles"],
   ["customers"], ["customers", "details"], ["customers", "edit"],
   ["orders"], ["orders", "details"], ["inventory"], ["inventory", "history"],
 ];
@@ -123,7 +123,12 @@ const resourceConfig: Record<string, { title: string; description: string; resou
 
 function ResourcePage({ kind, items, error, path = `/dashboard/products/${kind}` }: { kind: string; items: RetailRecord[]; error?: string; path?: string }) {
   const config = resourceConfig[kind];
-  return <><Header title={config.title} description={config.description}/><Notice message={error}/><details className={styles.creator}><summary>+ Add {config.title.toLowerCase().replace(/s$/, "")}</summary><form action={saveResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_returnTo" value={path}/><div className={styles.inlineForm}>{kind === "collections" ? <CollectionCreateFields/> : config.fields.map(([name, label, type]) => <label key={name}>{label}<input required={["productId","name","sku","price","url","slug"].includes(name)} type={type ?? "text"} step={type === "number" ? "any" : undefined} name={name}/></label>)}</div><button className={styles.primary}>Save</button></form></details><Table heads={config.heads}>{items.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.name ?? item.url)}</strong><small>{kind === "collections" && Array.isArray(item.products) ? `${item.products.length} products` : text(item.productId)}</small></td><td>{text(item.sku ?? item.slug ?? item.productId)}</td><td>{kind === "variants" ? money(item.price) : text(item.altText ?? item.seoTitle ?? item.id)}</td><td>{text(item.inventory ?? item.sortOrder, "")}</td><td className={styles.actions}><form action={deleteResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_id" value={text(item.id)}/><button>Delete</button></form></td></tr>)}</Table></>;
+  return <><Header title={config.title} description={config.description}/><Notice message={error}/><details className={styles.creator}><summary>+ Add {config.title.toLowerCase().replace(/s$/, "")}</summary><form action={saveResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_returnTo" value={path}/><div className={styles.inlineForm}>{kind === "collections" ? <CollectionCreateFields/> : config.fields.map(([name, label, type]) => <label key={name}>{label}<input required={["productId","name","sku","price","url","slug"].includes(name)} type={type ?? "text"} step={type === "number" ? "any" : undefined} name={name}/></label>)}</div><button className={styles.primary}>Save</button></form></details><Table heads={config.heads}>{items.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.name ?? item.url)}</strong><small>{kind === "collections" && Array.isArray(item.products) ? `${item.products.length} products` : text(item.productId)}</small></td><td>{text(item.sku ?? item.slug ?? item.productId)}</td><td>{kind === "variants" ? money(item.price) : text(item.altText ?? item.seoTitle ?? item.id)}</td><td>{text(item.inventory ?? item.sortOrder, "")}</td><td className={styles.actions}>{kind === "collections" && <Link href={`/dashboard/collections/edit?id=${text(item.id)}`}>Edit</Link>}<form action={deleteResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_id" value={text(item.id)}/><button>Delete</button></form></td></tr>)}</Table></>;
+}
+
+function CollectionEdit({ item, error }: { item?: RetailRecord; error?: string }) {
+  if (!item) return <><Header title="Collection not found" description="Choose a collection from the collection list."/><Notice message={error}/><Link className={styles.primary} href="/dashboard/collections">Back to collections</Link></>;
+  return <><Header title={`Edit ${text(item.name, "collection")}`} description="Update this collection's storefront details."/><Notice message={error}/><form action={saveResource} className={styles.form}><input type="hidden" name="_resource" value="collections"/><input type="hidden" name="_id" value={text(item.id, "")}/><input type="hidden" name="_returnTo" value="/dashboard/collections"/><section className={styles.formCard}><h2>Collection details</h2><div className={styles.inlineForm}><CollectionCreateFields initial={item}/></div></section><div className={styles.formActions}><Link href="/dashboard/collections">Cancel</Link><button className={styles.primary}>Save changes</button></div></form></>;
 }
 
 function Customers({ items, query, pagination, error }: { items: RetailRecord[]; query: string; pagination: RetailPagination; error?: string }) {
@@ -178,8 +183,13 @@ export default async function DashboardPage({ params, searchParams }: Props) {
   else if (area === "products" && resourceConfig[sub]) { const config = resourceConfig[sub]; const result = await safeRetailList(`/${config.resource}`); content = <ResourcePage kind={sub} items={result.data} error={result.error}/>; }
   else if (area === "bundles") { content = <BundlesPage variantId={typeof queryParams.variantId === "string" ? queryParams.variantId : ""}/>; }
   else if (area === "collections") {
-    const result = await safeRetailList("/collections");
-    content = <ResourcePage kind="collections" items={result.data} error={result.error} path="/dashboard/collections"/>;
+    if (sub === "edit") {
+      const result = id ? await safeRetailRecord(`/collections/${encodeURIComponent(id)}`) : { data: undefined, error: undefined };
+      content = <CollectionEdit item={result.data} error={result.error}/>;
+    } else {
+      const result = await safeRetailList("/collections");
+      content = <ResourcePage kind="collections" items={result.data} error={result.error} path="/dashboard/collections"/>;
+    }
   }
   else if (area === "customers" && !sub) { const result = await safeRetailPage("/customers", page, 50); content = <Customers items={result.data} query={q} pagination={result.pagination} error={result.error}/>; }
   else if (area === "customers") { const result = await safeRetailRecord(`/customers/${encodeURIComponent(id)}`); content = <CustomerDetail item={result.data} editing={sub === "edit"}/>; }

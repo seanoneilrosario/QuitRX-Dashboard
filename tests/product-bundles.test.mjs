@@ -36,7 +36,7 @@ test("bundle responses support API wrappers and empty bundles", () => {
   assert.throws(() => validation.bundleComponentResponse({}, "parent"));
 });
 
-test("bundle saves use the documented PATCH array with unique component positions", async () => {
+test("bundle saves preserve shared positions for the choices in each selection", async () => {
   let staff = true;
   let fail = false;
   const calls = [];
@@ -63,7 +63,7 @@ test("bundle saves use the documented PATCH array with unique component position
   const slots = [component, { ...component, componentVariantId: "child-2", position: 0 }];
   form.set("components", JSON.stringify(slots));
   assert.equal((await actions.saveBundle(previous, form)).success, true);
-  assert.deepEqual(JSON.parse(calls[0].body), [slots[0], { ...slots[1], position: 1 }]);
+  assert.deepEqual(JSON.parse(calls[0].body), slots);
   calls.length = 0;
   form.set("components", "[]");
   assert.equal((await actions.saveBundle(previous, form)).success, true);

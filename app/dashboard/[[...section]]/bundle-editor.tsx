@@ -7,29 +7,45 @@ import styles from "./dashboard.module.css";
 
 export type BundleProduct = { id: string; label: string };
 export type BundleVariant = { id: string; productId: string; productLabel: string; label: string; sku: string };
+type BundleSelection = { key: number; components: Omit<BundleComponent, "position">[] };
 
-function normalized(components: BundleComponent[]) {
-  return components.map((component, position) => ({ ...component, position }));
+function selectionsFromComponents(components: BundleComponent[]): BundleSelection[] {
+  const selections = new Map<number, BundleSelection>();
+  components.forEach(({ position, ...component }) => {
+    const selection = selections.get(position);
+    if (selection) selection.components.push(component);
+    else selections.set(position, { key: position, components: [component] });
+  });
+  return [...selections.values()].sort((a, b) => a.key - b.key);
 }
 
-function signature(components: BundleComponent[]) {
-  return JSON.stringify(normalized(components));
+function componentsFromSelections(selections: BundleSelection[]) {
+  return selections.flatMap((selection, position) => selection.components.map((component) => ({ ...component, position })));
+}
+
+function signature(selections: BundleSelection[]) {
+  return JSON.stringify(componentsFromSelections(selections));
 }
 
 export default function BundleEditor({ parent, groupNumber, products, variants, bundleProductIds, initial }: { parent: BundleVariant; groupNumber: number; products: BundleProduct[]; variants: BundleVariant[]; bundleProductIds: string[]; initial: BundleComponent[] }) {
-  const initialComponents = useMemo(() => normalized(initial), [initial]);
-  const [components, setComponents] = useState(initialComponents);
-  const [savedComponents, setSavedComponents] = useState(initialComponents);
+  const initialSelections = useMemo(() => selectionsFromComponents(initial), [initial]);
+  const [selections, setSelections] = useState(initialSelections);
+  const [savedSelections, setSavedSelections] = useState(initialSelections);
+  const [query, setQuery] = useState("");
   const [state, setState] = useState<BundleActionState>({ message: "", success: false });
   const [pending, setPending] = useState(false);
+  const [nextSelectionKey, setNextSelectionKey] = useState(() => Math.max(-1, ...initialSelections.map((selection) => selection.key)) + 1);
   const bundleIds = useMemo(() => new Set(bundleProductIds), [bundleProductIds]);
-  const availableVariants = useMemo(() => variants.filter((variant) => variant.id !== parent.id && variant.productId !== parent.productId && !bundleIds.has(variant.productId)), [bundleIds, parent.id, parent.productId, variants]);
-  const productGroups = useMemo(() => products.flatMap((product) => {
-    const productVariants = availableVariants.filter((variant) => variant.productId === product.id);
-    return productVariants.length ? [{ ...product, variants: productVariants }] : [];
-  }), [availableVariants, products]);
-  const dirty = signature(components) !== signature(savedComponents);
-  const nextVariant = availableVariants.find((variant) => !components.some((component) => component.componentVariantId === variant.id));
+  const dirty = signature(selections) !== signature(savedSelections);
+  const hasEmptySelection = selections.some((selection) => !selection.components.length);
+
+  const availableProducts = useMemo(() => products.flatMap((product) => {
+    if (product.id === parent.productId || bundleIds.has(product.id)) return [];
+    const productVariants = variants.filter((variant) => variant.productId === product.id && variant.id !== parent.id);
+    const search = query.trim().toLowerCase();
+    const matches = !search || product.label.toLowerCase().includes(search) || productVariants.some((variant) => `${variant.label} ${variant.sku}`.toLowerCase().includes(search));
+    return matches && productVariants.length ? [{ ...product, variants: productVariants }] : [];
+  }), [bundleIds, parent.id, parent.productId, products, query, variants]);
 
   useEffect(() => {
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -47,58 +63,68 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
     };
   }, [dirty]);
 
-  function addComponent() {
-    if (!nextVariant) return;
-    setComponents((current) => [...current, { componentVariantId: nextVariant.id, quantity: 1, position: current.length }]);
+  function addSelection() {
+    setSelections((current) => [...current, { key: nextSelectionKey, components: [] }]);
+    setNextSelectionKey((current) => current + 1);
   }
 
-  function updateVariant(index: number, componentVariantId: string) {
-    setComponents((current) => current.map((component, componentIndex) => componentIndex === index ? { ...component, componentVariantId } : component));
+  function removeSelection(key: number) {
+    setSelections((current) => current.filter((selection) => selection.key !== key));
   }
 
-  function updateQuantity(index: number, quantity: number) {
-    setComponents((current) => current.map((component, componentIndex) => componentIndex === index ? { ...component, quantity: Math.max(1, Math.floor(quantity || 1)) } : component));
+  function toggleVariant(selectionKey: number, variantId: string) {
+    setSelections((current) => current.map((selection) => {
+      if (selection.key !== selectionKey) return selection;
+      const selected = selection.components.some((component) => component.componentVariantId === variantId);
+      return {
+        ...selection,
+        components: selected
+          ? selection.components.filter((component) => component.componentVariantId !== variantId)
+          : [...selection.components, { componentVariantId: variantId, quantity: 1 }],
+      };
+    }));
   }
 
   async function submit(form: FormData) {
+    if (hasEmptySelection) return;
     setPending(true);
     const result = await saveBundle(state, form);
     setState(result);
     if (result.success && result.components) {
-      const saved = normalized(result.components);
-      setComponents(saved);
-      setSavedComponents(saved);
+      const saved = selectionsFromComponents(result.components);
+      setSelections(saved);
+      setSavedSelections(saved);
+      setNextSelectionKey(Math.max(-1, ...saved.map((selection) => selection.key)) + 1);
     }
     setPending(false);
   }
 
+  const selectedCount = selections.reduce((total, selection) => total + selection.components.length, 0);
+
   return <form action={submit} className={styles.form}>
     <input type="hidden" name="productId" value={parent.productId}/>
     <input type="hidden" name="variantId" value={parent.id}/>
-    <input type="hidden" name="components" value={JSON.stringify(normalized(components))}/>
+    <input type="hidden" name="components" value={JSON.stringify(componentsFromSelections(selections))}/>
     <fieldset disabled={pending} className={styles.bundleFields}>
       <section className={styles.formCard}>
-        <div className={styles.bundleEditorHeader}><div><h2>Group {groupNumber}: {parent.label}</h2><p>{parent.productLabel}</p></div><strong>{components.length} fixed {components.length === 1 ? "component" : "components"}</strong></div>
-        <p className={styles.bundleIntro}>This bundle group has fixed contents. Add each included product variant and set how many units the customer receives.</p>
+        <div className={styles.bundleEditorHeader}><div><h2>Group {groupNumber}: {parent.label}</h2><p>{parent.productLabel}</p></div><strong>{selections.length} {selections.length === 1 ? "selection" : "selections"} · {selectedCount} allowed</strong></div>
+        <p className={styles.bundleIntro}>Each selection becomes one storefront choice. Choose every product variant the customer may pick in that selection; the same options can be used in multiple selections.</p>
+        <label className={styles.bundleSearch}>Search product variants<input type="search" placeholder="Search product, variant or SKU" value={query} onChange={(event) => setQuery(event.target.value)}/></label>
         <div className={styles.bundleSlots}>
-          {components.map((component, index) => {
-            const selectedVariant = variants.find((variant) => variant.id === component.componentVariantId);
-            return <section className={styles.bundleComponent} key={`${component.componentVariantId}-${index}`}>
-              <h3>Component {index + 1}</h3>
-              <div className={styles.bundleSlotFields}>
-                <select aria-label={`Variant for component ${index + 1}`} value={component.componentVariantId} onChange={(event) => updateVariant(index, event.target.value)}>
-                  {!selectedVariant && <option value={component.componentVariantId}>{component.componentVariantId}</option>}
-                  {productGroups.map((product) => <optgroup key={product.id} label={product.label}>{product.variants.map((variant) => <option key={variant.id} value={variant.id} disabled={variant.id !== component.componentVariantId && components.some((item) => item.componentVariantId === variant.id)}>{variant.label}{variant.sku ? ` — ${variant.sku}` : ""}</option>)}</optgroup>)}
-                </select>
-                <label className={styles.bundleQuantity}>Quantity<input aria-label={`Quantity for component ${index + 1}`} type="number" min="1" step="1" value={component.quantity} onChange={(event) => updateQuantity(index, event.target.valueAsNumber)}/></label>
-                <button type="button" className={styles.bundleRemove} onClick={() => setComponents((current) => current.filter((_, componentIndex) => componentIndex !== index))}>Remove</button>
-              </div>
-            </section>;
-          })}
+          {selections.map((selection, selectionIndex) => <section className={styles.bundleComponent} key={selection.key}>
+            <div className={styles.bundleSlotHeader}><div><h3>Selection {selectionIndex + 1}</h3><small>{selection.components.length} {selection.components.length === 1 ? "allowed variant" : "allowed variants"}</small></div><button type="button" className={styles.bundleRemove} onClick={() => removeSelection(selection.key)}>Remove selection</button></div>
+            <div className={styles.bundleAvailable}>
+              {availableProducts.map((product) => <article className={styles.bundleProduct} key={product.id}><strong>{product.label}</strong><div>
+                {product.variants.map((variant) => { const checked = selection.components.some((component) => component.componentVariantId === variant.id); return <label key={variant.id}><input type="checkbox" checked={checked} onChange={() => toggleVariant(selection.key, variant.id)}/><span>{variant.label}{variant.sku && <small>SKU: {variant.sku}</small>}</span></label>; })}
+              </div></article>)}
+              {!availableProducts.length && <p className={styles.bundleEmpty}>No available variants match your search.</p>}
+            </div>
+            {!selection.components.length && <p className={styles.bundleSlotError}>Select at least one allowed variant for this selection.</p>}
+          </section>)}
         </div>
-        {!components.length && <p className={styles.bundleEmpty}>No fixed components have been added to this bundle group yet.</p>}
-        <button type="button" className={styles.secondary} disabled={!nextVariant} onClick={addComponent}>+ Add component</button>
-        <div className={styles.formActions}><button className={styles.primary} type="submit" disabled={!dirty || pending}>{pending ? "Saving…" : dirty ? "Save bundle" : "Saved"}</button></div>
+        {!selections.length && <p className={styles.bundleEmpty}>No selections configured yet.</p>}
+        <button type="button" className={styles.secondary} onClick={addSelection}>+ Add selection</button>
+        <div className={styles.formActions}><button className={styles.primary} type="submit" disabled={!dirty || pending || hasEmptySelection}>{pending ? "Saving…" : dirty ? "Save bundle" : "Saved"}</button></div>
       </section>
     </fieldset>
     {state.message && <p role={state.success ? "status" : "alert"} className={styles.notice}>{state.message}</p>}

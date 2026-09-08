@@ -36,7 +36,7 @@ test("bundle responses support API wrappers and empty bundles", () => {
   assert.throws(() => validation.bundleComponentResponse({}, "parent"));
 });
 
-test("bundle saves use the documented PATCH array without refreshing catalog data", async () => {
+test("bundle saves use the documented PATCH array with unique component positions", async () => {
   let staff = true;
   let fail = false;
   const calls = [];
@@ -60,10 +60,10 @@ test("bundle saves use the documented PATCH array without refreshing catalog dat
   assert.equal(calls[1].path, calls[0].path);
   assert.equal(calls[1].method, undefined);
   calls.length = 0;
-  const slots = [component, { ...component, position: 1 }];
+  const slots = [component, { ...component, componentVariantId: "child-2", position: 0 }];
   form.set("components", JSON.stringify(slots));
   assert.equal((await actions.saveBundle(previous, form)).success, true);
-  assert.deepEqual(JSON.parse(calls[0].body), slots);
+  assert.deepEqual(JSON.parse(calls[0].body), [slots[0], { ...slots[1], position: 1 }]);
   calls.length = 0;
   form.set("components", "[]");
   assert.equal((await actions.saveBundle(previous, form)).success, true);

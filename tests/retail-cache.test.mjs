@@ -236,3 +236,24 @@ test("collection editor uses product IDs instead of collection relationship IDs"
     { id: "product-3", name: "Direct product" },
   ] }), ["product-1", "product-2", "product-3"]);
 });
+
+test("frequently bought together recommendations are read and saved in order", async () => {
+  const requests = [];
+  const storefront = load("lib/sanity-storefront.ts", { "server-only": {} }, {
+    process: { env: { NEXT_PUBLIC_SANITY_PROJECT_ID: "project", NEXT_PUBLIC_SANITY_DATASET: "production", SANITY_WRITE_TOKEN: "write-token" } },
+    URLSearchParams,
+    fetch: async (url, options = {}) => {
+      requests.push({ url, options });
+      return options.method === "POST"
+        ? { ok: true, text: async () => "" }
+        : { ok: true, json: async () => ({ result: ["related-2", "related-1"] }) };
+    },
+  });
+
+  assert.deepEqual(await storefront.getFrequentlyBoughtTogether("product-1"), ["related-2", "related-1"]);
+  await storefront.syncFrequentlyBoughtTogether("product-1", ["related-2", "related-1"]);
+  const document = JSON.parse(requests[1].options.body).mutations[0].createOrReplace;
+  assert.equal(document._id, "frequentlyBoughtTogether.product-1");
+  assert.equal(document._type, "frequentlyBoughtTogether");
+  assert.deepEqual(document.relatedProductIds, ["related-2", "related-1"]);
+});

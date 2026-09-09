@@ -24,6 +24,47 @@ function documentId(retailCollectionId: string) {
   return `retailCollection.${retailCollectionId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
+function recommendationDocumentId(productId: string) {
+  return `frequentlyBoughtTogether.${productId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+export async function getFrequentlyBoughtTogether(productId: string) {
+  const { projectId, dataset, token } = config();
+  const query = `*[_type == "frequentlyBoughtTogether" && productId == $productId][0].relatedProductIds`;
+  const params = new URLSearchParams({ query, "$productId": JSON.stringify(productId) });
+  const response = await fetch(`https://${projectId}.api.sanity.io/v2026-09-09/data/query/${encodeURIComponent(dataset)}?${params}`, {
+    headers: { authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Storefront recommendations could not be loaded (${response.status}).`);
+  const body = await response.json() as { result?: unknown };
+  return Array.isArray(body.result) ? body.result.filter((id): id is string => typeof id === "string") : [];
+}
+
+export async function syncFrequentlyBoughtTogether(productId: string, relatedProductIds: string[]) {
+  const { projectId, dataset, token } = config();
+  const id = recommendationDocumentId(productId);
+  const mutation = relatedProductIds.length ? {
+    createOrReplace: {
+      _id: id,
+      _type: "frequentlyBoughtTogether",
+      productId,
+      relatedProductIds,
+      updatedAt: new Date().toISOString(),
+    },
+  } : { delete: { id } };
+  const response = await fetch(`https://${projectId}.api.sanity.io/v2026-09-09/data/mutate/${encodeURIComponent(dataset)}?returnIds=true`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ mutations: [mutation] }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const detail = (await response.text()).trim();
+    throw new Error(detail ? `Storefront recommendation sync failed (${response.status}): ${detail}` : `Storefront recommendation sync failed (${response.status}).`);
+  }
+}
+
 export async function syncStorefrontCollection(collection: StorefrontCollection) {
   const { projectId, dataset, token } = config();
   let image: { _type: "image"; asset: { _type: "reference"; _ref: string } } | undefined;

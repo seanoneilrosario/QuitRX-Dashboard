@@ -5,7 +5,7 @@ import { deleteResource, saveResource } from "../actions";
 import { safeRetailAll, safeRetailList, safeRetailPage, safeRetailRecord, type RetailPagination, type RetailRecord } from "@/lib/quithero-admin";
 import styles from "./dashboard.module.css";
 import TagsInput from "./tags-input";
-import CollectionCreateFields from "./collection-create-fields";
+import CollectionCreateFields, { CollectionCreateForm } from "./collection-create-fields";
 import BundlesPage from "./bundles-page";
 import { logoutStaff } from "../login/actions";
 
@@ -121,9 +121,10 @@ const resourceConfig: Record<string, { title: string; description: string; resou
   collections: { title: "Collections", description: "Group products into storefront collections.", resource: "collections", heads: ["Collection", "Slug", "SEO title", "", "Actions"], fields: [["name","Collection name"],["slug","Slug"],["description","Description"],["image","Image URL","url"],["seoTitle","SEO title"]] },
 };
 
-function ResourcePage({ kind, items, error, path = `/dashboard/products/${kind}` }: { kind: string; items: RetailRecord[]; error?: string; path?: string }) {
+function ResourcePage({ kind, items, products = [], error, path = `/dashboard/products/${kind}` }: { kind: string; items: RetailRecord[]; products?: RetailRecord[]; error?: string; path?: string }) {
   const config = resourceConfig[kind];
-  return <><Header title={config.title} description={config.description}/><Notice message={error}/><details className={styles.creator}><summary>+ Add {config.title.toLowerCase().replace(/s$/, "")}</summary><form action={saveResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_returnTo" value={path}/><div className={styles.inlineForm}>{kind === "collections" ? <CollectionCreateFields/> : config.fields.map(([name, label, type]) => <label key={name}>{label}<input required={["productId","name","sku","price","url","slug"].includes(name)} type={type ?? "text"} step={type === "number" ? "any" : undefined} name={name}/></label>)}</div><button className={styles.primary}>Save</button></form></details><Table heads={config.heads}>{items.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.name ?? item.url)}</strong><small>{kind === "collections" && Array.isArray(item.products) ? `${item.products.length} products` : text(item.productId)}</small></td><td>{text(item.sku ?? item.slug ?? item.productId)}</td><td>{kind === "variants" ? money(item.price) : text(item.altText ?? item.seoTitle ?? item.id)}</td><td>{text(item.inventory ?? item.sortOrder, "")}</td><td className={styles.actions}>{kind === "collections" && <Link href={`/dashboard/collections/edit?id=${text(item.id)}`}>Edit</Link>}<form action={deleteResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_id" value={text(item.id)}/><button>Delete</button></form></td></tr>)}</Table></>;
+  const productOptions = products.flatMap((product) => typeof product.id === "string" ? [{ id: product.id, name: text(product.name, "Unnamed product"), slug: text(product.slug, ""), brand: text(nested(product, "brand")?.name ?? product.brand, ""), tags: Array.isArray(product.tags) ? product.tags.map((tag) => typeof tag === "string" ? tag : text((tag as RetailRecord).name, "")).filter(Boolean) : [] }] : []);
+  return <><Header title={config.title} description={config.description}/><Notice message={error}/><details className={styles.creator}><summary>+ Add {config.title.toLowerCase().replace(/s$/, "")}</summary>{kind === "collections" ? <CollectionCreateForm products={productOptions}/> : <form action={saveResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_returnTo" value={path}/><div className={styles.inlineForm}>{config.fields.map(([name, label, type]) => <label key={name}>{label}<input required={["productId","name","sku","price","url","slug"].includes(name)} type={type ?? "text"} step={type === "number" ? "any" : undefined} name={name}/></label>)}</div><button className={styles.primary}>Save</button></form>}</details><Table heads={config.heads}>{items.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.name ?? item.url)}</strong><small>{kind === "collections" && Array.isArray(item.products) ? `${item.products.length} products` : text(item.productId)}</small></td><td>{text(item.sku ?? item.slug ?? item.productId)}</td><td>{kind === "variants" ? money(item.price) : text(item.altText ?? item.seoTitle ?? item.id)}</td><td>{text(item.inventory ?? item.sortOrder, "")}</td><td className={styles.actions}>{kind === "collections" && <Link href={`/dashboard/collections/edit?id=${text(item.id)}`}>Edit</Link>}<form action={deleteResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_id" value={text(item.id)}/><button>Delete</button></form></td></tr>)}</Table></>;
 }
 
 function CollectionEdit({ item, error }: { item?: RetailRecord; error?: string }) {
@@ -187,8 +188,8 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       const result = id ? await safeRetailRecord(`/collections/${encodeURIComponent(id)}`) : { data: undefined, error: undefined };
       content = <CollectionEdit item={result.data} error={result.error}/>;
     } else {
-      const result = await safeRetailList("/collections");
-      content = <ResourcePage kind="collections" items={result.data} error={result.error} path="/dashboard/collections"/>;
+      const [result, products] = await Promise.all([safeRetailList("/collections"), safeRetailAll("/products")]);
+      content = <ResourcePage kind="collections" items={result.data} products={products.data} error={result.error ?? products.error} path="/dashboard/collections"/>;
     }
   }
   else if (area === "customers" && !sub) { const result = await safeRetailPage("/customers", page, 50); content = <Customers items={result.data} query={q} pagination={result.pagination} error={result.error}/>; }

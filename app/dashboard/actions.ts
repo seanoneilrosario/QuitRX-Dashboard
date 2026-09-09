@@ -13,6 +13,10 @@ function payload(formData: FormData) {
   const result: Record<string, unknown> = {};
   for (const [key, value] of formData.entries()) {
     if (key.startsWith("_") || typeof value !== "string") continue;
+    if (key === "productIds" || key === "rules") {
+      try { result[key] = JSON.parse(value); } catch { throw new Error(`Invalid ${key}.`); }
+      continue;
+    }
     if (key === "tags") {
       result[key] = value.split(",").map((tag) => tag.trim()).filter(Boolean);
       continue;
@@ -25,6 +29,39 @@ function payload(formData: FormData) {
     } else result[key] = value;
   }
   return result;
+}
+
+export type CollectionActionState = { message: string; success: boolean };
+
+function validateCollection(body: Record<string, unknown>) {
+  if (typeof body.name !== "string" || !body.name.trim()) throw new Error("Collection name is required.");
+  if (body.type !== "MANUAL" && body.type !== "DYNAMIC") throw new Error("Choose a valid collection type.");
+  if (body.match !== "ALL" && body.match !== "ANY") throw new Error("Choose whether all or any rules must match.");
+  if (body.type === "MANUAL") {
+    if (!Array.isArray(body.productIds) || !body.productIds.length || body.productIds.some((id) => typeof id !== "string" || !id)) throw new Error("Select at least one product.");
+    delete body.rules;
+  } else {
+    if (!Array.isArray(body.rules) || !body.rules.length || body.rules.some((rule) => {
+      if (!rule || typeof rule !== "object") return true;
+      const value = rule as Record<string, unknown>;
+      return !["name", "brand", "tag"].includes(String(value.field)) || !["equals", "contains"].includes(String(value.operator)) || typeof value.value !== "string" || !value.value.trim();
+    })) throw new Error("Complete at least one valid collection rule.");
+    delete body.productIds;
+  }
+}
+
+export async function createCollection(_previous: CollectionActionState, formData: FormData): Promise<CollectionActionState> {
+  try {
+    const body = payload(formData);
+    if (!body.slug && typeof body.name === "string") body.slug = slugify(body.name);
+    validateCollection(body);
+    await retailRequest("/collections", { method: "POST", body: JSON.stringify(body) });
+    updateTag(RETAIL_CATALOG_TAG);
+    revalidatePath("/dashboard/collections");
+    return { message: `Collection “${String(body.name)}” was created.`, success: true };
+  } catch (error) {
+    return { message: error instanceof Error ? error.message : "Unable to create collection.", success: false };
+  }
 }
 
 function slugify(value: string) {

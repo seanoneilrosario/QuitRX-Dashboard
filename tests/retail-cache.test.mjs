@@ -134,3 +134,45 @@ test("collection saves only fields supported by the retail API", async () => {
   assert.equal(request.path, "/collections");
   assert.deepEqual(JSON.parse(request.options.body), { name: "Quit Kits", slug: "quit-kits" });
 });
+
+test("manual and dynamic collection creation send structured API payloads", async () => {
+  const requests = [];
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
+    "next/navigation": { redirect: () => {} },
+    "@/lib/quithero-admin": { RETAIL_CATALOG_TAG: "retail-catalog", retailRequest: async (path, options) => requests.push({ path, body: JSON.parse(options.body) }) },
+  });
+
+  const manual = new FormData();
+  manual.set("name", "LULA Products");
+  manual.set("slug", "lula-products");
+  manual.set("description", "All LULA products");
+  manual.set("type", "MANUAL");
+  manual.set("match", "ALL");
+  manual.set("productIds", JSON.stringify(["product-1", "product-2"]));
+  manual.set("rules", "[]");
+  assert.equal((await actions.createCollection({}, manual)).success, true);
+  assert.deepEqual(requests[0], { path: "/collections", body: { name: "LULA Products", slug: "lula-products", description: "All LULA products", type: "MANUAL", match: "ALL", productIds: ["product-1", "product-2"] } });
+
+  const dynamic = new FormData();
+  dynamic.set("name", "Bundle Products");
+  dynamic.set("type", "DYNAMIC");
+  dynamic.set("match", "ANY");
+  dynamic.set("productIds", "[]");
+  dynamic.set("rules", JSON.stringify([{ field: "tag", operator: "equals", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }]));
+  assert.equal((await actions.createCollection({}, dynamic)).success, true);
+  assert.deepEqual(requests[1], { path: "/collections", body: { name: "Bundle Products", type: "DYNAMIC", match: "ANY", rules: [{ field: "tag", operator: "equals", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }], slug: "bundle-products" } });
+});
+
+test("collection creation returns validation and API errors", async () => {
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
+    "next/navigation": { redirect: () => {} },
+    "@/lib/quithero-admin": { RETAIL_CATALOG_TAG: "retail-catalog", retailRequest: async () => { throw new Error("API rejected collection"); } },
+  }, { Error });
+  const invalid = new FormData();
+  invalid.set("name", "Empty manual"); invalid.set("type", "MANUAL"); invalid.set("match", "ALL"); invalid.set("productIds", "[]"); invalid.set("rules", "[]");
+  assert.match((await actions.createCollection({}, invalid)).message, /Select at least one product/);
+  invalid.set("productIds", "[\"product-1\"]");
+  assert.match((await actions.createCollection({}, invalid)).message, /API rejected collection/);
+});

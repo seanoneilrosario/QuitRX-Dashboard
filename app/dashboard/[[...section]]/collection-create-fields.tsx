@@ -53,8 +53,10 @@ export function CollectionCreateForm({ products, initial }: { products: ProductO
   const [nextRuleId, setNextRuleId] = useState(() => initialRules(initial).length);
   const visibleProducts = useMemo(() => {
     const search = query.trim().toLowerCase();
-    return products.filter((product) => !search || `${product.name} ${product.slug} ${product.brand} ${product.tags.join(" ")}`.toLowerCase().includes(search));
-  }, [products, query]);
+    return products
+      .filter((product) => !search || `${product.name} ${product.slug} ${product.brand} ${product.tags.join(" ")}`.toLowerCase().includes(search))
+      .sort((a, b) => Number(selected.includes(b.id)) - Number(selected.includes(a.id)) || a.name.localeCompare(b.name));
+  }, [products, query, selected]);
   const updateRule = (id: number, patch: Partial<Rule>) => setRules((current) => current.map((rule) => rule.id === id ? { ...rule, ...patch } : rule));
 
   return <form action={action} className={styles.form}>
@@ -68,7 +70,7 @@ export function CollectionCreateForm({ products, initial }: { products: ProductO
       <input type="hidden" name="match" value={match}/><input type="hidden" name="productIds" value={JSON.stringify(selected)}/><input type="hidden" name="rules" value={JSON.stringify(rules.map(({ field, operator, value }) => ({ field, operator, value: value.trim() })))}/>
       {type === "MANUAL" ? <section className={styles.collectionProducts}>
         <label>Search products<input type="search" placeholder="Search name, slug, brand or tag" value={query} onChange={(event) => setQuery(event.target.value)} disabled={pending}/></label>
-        <small>{selected.length} {selected.length === 1 ? "product" : "products"} selected</small>
+        <small>{selected.length} {selected.length === 1 ? "product" : "products"} selected · selected products are shown first</small>
         <div className={styles.productChoices}>{visibleProducts.map((product) => <label key={product.id}><input type="checkbox" checked={selected.includes(product.id)} onChange={() => setSelected((current) => current.includes(product.id) ? current.filter((id) => id !== product.id) : [...current, product.id])} disabled={pending}/><span>{product.name}<small>{[product.brand, product.slug].filter(Boolean).join(" · ")}</small></span></label>)}{!visibleProducts.length && <div><strong>No products found</strong><small>Try a different search.</small></div>}</div>
       </section> : <section className={styles.collectionProducts}>
         <label>Products must match<select value={match} onChange={(event) => setMatch(event.target.value as "ALL" | "ANY")} disabled={pending}><option value="ALL">All rules</option><option value="ANY">Any rule</option></select></label>

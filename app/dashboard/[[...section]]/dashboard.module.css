@@ -39,3 +39,4 @@
 .creator textarea{width:100%;padding:11px 12px;border:1px solid #cadbd9;border-radius:8px;background:#fbfcfc;color:#173b3e;outline:none;resize:vertical}.creator textarea:focus{border-color:#28b881;box-shadow:0 0 0 3px rgb(40 184 129/12%)}
 .collectionFeedback{margin:0;padding:12px 14px;border:1px solid #efc4c4;border-radius:9px;background:#fff1f1;color:#9b3d3d;font-size:13px;font-weight:700}.collectionFeedback.success{border-color:#a8dfc8;background:#eefaf5;color:#187354}
 .actions .actionError{flex-basis:100%;max-width:320px;color:#a13f3f;white-space:normal}.actions:has(.actionError){flex-wrap:wrap}
+.productChoices label:has(input:checked){border-color:#55c995;background:#eefaf5;box-shadow:inset 3px 0 #34b982}

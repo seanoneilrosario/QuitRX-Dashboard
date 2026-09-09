@@ -104,6 +104,7 @@ test("successful saves and deletes expire the catalog; failed writes do not", as
       RETAIL_CATALOG_TAG: "retail-catalog",
       retailRequest: async () => { if (fail) throw new Error("API failed"); events.push("write"); },
     },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
   });
   const form = new FormData();
   form.set("_resource", "products");
@@ -126,6 +127,7 @@ test("collection saves only fields supported by the retail API", async () => {
     "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
     "next/navigation": { redirect: () => {} },
     "@/lib/quithero-admin": { RETAIL_CATALOG_TAG: "retail-catalog", retailRequest: async (path, options) => { request = { path, options }; } },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
   });
   const form = new FormData();
   form.set("_resource", "collections");
@@ -140,7 +142,8 @@ test("manual and dynamic collection creation send structured API payloads", asyn
   const actions = load("app/dashboard/actions.ts", {
     "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
     "next/navigation": { redirect: () => {} },
-    "@/lib/quithero-admin": { RETAIL_CATALOG_TAG: "retail-catalog", retailRequest: async (path, options) => requests.push({ path, body: JSON.parse(options.body) }) },
+    "@/lib/quithero-admin": { RETAIL_CATALOG_TAG: "retail-catalog", retailRequest: async (path, options) => { requests.push({ path, body: JSON.parse(options.body) }); return { id: `collection-${requests.length}` }; } },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
   });
 
   const manual = new FormData();
@@ -169,6 +172,7 @@ test("collection creation returns validation and API errors", async () => {
     "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
     "next/navigation": { redirect: () => {} },
     "@/lib/quithero-admin": { RETAIL_CATALOG_TAG: "retail-catalog", retailRequest: async () => { throw new Error("API rejected collection"); } },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
   }, { Error });
   const invalid = new FormData();
   invalid.set("name", "Empty manual"); invalid.set("type", "MANUAL"); invalid.set("match", "ALL"); invalid.set("productIds", "[]"); invalid.set("rules", "[]");
@@ -183,9 +187,23 @@ test("editing a manual collection patches its updated product IDs", async () => 
     "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
     "next/navigation": { redirect: () => {} },
     "@/lib/quithero-admin": { RETAIL_CATALOG_TAG: "retail-catalog", retailRequest: async (path, options) => { request = { path, method: options.method, body: JSON.parse(options.body) }; } },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
   });
   const form = new FormData();
   form.set("_id", "collection-1"); form.set("name", "Quit Kits"); form.set("slug", "quit-kits"); form.set("type", "MANUAL"); form.set("match", "ALL"); form.set("productIds", JSON.stringify(["product-2", "product-3"])); form.set("rules", "[]");
   assert.equal((await actions.createCollection({}, form)).success, true);
   assert.deepEqual(request, { path: "/collections/collection-1", method: "PATCH", body: { name: "Quit Kits", slug: "quit-kits", type: "MANUAL", match: "ALL", productIds: ["product-2", "product-3"] } });
+});
+
+test("storefront collection sync writes the Sanity productCollection shape", async () => {
+  let request;
+  const storefront = load("lib/sanity-storefront.ts", { "server-only": {} }, {
+    process: { env: { NEXT_PUBLIC_SANITY_PROJECT_ID: "project", NEXT_PUBLIC_SANITY_DATASET: "production", SANITY_WRITE_TOKEN: "write-token" } },
+    fetch: async (url, options) => { request = { url, options }; return { ok: true, text: async () => "" }; },
+  });
+  await storefront.syncStorefrontCollection({ id: "collection-1", name: "Quit Kits", slug: "quit-kits", type: "MANUAL", match: "ALL", productIds: ["product-2", "product-3"] });
+  const document = JSON.parse(request.options.body).mutations[0].createOrReplace;
+  assert.equal(request.url, "https://project.api.sanity.io/v2026-09-09/data/mutate/production?returnIds=true");
+  assert.equal(request.options.headers.authorization, "Bearer write-token");
+  assert.deepEqual(document, { _id: "retailCollection.collection-1", _type: "productCollection", retailCollectionId: "collection-1", title: "Quit Kits", slug: { _type: "slug", current: "quit-kits" }, selectionMode: "manual", ruleMatch: "all", productIds: ["product-2", "product-3"] });
 });

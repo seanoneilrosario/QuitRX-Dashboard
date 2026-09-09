@@ -3,6 +3,7 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { RETAIL_CATALOG_TAG, retailRequest } from "@/lib/quithero-admin";
+import { syncStorefrontCollection } from "@/lib/sanity-storefront";
 
 const allowedResources = new Set([
   "products", "product-variants", "product-images", "product-options",
@@ -56,7 +57,21 @@ export async function createCollection(_previous: CollectionActionState, formDat
     const body = payload(formData);
     if (!body.slug && typeof body.name === "string") body.slug = slugify(body.name);
     validateCollection(body);
-    await retailRequest(`/collections${id ? `/${encodeURIComponent(id)}` : ""}`, { method: id ? "PATCH" : "POST", body: JSON.stringify(body) });
+    const saved = await retailRequest<unknown>(`/collections${id ? `/${encodeURIComponent(id)}` : ""}`, { method: id ? "PATCH" : "POST", body: JSON.stringify(body) });
+    const wrapper = saved && typeof saved === "object" ? saved as Record<string, unknown> : {};
+    const data = wrapper.data && typeof wrapper.data === "object" ? wrapper.data as Record<string, unknown> : wrapper;
+    const collectionId = id || (typeof data.id === "string" ? data.id : "");
+    if (!collectionId) throw new Error("Collection was saved, but the Retail API did not return its ID for storefront sync.");
+    await syncStorefrontCollection({
+      id: collectionId,
+      name: String(body.name),
+      slug: String(body.slug),
+      type: body.type as "MANUAL" | "DYNAMIC",
+      match: body.match as "ALL" | "ANY",
+      image: typeof body.image === "string" ? body.image : undefined,
+      productIds: Array.isArray(body.productIds) ? body.productIds as string[] : undefined,
+      rules: Array.isArray(body.rules) ? body.rules as { field: string; operator: string; value: string }[] : undefined,
+    });
     updateTag(RETAIL_CATALOG_TAG);
     revalidatePath("/dashboard/collections");
     return { message: `Collection “${String(body.name)}” was ${id ? "updated" : "created"}.`, success: true };

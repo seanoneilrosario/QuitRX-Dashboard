@@ -3,7 +3,7 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { RETAIL_CATALOG_TAG, retailRequest } from "@/lib/quithero-admin";
-import { syncStorefrontCollection } from "@/lib/sanity-storefront";
+import { deleteStorefrontCollection, syncStorefrontCollection } from "@/lib/sanity-storefront";
 
 const allowedResources = new Set([
   "products", "product-variants", "product-images", "product-options",
@@ -77,6 +77,20 @@ export async function createCollection(_previous: CollectionActionState, formDat
     return { message: `Collection “${String(body.name)}” was ${id ? "updated" : "created"}.`, success: true };
   } catch (error) {
     return { message: error instanceof Error ? error.message : "Unable to create collection.", success: false };
+  }
+}
+
+export async function deleteCollection(_previous: CollectionActionState, formData: FormData): Promise<CollectionActionState> {
+  const id = String(formData.get("_id") ?? "");
+  if (!id) return { message: "Collection ID is required.", success: false };
+  try {
+    await deleteStorefrontCollection(id);
+    await retailRequest(`/collections/${encodeURIComponent(id)}`, { method: "DELETE" });
+    updateTag(RETAIL_CATALOG_TAG);
+    revalidatePath("/dashboard/collections");
+    return { message: "Collection deleted.", success: true };
+  } catch (error) {
+    return { message: error instanceof Error ? error.message : "Unable to delete collection.", success: false };
   }
 }
 

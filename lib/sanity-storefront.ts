@@ -63,3 +63,17 @@ export async function syncStorefrontCollection(collection: StorefrontCollection)
     throw new Error(detail ? `Storefront sync failed (${response.status}): ${detail}` : `Storefront sync failed (${response.status}).`);
   }
 }
+
+export async function deleteStorefrontCollection(retailCollectionId: string) {
+  const { projectId, dataset, token } = config();
+  const response = await fetch(`https://${projectId}.api.sanity.io/v2026-09-09/data/mutate/${encodeURIComponent(dataset)}?returnIds=true`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ mutations: [{ delete: { id: documentId(retailCollectionId) } }] }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const detail = (await response.text()).trim();
+    throw new Error(detail ? `Storefront delete failed (${response.status}): ${detail}` : `Storefront delete failed (${response.status}).`);
+  }
+}

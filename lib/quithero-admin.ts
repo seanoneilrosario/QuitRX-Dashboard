@@ -15,11 +15,11 @@ const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resol
 function retryDelay(response: Response, attempt: number) {
   const retryAfter = response.headers.get("retry-after");
   const seconds = retryAfter ? Number(retryAfter) : Number.NaN;
-  if (Number.isFinite(seconds)) return Math.min(Math.max(seconds * 1000, 0), 5000);
+  if (Number.isFinite(seconds)) return Math.min(Math.max(seconds * 1000, 0), 30000);
 
   const date = retryAfter ? Date.parse(retryAfter) : Number.NaN;
-  if (Number.isFinite(date)) return Math.min(Math.max(date - Date.now(), 0), 5000);
-  return 500 * (attempt + 1);
+  if (Number.isFinite(date)) return Math.min(Math.max(date - Date.now(), 0), 30000);
+  return 1000 * (2 ** attempt);
 }
 
 function apiKey() {
@@ -71,7 +71,7 @@ export async function retailRequest<T = unknown>(path: string, init: RequestInit
   const method = (init.method ?? "GET").toUpperCase();
   const canRetry = method === "GET" || (method === "PATCH" && path.endsWith("/bundle"));
   if (canRetry) {
-    for (let attempt = 0; response.status === 429 && attempt < 2; attempt += 1) {
+    for (let attempt = 0; response.status === 429 && attempt < 4; attempt += 1) {
       await wait(retryDelay(response, attempt));
       response = await fetch(`${API_BASE}${path}`, request);
     }
@@ -131,11 +131,13 @@ export async function safeRetailPage(path: string, page = 1, limit = 100) {
 export async function safeRetailAll(path: string, limit = 100) {
   const first = await safeRetailPage(path, 1, limit);
   if (first.error || first.pagination.totalPages <= 1) return first;
-  const remaining = await Promise.all(
-    Array.from({ length: first.pagination.totalPages - 1 }, (_, index) => safeRetailPage(path, index + 2, limit)),
-  );
-  const error = remaining.find((result) => result.error)?.error;
-  return { ...first, data: [first.data, ...remaining.map((result) => result.data)].flat(), error };
+  const data = [...first.data];
+  for (let page = 2; page <= first.pagination.totalPages; page += 1) {
+    const result = await safeRetailPage(path, page, limit);
+    if (result.error) return { ...first, data, error: result.error };
+    data.push(...result.data);
+  }
+  return { ...first, data, error: undefined };
 }
 
 export async function safeRetailRecord(path: string) {

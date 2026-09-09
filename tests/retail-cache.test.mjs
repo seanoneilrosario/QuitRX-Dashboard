@@ -193,6 +193,10 @@ test("editing a manual collection patches its updated product IDs", async () => 
   form.set("_id", "collection-1"); form.set("name", "Quit Kits"); form.set("slug", "quit-kits"); form.set("type", "MANUAL"); form.set("match", "ALL"); form.set("productIds", JSON.stringify(["product-2", "product-3"])); form.set("rules", "[]");
   assert.equal((await actions.createCollection({}, form)).success, true);
   assert.deepEqual(request, { path: "/collections/collection-1", method: "PATCH", body: { name: "Quit Kits", slug: "quit-kits", type: "MANUAL", match: "ALL", productIds: ["product-2", "product-3"] } });
+
+  form.set("productIds", "[]");
+  assert.equal((await actions.createCollection({}, form)).success, true);
+  assert.deepEqual(request.body.productIds, []);
 });
 
 test("storefront collection sync writes the Sanity productCollection shape", async () => {

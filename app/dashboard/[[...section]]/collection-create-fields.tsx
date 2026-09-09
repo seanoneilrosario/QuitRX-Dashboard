@@ -81,7 +81,7 @@ export function CollectionCreateForm({ products, initial }: { products: ProductO
         <button type="button" className={styles.secondary} disabled={pending} onClick={() => { setRules((current) => [...current, { id: nextRuleId, field: "tag", operator: "equals", value: "" }]); setNextRuleId((current) => current + 1); }}>+ Add rule</button>
       </section>}
     </div>
-    <button className={styles.primary} disabled={pending || (type === "MANUAL" ? !selected.length : rules.some((rule) => !rule.value.trim()))}>{pending ? "Saving…" : editing ? "Save changes" : "Create collection"}</button>
+    <button className={styles.primary} disabled={pending || (type === "MANUAL" ? !editing && !selected.length : rules.some((rule) => !rule.value.trim()))}>{pending ? "Saving…" : editing ? "Save changes" : "Create collection"}</button>
     {state.message && <p role={state.success ? "status" : "alert"} className={`${styles.collectionFeedback} ${state.success ? styles.success : ""}`}>{state.message}</p>}
   </form>;
 }

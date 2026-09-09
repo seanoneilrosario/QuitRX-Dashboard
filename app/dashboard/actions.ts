@@ -34,12 +34,12 @@ function payload(formData: FormData) {
 
 export type CollectionActionState = { message: string; success: boolean };
 
-function validateCollection(body: Record<string, unknown>) {
+function validateCollection(body: Record<string, unknown>, editing = false) {
   if (typeof body.name !== "string" || !body.name.trim()) throw new Error("Collection name is required.");
   if (body.type !== "MANUAL" && body.type !== "DYNAMIC") throw new Error("Choose a valid collection type.");
   if (body.match !== "ALL" && body.match !== "ANY") throw new Error("Choose whether all or any rules must match.");
   if (body.type === "MANUAL") {
-    if (!Array.isArray(body.productIds) || !body.productIds.length || body.productIds.some((id) => typeof id !== "string" || !id)) throw new Error("Select at least one product.");
+    if (!Array.isArray(body.productIds) || (!editing && !body.productIds.length) || body.productIds.some((id) => typeof id !== "string" || !id)) throw new Error("Select at least one product.");
     delete body.rules;
   } else {
     if (!Array.isArray(body.rules) || !body.rules.length || body.rules.some((rule) => {
@@ -56,7 +56,7 @@ export async function createCollection(_previous: CollectionActionState, formDat
     const id = String(formData.get("_id") ?? "");
     const body = payload(formData);
     if (!body.slug && typeof body.name === "string") body.slug = slugify(body.name);
-    validateCollection(body);
+    validateCollection(body, Boolean(id));
     const saved = await retailRequest<unknown>(`/collections${id ? `/${encodeURIComponent(id)}` : ""}`, { method: id ? "PATCH" : "POST", body: JSON.stringify(body) });
     const wrapper = saved && typeof saved === "object" ? saved as Record<string, unknown> : {};
     const data = wrapper.data && typeof wrapper.data === "object" ? wrapper.data as Record<string, unknown> : wrapper;

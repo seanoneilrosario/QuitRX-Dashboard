@@ -62,18 +62,23 @@ export async function createCollection(_previous: CollectionActionState, formDat
     const data = wrapper.data && typeof wrapper.data === "object" ? wrapper.data as Record<string, unknown> : wrapper;
     const collectionId = id || (typeof data.id === "string" ? data.id : "");
     if (!collectionId) throw new Error("Collection was saved, but the Retail API did not return its ID for storefront sync.");
-    await syncStorefrontCollection({
-      id: collectionId,
-      name: String(body.name),
-      slug: String(body.slug),
-      type: body.type as "MANUAL" | "DYNAMIC",
-      match: body.match as "ALL" | "ANY",
-      image: typeof body.image === "string" ? body.image : undefined,
-      productIds: Array.isArray(body.productIds) ? body.productIds as string[] : undefined,
-      rules: Array.isArray(body.rules) ? body.rules as { field: string; operator: string; value: string }[] : undefined,
-    });
     updateTag(RETAIL_CATALOG_TAG);
     revalidatePath("/dashboard/collections");
+    try {
+      await syncStorefrontCollection({
+        id: collectionId,
+        name: String(body.name),
+        slug: String(body.slug),
+        type: body.type as "MANUAL" | "DYNAMIC",
+        match: body.match as "ALL" | "ANY",
+        image: typeof body.image === "string" ? body.image : undefined,
+        productIds: Array.isArray(body.productIds) ? body.productIds as string[] : undefined,
+        rules: Array.isArray(body.rules) ? body.rules as { field: string; operator: string; value: string }[] : undefined,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unknown storefront error.";
+      return { message: `Collection was ${id ? "updated" : "created"} in the dashboard, but storefront sync failed: ${detail}`, success: true };
+    }
     return { message: `Collection “${String(body.name)}” was ${id ? "updated" : "created"}.`, success: true };
   } catch (error) {
     return { message: error instanceof Error ? error.message : "Unable to create collection.", success: false };
@@ -84,10 +89,16 @@ export async function deleteCollection(_previous: CollectionActionState, formDat
   const id = String(formData.get("_id") ?? "");
   if (!id) return { message: "Collection ID is required.", success: false };
   try {
-    await deleteStorefrontCollection(id);
+    await retailRequest(`/collections/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ productIds: [] }) });
     await retailRequest(`/collections/${encodeURIComponent(id)}`, { method: "DELETE" });
     updateTag(RETAIL_CATALOG_TAG);
     revalidatePath("/dashboard/collections");
+    try {
+      await deleteStorefrontCollection(id);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unknown storefront error.";
+      return { message: `Collection was deleted from the dashboard, but storefront cleanup failed: ${detail}`, success: true };
+    }
     return { message: "Collection deleted.", success: true };
   } catch (error) {
     return { message: error instanceof Error ? error.message : "Unable to delete collection.", success: false };

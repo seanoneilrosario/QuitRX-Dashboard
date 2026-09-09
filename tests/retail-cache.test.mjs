@@ -215,7 +215,7 @@ test("storefront collection sync writes the Sanity productCollection shape", asy
   assert.deepEqual(document, { _id: "retailCollection.collection-1", _type: "productCollection", retailCollectionId: "collection-1", title: "Quit Kits", slug: { _type: "slug", current: "quit-kits" }, selectionMode: "manual", ruleMatch: "all", productIds: ["product-2", "product-3"] });
 });
 
-test("collection deletion removes storefront document before Retail collection", async () => {
+test("collection deletion detaches products, deletes Retail collection, then removes storefront document", async () => {
   const events = [];
   const actions = load("app/dashboard/actions.ts", {
     "next/cache": { updateTag: () => events.push("cache"), revalidatePath: () => events.push("revalidate") },
@@ -225,5 +225,5 @@ test("collection deletion removes storefront document before Retail collection",
   });
   const form = new FormData(); form.set("_id", "collection-1");
   assert.equal((await actions.deleteCollection({}, form)).success, true);
-  assert.deepEqual(events, ["storefront collection-1", "DELETE /collections/collection-1", "cache", "revalidate"]);
+  assert.deepEqual(events, ["PATCH /collections/collection-1", "DELETE /collections/collection-1", "cache", "revalidate", "storefront collection-1"]);
 });

@@ -25,22 +25,41 @@ export default function CollectionCreateFields({ initial }: { initial?: Record<s
   </>;
 }
 
-export function CollectionCreateForm({ products }: { products: ProductOption[] }) {
+function initialProductIds(initial?: Record<string, unknown>) {
+  if (Array.isArray(initial?.productIds)) return initial.productIds.filter((id): id is string => typeof id === "string");
+  if (Array.isArray(initial?.products)) return initial.products.flatMap((product) => product && typeof product === "object" && typeof (product as Record<string, unknown>).id === "string" ? [(product as Record<string, unknown>).id as string] : []);
+  return [];
+}
+
+function initialRules(initial?: Record<string, unknown>): Rule[] {
+  if (!Array.isArray(initial?.rules)) return [{ id: 0, field: "tag", operator: "equals", value: "" }];
+  const rules = initial.rules.flatMap((rule, id) => {
+    if (!rule || typeof rule !== "object") return [];
+    const value = rule as Record<string, unknown>;
+    if (!["name", "brand", "tag"].includes(String(value.field)) || !["equals", "contains"].includes(String(value.operator))) return [];
+    return [{ id, field: value.field as Rule["field"], operator: value.operator as Rule["operator"], value: typeof value.value === "string" ? value.value : "" }];
+  });
+  return rules.length ? rules : [{ id: 0, field: "tag", operator: "equals", value: "" }];
+}
+
+export function CollectionCreateForm({ products, initial }: { products: ProductOption[]; initial?: Record<string, unknown> }) {
   const [state, action, pending] = useActionState(createCollection, { message: "", success: false });
-  const [type, setType] = useState<"MANUAL" | "DYNAMIC">("MANUAL");
-  const [match, setMatch] = useState<"ALL" | "ANY">("ALL");
+  const editing = typeof initial?.id === "string";
+  const [type, setType] = useState<"MANUAL" | "DYNAMIC">(initial?.type === "DYNAMIC" ? "DYNAMIC" : "MANUAL");
+  const [match, setMatch] = useState<"ALL" | "ANY">(initial?.match === "ANY" ? "ANY" : "ALL");
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<string[]>([]);
-  const [rules, setRules] = useState<Rule[]>([{ id: 0, field: "tag", operator: "equals", value: "" }]);
-  const [nextRuleId, setNextRuleId] = useState(1);
+  const [selected, setSelected] = useState<string[]>(() => initialProductIds(initial));
+  const [rules, setRules] = useState<Rule[]>(() => initialRules(initial));
+  const [nextRuleId, setNextRuleId] = useState(() => initialRules(initial).length);
   const visibleProducts = useMemo(() => {
     const search = query.trim().toLowerCase();
     return products.filter((product) => !search || `${product.name} ${product.slug} ${product.brand} ${product.tags.join(" ")}`.toLowerCase().includes(search));
   }, [products, query]);
   const updateRule = (id: number, patch: Partial<Rule>) => setRules((current) => current.map((rule) => rule.id === id ? { ...rule, ...patch } : rule));
 
-  return <form action={action}>
-    <div className={styles.inlineForm}><CollectionCreateFields/>
+  return <form action={action} className={styles.form}>
+    <input type="hidden" name="_id" value={editing ? String(initial.id) : ""}/>
+    <div className={styles.inlineForm}><CollectionCreateFields initial={initial}/>
       <fieldset className={`${styles.collectionMode} ${styles.full}`} disabled={pending}>
         <legend>Collection type</legend>
         <label><input type="radio" name="type" value="MANUAL" checked={type === "MANUAL"} onChange={() => setType("MANUAL")}/><span>Manual<small>Select individual products.</small></span></label>
@@ -62,7 +81,7 @@ export function CollectionCreateForm({ products }: { products: ProductOption[] }
         <button type="button" className={styles.secondary} disabled={pending} onClick={() => { setRules((current) => [...current, { id: nextRuleId, field: "tag", operator: "equals", value: "" }]); setNextRuleId((current) => current + 1); }}>+ Add rule</button>
       </section>}
     </div>
-    <button className={styles.primary} disabled={pending || (type === "MANUAL" ? !selected.length : rules.some((rule) => !rule.value.trim()))}>{pending ? "Creating…" : "Create collection"}</button>
+    <button className={styles.primary} disabled={pending || (type === "MANUAL" ? !selected.length : rules.some((rule) => !rule.value.trim()))}>{pending ? "Saving…" : editing ? "Save changes" : "Create collection"}</button>
     {state.message && <p role={state.success ? "status" : "alert"} className={`${styles.collectionFeedback} ${state.success ? styles.success : ""}`}>{state.message}</p>}
   </form>;
 }

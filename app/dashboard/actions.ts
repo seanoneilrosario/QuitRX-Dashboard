@@ -52,13 +52,14 @@ function validateCollection(body: Record<string, unknown>) {
 
 export async function createCollection(_previous: CollectionActionState, formData: FormData): Promise<CollectionActionState> {
   try {
+    const id = String(formData.get("_id") ?? "");
     const body = payload(formData);
     if (!body.slug && typeof body.name === "string") body.slug = slugify(body.name);
     validateCollection(body);
-    await retailRequest("/collections", { method: "POST", body: JSON.stringify(body) });
+    await retailRequest(`/collections${id ? `/${encodeURIComponent(id)}` : ""}`, { method: id ? "PATCH" : "POST", body: JSON.stringify(body) });
     updateTag(RETAIL_CATALOG_TAG);
     revalidatePath("/dashboard/collections");
-    return { message: `Collection “${String(body.name)}” was created.`, success: true };
+    return { message: `Collection “${String(body.name)}” was ${id ? "updated" : "created"}.`, success: true };
   } catch (error) {
     return { message: error instanceof Error ? error.message : "Unable to create collection.", success: false };
   }

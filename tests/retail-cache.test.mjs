@@ -176,3 +176,16 @@ test("collection creation returns validation and API errors", async () => {
   invalid.set("productIds", "[\"product-1\"]");
   assert.match((await actions.createCollection({}, invalid)).message, /API rejected collection/);
 });
+
+test("editing a manual collection patches its updated product IDs", async () => {
+  let request;
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
+    "next/navigation": { redirect: () => {} },
+    "@/lib/quithero-admin": { RETAIL_CATALOG_TAG: "retail-catalog", retailRequest: async (path, options) => { request = { path, method: options.method, body: JSON.parse(options.body) }; } },
+  });
+  const form = new FormData();
+  form.set("_id", "collection-1"); form.set("name", "Quit Kits"); form.set("slug", "quit-kits"); form.set("type", "MANUAL"); form.set("match", "ALL"); form.set("productIds", JSON.stringify(["product-2", "product-3"])); form.set("rules", "[]");
+  assert.equal((await actions.createCollection({}, form)).success, true);
+  assert.deepEqual(request, { path: "/collections/collection-1", method: "PATCH", body: { name: "Quit Kits", slug: "quit-kits", type: "MANUAL", match: "ALL", productIds: ["product-2", "product-3"] } });
+});

@@ -2,6 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { createCollection } from "../actions";
+import { collectionProductIds } from "@/lib/collection-products";
 import styles from "./dashboard.module.css";
 
 type ProductOption = { id: string; name: string; slug: string; brand: string; tags: string[] };
@@ -25,12 +26,6 @@ export default function CollectionCreateFields({ initial }: { initial?: Record<s
   </>;
 }
 
-function initialProductIds(initial?: Record<string, unknown>) {
-  if (Array.isArray(initial?.productIds)) return initial.productIds.filter((id): id is string => typeof id === "string");
-  if (Array.isArray(initial?.products)) return initial.products.flatMap((product) => product && typeof product === "object" && typeof (product as Record<string, unknown>).id === "string" ? [(product as Record<string, unknown>).id as string] : []);
-  return [];
-}
-
 function initialRules(initial?: Record<string, unknown>): Rule[] {
   if (!Array.isArray(initial?.rules)) return [{ id: 0, field: "tag", operator: "equals", value: "" }];
   const rules = initial.rules.flatMap((rule, id) => {
@@ -48,7 +43,7 @@ export function CollectionCreateForm({ products, initial }: { products: ProductO
   const [type, setType] = useState<"MANUAL" | "DYNAMIC">(initial?.type === "DYNAMIC" ? "DYNAMIC" : "MANUAL");
   const [match, setMatch] = useState<"ALL" | "ANY">(initial?.match === "ANY" ? "ANY" : "ALL");
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<string[]>(() => initialProductIds(initial));
+  const [selected, setSelected] = useState<string[]>(() => collectionProductIds(initial));
   const [rules, setRules] = useState<Rule[]>(() => initialRules(initial));
   const [nextRuleId, setNextRuleId] = useState(() => initialRules(initial).length);
   const visibleProducts = useMemo(() => {

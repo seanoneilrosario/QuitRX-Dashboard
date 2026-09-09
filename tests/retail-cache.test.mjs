@@ -227,3 +227,12 @@ test("collection deletion detaches products, deletes Retail collection, then rem
   assert.equal((await actions.deleteCollection({}, form)).success, true);
   assert.deepEqual(events, ["PATCH /collections/collection-1", "DELETE /collections/collection-1", "cache", "revalidate", "storefront collection-1"]);
 });
+
+test("collection editor uses product IDs instead of collection relationship IDs", () => {
+  const { collectionProductIds } = load("lib/collection-products.ts", {});
+  assert.deepEqual(collectionProductIds({ products: [
+    { id: "relationship-1", productId: "product-1", collectionId: "collection-1", product: { id: "product-1" } },
+    { id: "relationship-2", collectionId: "collection-1", product: { id: "product-2" } },
+    { id: "product-3", name: "Direct product" },
+  ] }), ["product-1", "product-2", "product-3"]);
+});

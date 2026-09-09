@@ -13,7 +13,7 @@ const allowedResources = new Set([
 function payload(formData: FormData) {
   const result: Record<string, unknown> = {};
   for (const [key, value] of formData.entries()) {
-    if (key.startsWith("_") || typeof value !== "string") continue;
+    if (key.startsWith("_") || key.startsWith("$ACTION_") || typeof value !== "string") continue;
     if (key === "productIds" || key === "rules") {
       try { result[key] = JSON.parse(value); } catch { throw new Error(`Invalid ${key}.`); }
       continue;

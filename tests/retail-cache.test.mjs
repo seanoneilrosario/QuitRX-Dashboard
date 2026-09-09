@@ -154,6 +154,9 @@ test("manual and dynamic collection creation send structured API payloads", asyn
   manual.set("match", "ALL");
   manual.set("productIds", JSON.stringify(["product-1", "product-2"]));
   manual.set("rules", "[]");
+  manual.set("$ACTION_4:0", "framework-reference");
+  manual.set("$ACTION_4:1", "framework-bound-args");
+  manual.set("$ACTION_KEY", "framework-key");
   assert.equal((await actions.createCollection({}, manual)).success, true);
   assert.deepEqual(requests[0], { path: "/collections", body: { name: "LULA Products", slug: "lula-products", description: "All LULA products", type: "MANUAL", match: "ALL", productIds: ["product-1", "product-2"] } });
 

@@ -133,8 +133,9 @@ function ProductForm({ item, brands, productTypes, collections, availableTags, p
     if (typeof tag === "string") return [{ value: tag, label: tagOptions.find((option) => option.value === tag)?.label ?? tag }];
     if (!tag || typeof tag !== "object") return [];
     const record = tag as RetailRecord;
-    const value = text(record.id ?? record.name, "");
-    return value ? [{ value, label: text(record.name, tagOptions.find((option) => option.value === value)?.label ?? value) }] : [];
+    const linkedTag = nested(record, "tag");
+    const value = text(record.tagId ?? linkedTag?.id ?? record.id ?? record.name, "");
+    return value ? [{ value, label: text(linkedTag?.name ?? record.name, tagOptions.find((option) => option.value === value)?.label ?? value) }] : [];
   }) : [];
   const productCollections = collections.filter((collection) => Array.isArray(collection.products) && (collection.products as RetailRecord[]).some((product) => product.productId === item?.id || nested(product, "product")?.id === item?.id || (!product.collectionId && product.id === item?.id)));
   const recommendationProducts = products.flatMap((product) => typeof product.id === "string" ? [{ id: product.id, name: text(product.name, "Unnamed product"), slug: text(product.slug, ""), brand: text(nested(product, "brand")?.name ?? product.brand, "") }] : []);
@@ -211,10 +212,10 @@ export default async function DashboardPage({ params, searchParams }: Props) {
   let content: React.ReactNode;
   if (area === "dashboard") { const [p,c,o,v] = await Promise.all([safeRetailPage("/products",1),safeRetailPage("/customers",1),safeRetailList("/orders"),safeRetailList("/product-variants")]); content = <Dashboard productTotal={p.pagination.total} customerTotal={c.pagination.total} orders={o.data} variants={v.data} error={p.error ?? c.error ?? o.error ?? v.error}/>; }
   else if (area === "products" && !sub) { const result = q || status ? await safeRetailAll("/products") : await safeRetailPage("/products", page, 50); content = <Products items={result.data} query={q} status={status} page={page} pagination={result.pagination} error={result.error}/>; }
-  else if (area === "products" && sub === "create") { const [brands, productTypes, collections, tags] = await Promise.all([safeRetailList("/brands"), safeRetailList("/product-type"), safeRetailList("/collections"), safeRetailList("/tags")]); content = <ProductForm brands={brands.data} productTypes={productTypes.data} collections={collections.data} availableTags={tags.data}/>; }
+  else if (area === "products" && sub === "create") { const [brands, productTypes, collections, tags] = await Promise.all([safeRetailList("/brands"), safeRetailList("/product-type"), safeRetailList("/collections"), safeRetailAll("/tags")]); content = <ProductForm brands={brands.data} productTypes={productTypes.data} collections={collections.data} availableTags={tags.data}/>; }
   else if (area === "products" && sub === "edit") {
     const [result, brands, productTypes, collections, tags, products, recommendations] = await Promise.all([
-      safeRetailRecord(`/products/${encodeURIComponent(id)}`), safeRetailList("/brands"), safeRetailList("/product-type"), safeRetailList("/collections"), safeRetailList("/tags"), safeRetailAll("/products"),
+      safeRetailRecord(`/products/${encodeURIComponent(id)}`), safeRetailList("/brands"), safeRetailList("/product-type"), safeRetailList("/collections"), safeRetailAll("/tags"), safeRetailAll("/products"),
       getFrequentlyBoughtTogether(id).then((data) => ({ data, error: undefined })).catch((error) => ({ data: [] as string[], error: error instanceof Error ? error.message : "Unable to load recommendations." })),
     ]);
     content = <ProductForm item={result.data} brands={brands.data} productTypes={productTypes.data} collections={collections.data} availableTags={tags.data} products={products.data} recommendationIds={recommendations.data} recommendationError={tags.error ?? products.error ?? recommendations.error}/>;

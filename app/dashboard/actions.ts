@@ -121,15 +121,26 @@ type ExistingProductTag = { id: string; tagId: string };
 
 function productTagSelection(formData: FormData) {
   const selected = String(formData.get("tags") ?? "").split(",").map((tagId) => tagId.trim()).filter(Boolean);
+  let newTags: string[] = [];
   let existing: ExistingProductTag[] = [];
   try {
     const value = JSON.parse(String(formData.get("_existingProductTags") ?? "[]"));
     if (Array.isArray(value)) existing = value.filter((tag): tag is ExistingProductTag => tag && typeof tag.id === "string" && typeof tag.tagId === "string");
+    const newValue = JSON.parse(String(formData.get("_newTags") ?? "[]"));
+    if (Array.isArray(newValue)) newTags = [...new Set(newValue.filter((tag): tag is string => typeof tag === "string").map((tag) => tag.trim()).filter(Boolean))];
   } catch { throw new Error("Invalid existing product tags."); }
-  return { selected, existing };
+  return { selected, existing, newTags };
 }
 
-async function syncProductTags(productId: string, selected: string[], existing: ExistingProductTag[]) {
+async function syncProductTags(productId: string, selected: string[], existing: ExistingProductTag[], newTags: string[]) {
+  const createdIds = await Promise.all(newTags.map(async (name) => {
+    const response = await retailRequest<unknown>("/tags", { method: "POST", body: JSON.stringify({ name, slug: slugify(name) }) });
+    const wrapper = response && typeof response === "object" ? response as Record<string, unknown> : {};
+    const data = wrapper.data && typeof wrapper.data === "object" ? wrapper.data as Record<string, unknown> : wrapper;
+    if (typeof data.id !== "string") throw new Error(`Tag "${name}" was created, but the Retail API did not return its ID.`);
+    return data.id;
+  }));
+  selected = [...selected, ...createdIds];
   const selectedIds = new Set(selected);
   const existingIds = new Set(existing.map((tag) => tag.tagId));
   await Promise.all([
@@ -156,7 +167,7 @@ export async function saveResource(formData: FormData) {
     const data = wrapper.data && typeof wrapper.data === "object" ? wrapper.data as Record<string, unknown> : wrapper;
     const productId = id || (typeof data.id === "string" ? data.id : "");
     if (!productId) throw new Error("Product was saved, but the Retail API did not return its ID for tag sync.");
-    await syncProductTags(productId, productTags.selected, productTags.existing);
+    await syncProductTags(productId, productTags.selected, productTags.existing, productTags.newTags);
   }
   updateTag(RETAIL_CATALOG_TAG);
   revalidatePath("/dashboard", "layout");

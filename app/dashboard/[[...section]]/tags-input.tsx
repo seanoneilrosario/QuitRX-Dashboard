@@ -3,9 +3,9 @@
 import { useId, useState } from "react";
 import styles from "./dashboard.module.css";
 
-export type TagValue = { value: string; label: string };
+export type TagValue = { value: string; label: string; isNew?: boolean };
 
-export default function TagsInput({ initialTags, options = [], ariaLabel = "Add tag" }: { initialTags: TagValue[] | string[]; options?: TagValue[]; ariaLabel?: string }) {
+export default function TagsInput({ initialTags, options = [], ariaLabel = "Add tag", allowCreate = false }: { initialTags: TagValue[] | string[]; options?: TagValue[]; ariaLabel?: string; allowCreate?: boolean }) {
   const [tags, setTags] = useState<TagValue[]>(initialTags.map((tag) => typeof tag === "string" ? { value: tag, label: tag } : tag));
   const [draft, setDraft] = useState("");
   const suggestionsId = useId();
@@ -13,7 +13,7 @@ export default function TagsInput({ initialTags, options = [], ariaLabel = "Add 
   function resolveTags(value: string) {
     return value.split(",").map((tag) => tag.trim()).filter(Boolean).flatMap((label) => {
       const match = options.find((option) => option.label.toLocaleLowerCase() === label.toLocaleLowerCase());
-      return match ? [match] : options.length ? [] : [{ value: label, label }];
+      return match ? [match] : allowCreate ? [{ value: label, label, isNew: true }] : options.length ? [] : [{ value: label, label }];
     });
   }
 
@@ -27,7 +27,8 @@ export default function TagsInput({ initialTags, options = [], ariaLabel = "Add 
   const submittedTags = [...tags, ...resolveTags(draft).filter((addition) => !tags.some((tag) => tag.value === addition.value))];
 
   return <div className={styles.tagsInput}>
-    <input type="hidden" name="tags" value={submittedTags.map((tag) => tag.value).join(",")}/>
+    <input type="hidden" name="tags" value={submittedTags.filter((tag) => !tag.isNew).map((tag) => tag.value).join(",")}/>
+    {allowCreate ? <input type="hidden" name="_newTags" value={JSON.stringify(submittedTags.filter((tag) => tag.isNew).map((tag) => tag.label))}/> : null}
     <div className={styles.tagField}>
       {tags.map((tag) => <span className={styles.tagChip} key={tag.value}>{tag.label}<button type="button" aria-label={`Remove ${tag.label}`} onClick={() => setTags((current) => current.filter((value) => value.value !== tag.value))}>×</button></span>)}
       <input list={options.length ? suggestionsId : undefined} value={draft} aria-label={ariaLabel} placeholder={tags.length ? "Add tag" : "Add tags"} onChange={(event) => setDraft(event.target.value)} onBlur={() => addTags(draft)} onKeyDown={(event) => {

@@ -152,7 +152,7 @@ const resourceConfig: Record<string, { title: string; description: string; resou
 };
 
 function collectionProductOptions(products: RetailRecord[]) {
-  return products.flatMap((product) => typeof product.id === "string" ? [{ id: product.id, name: text(product.name, "Unnamed product"), slug: text(product.slug, ""), brand: text(nested(product, "brand")?.name ?? product.brand, ""), tags: Array.isArray(product.tags) ? product.tags.map((tag) => typeof tag === "string" ? tag : text((tag as RetailRecord).name, "")).filter(Boolean) : [] }] : []);
+  return products.flatMap((product) => typeof product.id === "string" ? [{ id: product.id, name: text(product.name, "Unnamed product"), slug: text(product.slug, ""), brand: text(nested(product, "brand")?.name ?? product.brand, ""), tags: Array.isArray(product.tags) ? product.tags.map((tag) => typeof tag === "string" ? tag : text(nested(tag as RetailRecord, "tag")?.name ?? (tag as RetailRecord).name, "")).filter(Boolean) : [] }] : []);
 }
 
 function ResourcePage({ kind, items, products = [], error, path = `/dashboard/products/${kind}` }: { kind: string; items: RetailRecord[]; products?: RetailRecord[]; error?: string; path?: string }) {

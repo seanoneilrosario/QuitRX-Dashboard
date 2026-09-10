@@ -167,7 +167,7 @@ test("manual and dynamic collection creation send structured API payloads", asyn
   dynamic.set("productIds", "[]");
   dynamic.set("rules", JSON.stringify([{ field: "tag", operator: "equals", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }]));
   assert.equal((await actions.createCollection({}, dynamic)).success, true);
-  assert.deepEqual(requests[1], { path: "/collections", body: { name: "Bundle Products", type: "DYNAMIC", match: "ANY", rules: [{ field: "tag", operator: "equals", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }], slug: "bundle-products" } });
+  assert.deepEqual(requests[1], { path: "/collections", body: { name: "Bundle Products", type: "DYNAMIC", match: "ANY", productIds: [], rules: [{ field: "tag", operator: "equals", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }], slug: "bundle-products" } });
 });
 
 test("collection creation returns validation and API errors", async () => {
@@ -212,7 +212,7 @@ test("storefront collection sync writes the Sanity productCollection shape", asy
   const document = JSON.parse(request.options.body).mutations[0].createOrReplace;
   assert.equal(request.url, "https://project.api.sanity.io/v2026-09-09/data/mutate/production?returnIds=true");
   assert.equal(request.options.headers.authorization, "Bearer write-token");
-  assert.deepEqual(document, { _id: "retailCollection.collection-1", _type: "productCollection", retailCollectionId: "collection-1", title: "Quit Kits", slug: { _type: "slug", current: "quit-kits" }, selectionMode: "manual", ruleMatch: "all", productIds: ["product-2", "product-3"] });
+  assert.deepEqual(document, { _id: "retailCollection.collection-1", _type: "productCollection", quitHeroCollectionId: "collection-1", title: "Quit Kits", slug: { _type: "slug", current: "quit-kits" }, selectionMode: "manual", ruleMatch: "all", productIds: ["product-2", "product-3"] });
 });
 
 test("collection deletion detaches products, deletes Retail collection, then removes storefront document", async () => {

@@ -37,6 +37,12 @@ function initialRules(initial?: Record<string, unknown>): Rule[] {
   return rules.length ? rules : [{ id: 0, field: "tag", operator: "equals", value: "" }];
 }
 
+function productMatchesRule(product: ProductOption, rule: Rule) {
+  const expected = rule.value.trim().toLocaleLowerCase();
+  const values = rule.field === "tag" ? product.tags : [rule.field === "brand" ? product.brand : product.name];
+  return values.some((value) => rule.operator === "contains" ? value.toLocaleLowerCase().includes(expected) : value.toLocaleLowerCase() === expected);
+}
+
 export function CollectionCreateForm({ products, initial }: { products: ProductOption[]; initial?: Record<string, unknown> }) {
   const [state, action, pending] = useActionState(createCollection, { message: "", success: false });
   const editing = typeof initial?.id === "string";
@@ -52,6 +58,9 @@ export function CollectionCreateForm({ products, initial }: { products: ProductO
       .filter((product) => !search || `${product.name} ${product.slug} ${product.brand} ${product.tags.join(" ")}`.toLowerCase().includes(search))
       .sort((a, b) => Number(selected.includes(b.id)) - Number(selected.includes(a.id)) || a.name.localeCompare(b.name));
   }, [products, query, selected]);
+  const dynamicProductIds = useMemo(() => products.filter((product) => match === "ANY"
+    ? rules.some((rule) => productMatchesRule(product, rule))
+    : rules.every((rule) => productMatchesRule(product, rule))).map((product) => product.id), [match, products, rules]);
   const updateRule = (id: number, patch: Partial<Rule>) => setRules((current) => current.map((rule) => rule.id === id ? { ...rule, ...patch } : rule));
 
   return <form action={action} className={styles.form}>
@@ -62,13 +71,14 @@ export function CollectionCreateForm({ products, initial }: { products: ProductO
         <label><input type="radio" name="type" value="MANUAL" checked={type === "MANUAL"} onChange={() => setType("MANUAL")}/><span>Manual<small>Select individual products.</small></span></label>
         <label><input type="radio" name="type" value="DYNAMIC" checked={type === "DYNAMIC"} onChange={() => setType("DYNAMIC")}/><span>Dynamic<small>Include products using rules.</small></span></label>
       </fieldset>
-      <input type="hidden" name="match" value={match}/><input type="hidden" name="productIds" value={JSON.stringify(selected)}/><input type="hidden" name="rules" value={JSON.stringify(rules.map(({ field, operator, value }) => ({ field, operator, value: value.trim() })))}/>
+      <input type="hidden" name="match" value={match}/><input type="hidden" name="productIds" value={JSON.stringify(type === "DYNAMIC" ? dynamicProductIds : selected)}/><input type="hidden" name="rules" value={JSON.stringify(rules.map(({ field, operator, value }) => ({ field, operator, value: value.trim() })))}/>
       {type === "MANUAL" ? <section className={styles.collectionProducts}>
         <label>Search products<input type="search" placeholder="Search name, slug, brand or tag" value={query} onChange={(event) => setQuery(event.target.value)} disabled={pending}/></label>
         <small>{selected.length} {selected.length === 1 ? "product" : "products"} selected · selected products are shown first</small>
         <div className={styles.productChoices}>{visibleProducts.map((product) => <label key={product.id}><input type="checkbox" checked={selected.includes(product.id)} onChange={() => setSelected((current) => current.includes(product.id) ? current.filter((id) => id !== product.id) : [...current, product.id])} disabled={pending}/><span>{product.name}<small>{[product.brand, product.slug].filter(Boolean).join(" · ")}</small></span></label>)}{!visibleProducts.length && <div><strong>No products found</strong><small>Try a different search.</small></div>}</div>
       </section> : <section className={styles.collectionProducts}>
         <label>Products must match<select value={match} onChange={(event) => setMatch(event.target.value as "ALL" | "ANY")} disabled={pending}><option value="ALL">All rules</option><option value="ANY">Any rule</option></select></label>
+        <small>{dynamicProductIds.length} matching {dynamicProductIds.length === 1 ? "product" : "products"}</small>
         <div className={styles.ruleList}>{rules.map((rule) => <div className={styles.ruleRow} key={rule.id}>
           <select aria-label="Rule field" value={rule.field} onChange={(event) => updateRule(rule.id, { field: event.target.value as Rule["field"] })} disabled={pending}><option value="name">Name</option><option value="brand">Brand</option><option value="tag">Tag</option></select>
           <select aria-label="Rule operator" value={rule.operator} onChange={(event) => updateRule(rule.id, { operator: event.target.value as Rule["operator"] })} disabled={pending}><option value="equals">Equals</option><option value="contains">Contains</option></select>

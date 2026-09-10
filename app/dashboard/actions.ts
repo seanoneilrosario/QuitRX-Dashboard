@@ -47,7 +47,7 @@ function validateCollection(body: Record<string, unknown>, editing = false) {
       const value = rule as Record<string, unknown>;
       return !["name", "brand", "tag"].includes(String(value.field)) || !["equals", "contains"].includes(String(value.operator)) || typeof value.value !== "string" || !value.value.trim();
     })) throw new Error("Complete at least one valid collection rule.");
-    delete body.productIds;
+    if (!Array.isArray(body.productIds) || body.productIds.some((id) => typeof id !== "string" || !id)) throw new Error("Invalid dynamic collection products.");
   }
 }
 

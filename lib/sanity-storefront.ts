@@ -113,14 +113,14 @@ export async function syncStorefrontCollection(collection: StorefrontCollection)
   const document = {
     _id: documentId(collection.id),
     _type: "productCollection",
-    retailCollectionId: collection.id,
+    quitHeroCollectionId: collection.id,
     title: collection.name,
     slug: { _type: "slug", current: collection.slug },
     selectionMode: collection.type.toLowerCase(),
     ruleMatch: collection.match.toLowerCase(),
-    productIds: collection.type === "MANUAL" ? collection.productIds ?? [] : [],
+    productIds: collection.productIds ?? [],
     ...(image ? { image } : {}),
-    ...(collection.type === "DYNAMIC" ? { rules: (collection.rules ?? []).map((rule, index) => ({ _key: `rule-${index}`, ...rule })) } : {}),
+    ...(collection.type === "DYNAMIC" ? { dynamicRules: (collection.rules ?? []).map((rule, index) => ({ _key: `rule-${index}`, ...rule })) } : {}),
   };
   const response = await fetch(`https://${projectId}.api.sanity.io/v2026-09-09/data/mutate/${encodeURIComponent(dataset)}?returnIds=true`, {
     method: "POST",

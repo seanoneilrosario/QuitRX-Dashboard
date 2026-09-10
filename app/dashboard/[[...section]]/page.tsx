@@ -41,7 +41,7 @@ const nav = [
 
 function text(value: unknown, fallback = "—") { return typeof value === "string" || typeof value === "number" ? String(value) : fallback; }
 function money(value: unknown) { const amount = Number(value); return Number.isFinite(amount) ? new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(amount) : "—"; }
-const storefrontBaseUrl = (process.env.STOREFRONT_BASE_URL ?? "https://quitrx.com.au").replace(/\/$/, "");
+const storefrontBaseUrl = (process.env.STOREFRONT_BASE_URL ?? "https://quitrx-website-front-ecru.vercel.app").replace(/\/$/, "");
 function storefrontUrl(resource: "products" | "collections", item: RetailRecord) {
   const url = text(item.url, "");
   if (url) return new URL(url, `${storefrontBaseUrl}/`).toString();

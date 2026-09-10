@@ -28,6 +28,35 @@ function recommendationDocumentId(productId: string) {
   return `frequentlyBoughtTogether.${productId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
+export type FrequentlyBoughtTogether = {
+  productId: string;
+  relatedProductIds: string[];
+  updatedAt?: string;
+};
+
+export async function getAllFrequentlyBoughtTogether() {
+  const { projectId, dataset, token } = config();
+  const query = `*[_type == "frequentlyBoughtTogether"] | order(updatedAt desc) { productId, relatedProductIds, updatedAt }`;
+  const params = new URLSearchParams({ query });
+  const response = await fetch(`https://${projectId}.api.sanity.io/v2026-09-09/data/query/${encodeURIComponent(dataset)}?${params}`, {
+    headers: { authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Storefront recommendations could not be loaded (${response.status}).`);
+  const body = await response.json() as { result?: unknown };
+  if (!Array.isArray(body.result)) return [];
+  return body.result.flatMap((item): FrequentlyBoughtTogether[] => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    if (typeof record.productId !== "string" || !Array.isArray(record.relatedProductIds)) return [];
+    return [{
+      productId: record.productId,
+      relatedProductIds: record.relatedProductIds.filter((id): id is string => typeof id === "string"),
+      updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : undefined,
+    }];
+  });
+}
+
 export async function getFrequentlyBoughtTogether(productId: string) {
   const { projectId, dataset, token } = config();
   const query = `*[_type == "frequentlyBoughtTogether" && productId == $productId][0].relatedProductIds`;

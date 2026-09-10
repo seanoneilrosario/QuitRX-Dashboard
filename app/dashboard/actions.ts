@@ -115,17 +115,47 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
+type ExistingProductTag = { id: string; tagId: string };
+
+function productTagSelection(formData: FormData) {
+  const selected = String(formData.get("tags") ?? "").split(",").map((tagId) => tagId.trim()).filter(Boolean);
+  let existing: ExistingProductTag[] = [];
+  try {
+    const value = JSON.parse(String(formData.get("_existingProductTags") ?? "[]"));
+    if (Array.isArray(value)) existing = value.filter((tag): tag is ExistingProductTag => tag && typeof tag.id === "string" && typeof tag.tagId === "string");
+  } catch { throw new Error("Invalid existing product tags."); }
+  return { selected, existing };
+}
+
+async function syncProductTags(productId: string, selected: string[], existing: ExistingProductTag[]) {
+  const selectedIds = new Set(selected);
+  const existingIds = new Set(existing.map((tag) => tag.tagId));
+  await Promise.all([
+    ...existing.filter((tag) => !selectedIds.has(tag.tagId)).map((tag) => retailRequest(`/product-tags/${encodeURIComponent(tag.id)}`, { method: "DELETE" })),
+    ...selected.filter((tagId) => !existingIds.has(tagId)).map((tagId) => retailRequest("/product-tags", { method: "POST", body: JSON.stringify({ productId, tagId }) })),
+  ]);
+}
+
 export async function saveResource(formData: FormData) {
   const resource = String(formData.get("_resource") ?? "");
   const id = String(formData.get("_id") ?? "");
   const returnTo = String(formData.get("_returnTo") ?? "/dashboard");
   if (!allowedResources.has(resource)) throw new Error("Unsupported resource.");
   const body = payload(formData);
+  const productTags = resource === "products" ? productTagSelection(formData) : undefined;
+  if (resource === "products") delete body.tags;
   if (resource === "collections" && !body.slug && typeof body.name === "string") body.slug = slugify(body.name);
-  await retailRequest(`/${resource}${id ? `/${encodeURIComponent(id)}` : ""}`, {
+  const saved = await retailRequest<unknown>(`/${resource}${id ? `/${encodeURIComponent(id)}` : ""}`, {
     method: id ? "PATCH" : "POST",
     body: JSON.stringify(body),
   });
+  if (productTags) {
+    const wrapper = saved && typeof saved === "object" ? saved as Record<string, unknown> : {};
+    const data = wrapper.data && typeof wrapper.data === "object" ? wrapper.data as Record<string, unknown> : wrapper;
+    const productId = id || (typeof data.id === "string" ? data.id : "");
+    if (!productId) throw new Error("Product was saved, but the Retail API did not return its ID for tag sync.");
+    await syncProductTags(productId, productTags.selected, productTags.existing);
+  }
   updateTag(RETAIL_CATALOG_TAG);
   revalidatePath("/dashboard", "layout");
   redirect(returnTo);

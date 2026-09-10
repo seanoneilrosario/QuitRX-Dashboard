@@ -11,9 +11,9 @@ export default function TagsInput({ initialTags, options = [], ariaLabel = "Add 
   const suggestionsId = useId();
 
   function addTags(value: string) {
-    const additions = value.split(",").map((tag) => tag.trim()).filter(Boolean).map((label) => {
+    const additions = value.split(",").map((tag) => tag.trim()).filter(Boolean).flatMap((label) => {
       const match = options.find((option) => option.label.toLocaleLowerCase() === label.toLocaleLowerCase());
-      return match ?? { value: label, label };
+      return match ? [match] : options.length ? [] : [{ value: label, label }];
     });
     if (!additions.length) return;
     setTags((current) => [...current, ...additions.filter((addition) => !current.some((tag) => tag.value === addition.value))]);

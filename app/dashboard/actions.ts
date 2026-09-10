@@ -57,7 +57,9 @@ export async function createCollection(_previous: CollectionActionState, formDat
     const body = payload(formData);
     if (!body.slug && typeof body.name === "string") body.slug = slugify(body.name);
     validateCollection(body, Boolean(id));
-    const saved = await retailRequest<unknown>(`/collections${id ? `/${encodeURIComponent(id)}` : ""}`, { method: id ? "PATCH" : "POST", body: JSON.stringify(body) });
+    const retailBody = { ...body };
+    if (retailBody.type === "DYNAMIC") delete retailBody.productIds;
+    const saved = await retailRequest<unknown>(`/collections${id ? `/${encodeURIComponent(id)}` : ""}`, { method: id ? "PATCH" : "POST", body: JSON.stringify(retailBody) });
     const wrapper = saved && typeof saved === "object" ? saved as Record<string, unknown> : {};
     const data = wrapper.data && typeof wrapper.data === "object" ? wrapper.data as Record<string, unknown> : wrapper;
     const collectionId = id || (typeof data.id === "string" ? data.id : "");

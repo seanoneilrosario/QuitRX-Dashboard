@@ -167,7 +167,7 @@ test("manual and dynamic collection creation send structured API payloads", asyn
   dynamic.set("productIds", "[]");
   dynamic.set("rules", JSON.stringify([{ field: "tag", operator: "equals", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }]));
   assert.equal((await actions.createCollection({}, dynamic)).success, true);
-  assert.deepEqual(requests[1], { path: "/collections", body: { name: "Bundle Products", type: "DYNAMIC", match: "ANY", productIds: [], rules: [{ field: "tag", operator: "equals", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }], slug: "bundle-products" } });
+  assert.deepEqual(requests[1], { path: "/collections", body: { name: "Bundle Products", type: "DYNAMIC", match: "ANY", rules: [{ field: "tag", operator: "equals", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }], slug: "bundle-products" } });
 });
 
 test("collection creation returns validation and API errors", async () => {

@@ -237,6 +237,16 @@ test("collection editor uses product IDs instead of collection relationship IDs"
   ] }), ["product-1", "product-2", "product-3"]);
 });
 
+test("dynamic collection rules match normalized tags with ALL and ANY logic", () => {
+  const { dynamicCollectionProductIds } = load("lib/collection-products.ts", {});
+  const products = [
+    { id: "mint", name: "Mint Pod", slug: "mint-pod", brand: "Acme", tags: ["Bundle", "Mint"] },
+    { id: "berry", name: "Berry Pod", slug: "berry-pod", brand: "Acme", tags: ["Bundle", "Berry"] },
+  ];
+  assert.deepEqual(dynamicCollectionProductIds(products, [{ field: "tag", operator: "equals", value: "bundle" }, { field: "tag", operator: "equals", value: "mint" }], "ALL"), ["mint"]);
+  assert.deepEqual(dynamicCollectionProductIds(products, [{ field: "tag", operator: "equals", value: "mint" }, { field: "name", operator: "contains", value: "berry" }], "ANY"), ["mint", "berry"]);
+});
+
 test("frequently bought together recommendations are read and saved in order", async () => {
   const requests = [];
   const storefront = load("lib/sanity-storefront.ts", { "server-only": {} }, {

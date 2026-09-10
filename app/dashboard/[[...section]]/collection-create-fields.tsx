@@ -2,11 +2,11 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { createCollection } from "../actions";
-import { collectionProductIds } from "@/lib/collection-products";
+import { collectionProductIds, dynamicCollectionProductIds, type CollectionProductOption, type CollectionRule } from "@/lib/collection-products";
 import styles from "./dashboard.module.css";
 
-type ProductOption = { id: string; name: string; slug: string; brand: string; tags: string[] };
-type Rule = { id: number; field: "name" | "brand" | "tag"; operator: "equals" | "contains"; value: string };
+type ProductOption = CollectionProductOption;
+type Rule = CollectionRule & { id: number };
 
 function slugify(value: string) {
   return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -37,12 +37,6 @@ function initialRules(initial?: Record<string, unknown>): Rule[] {
   return rules.length ? rules : [{ id: 0, field: "tag", operator: "equals", value: "" }];
 }
 
-function productMatchesRule(product: ProductOption, rule: Rule) {
-  const expected = rule.value.trim().toLocaleLowerCase();
-  const values = rule.field === "tag" ? product.tags : [rule.field === "brand" ? product.brand : product.name];
-  return values.some((value) => rule.operator === "contains" ? value.toLocaleLowerCase().includes(expected) : value.toLocaleLowerCase() === expected);
-}
-
 export function CollectionCreateForm({ products, initial }: { products: ProductOption[]; initial?: Record<string, unknown> }) {
   const [state, action, pending] = useActionState(createCollection, { message: "", success: false });
   const editing = typeof initial?.id === "string";
@@ -58,12 +52,10 @@ export function CollectionCreateForm({ products, initial }: { products: ProductO
       .filter((product) => !search || `${product.name} ${product.slug} ${product.brand} ${product.tags.join(" ")}`.toLowerCase().includes(search))
       .sort((a, b) => Number(selected.includes(b.id)) - Number(selected.includes(a.id)) || a.name.localeCompare(b.name));
   }, [products, query, selected]);
-  const dynamicProductIds = useMemo(() => products.filter((product) => match === "ANY"
-    ? rules.some((rule) => productMatchesRule(product, rule))
-    : rules.every((rule) => productMatchesRule(product, rule))).map((product) => product.id), [match, products, rules]);
+  const dynamicProductIds = useMemo(() => dynamicCollectionProductIds(products, rules, match), [match, products, rules]);
   const updateRule = (id: number, patch: Partial<Rule>) => setRules((current) => current.map((rule) => rule.id === id ? { ...rule, ...patch } : rule));
 
-  return <form action={action} className={styles.form}>
+  return <form action={action} className={styles.form} onReset={() => { if (!editing) { setType("MANUAL"); setMatch("ALL"); setSelected([]); setRules([{ id: 0, field: "tag", operator: "equals", value: "" }]); } }}>
     <input type="hidden" name="_id" value={editing ? String(initial.id) : ""}/>
     <div className={styles.inlineForm}><CollectionCreateFields initial={initial}/>
       <fieldset className={`${styles.collectionMode} ${styles.full}`} disabled={pending}>

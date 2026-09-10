@@ -11,6 +11,7 @@ import BundlesPage from "./bundles-page";
 import FrequentlyBoughtTogetherEditor from "./frequently-bought-together-editor";
 import { logoutStaff } from "../login/actions";
 import { getAllFrequentlyBoughtTogether, getFrequentlyBoughtTogether, type FrequentlyBoughtTogether } from "@/lib/sanity-storefront";
+import { dynamicCollectionProductIds, type CollectionProductOption, type CollectionRule } from "@/lib/collection-products";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
@@ -155,10 +156,22 @@ function collectionProductOptions(products: RetailRecord[]) {
   return products.flatMap((product) => typeof product.id === "string" ? [{ id: product.id, name: text(product.name, "Unnamed product"), slug: text(product.slug, ""), brand: text(nested(product, "brand")?.name ?? product.brand, ""), tags: Array.isArray(product.tags) ? product.tags.map((tag) => typeof tag === "string" ? tag : text(nested(tag as RetailRecord, "tag")?.name ?? (tag as RetailRecord).name, "")).filter(Boolean) : [] }] : []);
 }
 
+function collectionProductCount(collection: RetailRecord, products: CollectionProductOption[]) {
+  if (collection.type !== "DYNAMIC") return Array.isArray(collection.products) ? collection.products.length : Array.isArray(collection.productIds) ? collection.productIds.length : 0;
+  const rules = Array.isArray(collection.rules) ? collection.rules.flatMap((rule): CollectionRule[] => {
+    if (!rule || typeof rule !== "object") return [];
+    const value = rule as RetailRecord;
+    return ["name", "brand", "tag"].includes(String(value.field)) && ["equals", "contains"].includes(String(value.operator)) && typeof value.value === "string"
+      ? [{ field: value.field as CollectionRule["field"], operator: value.operator as CollectionRule["operator"], value: value.value }]
+      : [];
+  }) : [];
+  return dynamicCollectionProductIds(products, rules, collection.match === "ANY" ? "ANY" : "ALL").length;
+}
+
 function ResourcePage({ kind, items, products = [], error, path = `/dashboard/products/${kind}` }: { kind: string; items: RetailRecord[]; products?: RetailRecord[]; error?: string; path?: string }) {
   const config = resourceConfig[kind];
   const productOptions = collectionProductOptions(products);
-  return <><Header title={config.title} description={config.description}/><Notice message={error}/><details className={styles.creator}><summary>+ Add {config.title.toLowerCase().replace(/s$/, "")}</summary>{kind === "collections" ? <CollectionCreateForm products={productOptions}/> : <form action={saveResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_returnTo" value={path}/><div className={styles.inlineForm}>{config.fields.map(([name, label, type]) => <label key={name}>{label}<input required={["productId","name","sku","price","url","slug"].includes(name)} type={type ?? "text"} step={type === "number" ? "any" : undefined} name={name}/></label>)}</div><button className={styles.primary}>Save</button></form>}</details><Table heads={config.heads}>{items.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.name ?? item.url)}</strong><small>{kind === "collections" && Array.isArray(item.products) ? `${item.products.length} products` : text(item.productId)}</small></td><td>{text(item.sku ?? item.slug ?? item.productId)}</td><td>{kind === "variants" ? money(item.price) : text(item.altText ?? item.seoTitle ?? item.id)}</td><td>{text(item.inventory ?? item.sortOrder, "")}</td><td className={styles.actions}>{kind === "collections" && <><a href={storefrontUrl("collections", item)} target="_blank" rel="noopener noreferrer">View</a><Link href={`/dashboard/collections/edit?id=${text(item.id)}`}>Edit</Link></>}{kind === "collections" ? <CollectionDeleteButton id={text(item.id, "")} name={text(item.name, "collection")}/> : <form action={deleteResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_id" value={text(item.id)}/><button>Delete</button></form>}</td></tr>)}</Table></>;
+  return <><Header title={config.title} description={config.description}/><Notice message={error}/><details className={styles.creator}><summary>+ Add {config.title.toLowerCase().replace(/s$/, "")}</summary>{kind === "collections" ? <CollectionCreateForm products={productOptions}/> : <form action={saveResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_returnTo" value={path}/><div className={styles.inlineForm}>{config.fields.map(([name, label, type]) => <label key={name}>{label}<input required={["productId","name","sku","price","url","slug"].includes(name)} type={type ?? "text"} step={type === "number" ? "any" : undefined} name={name}/></label>)}</div><button className={styles.primary}>Save</button></form>}</details><Table heads={config.heads}>{items.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.name ?? item.url)}</strong><small>{kind === "collections" ? `${collectionProductCount(item, productOptions)} products` : text(item.productId)}</small></td><td>{text(item.sku ?? item.slug ?? item.productId)}</td><td>{kind === "variants" ? money(item.price) : text(item.altText ?? item.seoTitle ?? item.id)}</td><td>{text(item.inventory ?? item.sortOrder, "")}</td><td className={styles.actions}>{kind === "collections" && <><a href={storefrontUrl("collections", item)} target="_blank" rel="noopener noreferrer">View</a><Link href={`/dashboard/collections/edit?id=${text(item.id)}`}>Edit</Link></>}{kind === "collections" ? <CollectionDeleteButton id={text(item.id, "")} name={text(item.name, "collection")}/> : <form action={deleteResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_id" value={text(item.id)}/><button>Delete</button></form>}</td></tr>)}</Table></>;
 }
 
 function CollectionEdit({ item, products, error }: { item?: RetailRecord; products: RetailRecord[]; error?: string }) {

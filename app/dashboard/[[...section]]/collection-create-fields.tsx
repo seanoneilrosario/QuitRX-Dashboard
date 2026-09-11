@@ -4,6 +4,7 @@ import { useActionState, useMemo, useState } from "react";
 import { createCollection } from "../actions";
 import { collectionProductIds, dynamicCollectionProductIds, type CollectionProductOption, type CollectionRule } from "@/lib/collection-products";
 import styles from "./dashboard.module.css";
+import { ActionButton } from "./action-controls";
 
 type ProductOption = CollectionProductOption;
 type Rule = CollectionRule & { id: number };
@@ -81,7 +82,7 @@ export function CollectionCreateForm({ products, initial }: { products: ProductO
         <div className={styles.productChoices} aria-label="Matching products">{products.filter((product) => dynamicProductIds.includes(product.id)).map((product) => <label key={product.id}><input type="checkbox" checked readOnly aria-label={`${product.name} matches the collection rules`}/><span>{product.name}<small>{[product.brand, product.slug].filter(Boolean).join(" · ")}</small></span></label>)}{!dynamicProductIds.length && <div><strong>No matching products</strong><small>Change the rules to include products.</small></div>}</div>
       </section>}
     </div>
-    <button className={styles.primary} disabled={pending || (type === "MANUAL" ? !editing && !selected.length : rules.some((rule) => !rule.value.trim()))}>{pending ? "Saving…" : editing ? "Save changes" : "Create collection"}</button>
+    <ActionButton className={styles.primary} pending={pending} pendingLabel={editing ? "Updating…" : "Creating…"} disabled={type === "MANUAL" ? !editing && !selected.length : rules.some((rule) => !rule.value.trim())}>{editing ? "Save changes" : "Create collection"}</ActionButton>
     {state.message && <p role={state.success ? "status" : "alert"} className={`${styles.collectionFeedback} ${state.success ? styles.success : ""}`}>{state.message}</p>}
   </form>;
 }

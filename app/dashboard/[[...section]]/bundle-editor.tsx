@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { saveBundle, type BundleActionState } from "../bundle-actions";
 import type { BundleSelection } from "@/lib/product-bundles";
 import styles from "./dashboard.module.css";
+import { ActionButton } from "./action-controls";
 
 export type BundleProduct = { id: string; label: string };
 export type BundleVariant = { id: string; productId: string; productLabel: string; label: string; sku: string };
@@ -154,7 +155,7 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
         </div>
         {!selections.length && <p className={styles.bundleEmpty}>No selections configured yet.</p>}
         <button type="button" className={styles.secondary} onClick={addSelection}>+ Add selection</button>
-        <div className={styles.formActions}><button type="button" className={styles.secondary} onClick={closeModal}>Cancel</button><button className={styles.primary} type="submit" disabled={!dirty || pending || hasEmptySelection}>{pending ? "Saving…" : dirty ? "Save bundle" : "Saved"}</button></div>
+        <div className={styles.formActions}><button type="button" className={styles.secondary} onClick={closeModal}>Cancel</button><ActionButton className={styles.primary} pending={pending} pendingLabel="Saving…" disabled={!dirty || hasEmptySelection}>{dirty ? "Save bundle" : "Saved"}</ActionButton></div>
       </section>
     </fieldset>
     {state.message && <p role={state.success ? "status" : "alert"} className={styles.notice}>{state.message}</p>}

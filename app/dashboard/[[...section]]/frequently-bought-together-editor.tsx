@@ -3,6 +3,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { saveFrequentlyBoughtTogether } from "../recommendation-actions";
 import styles from "./dashboard.module.css";
+import { ActionButton } from "./action-controls";
 
 export type RecommendationProduct = { id: string; name: string; slug: string; brand: string };
 
@@ -48,7 +49,7 @@ export default function FrequentlyBoughtTogetherEditor({
           {!selected.length && <p className={styles.bundleEmpty}>No recommendations selected.</p>}
         </div></div>
       </div>
-      <div className={styles.formActions}><button className={styles.primary} disabled={pending}>{pending ? "Saving…" : "Save recommendations"}</button></div>
+      <div className={styles.formActions}><ActionButton className={styles.primary} pending={pending} pendingLabel="Saving…">Save recommendations</ActionButton></div>
       {state.message && <p role={state.success ? "status" : "alert"} className={`${styles.collectionFeedback} ${state.success ? styles.success : ""}`}>{state.message}</p>}
     </form>
   </section>;

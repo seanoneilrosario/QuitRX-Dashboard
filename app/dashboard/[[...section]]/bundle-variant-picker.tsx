@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import type { BundleProduct, BundleVariant } from "./bundle-editor";
 import styles from "./dashboard.module.css";
+import { ActionButton } from "./action-controls";
 
 export default function BundleVariantPicker({ products, variants, variantId, disabled }: { products: BundleProduct[]; variants: BundleVariant[]; variantId: string; disabled: boolean }) {
   const router = useRouter();
@@ -54,7 +55,7 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
           <div className={styles.bundleGroupList}>
             {product.variants.map((variant) => <div key={variant.id} className={variant.id === activeVariantId ? styles.bundleGroupActive : undefined}>
               <span><strong>{variant.label}</strong>{variant.sku && <small>SKU: {variant.sku}</small>}</span>
-              <button type="button" className={styles.secondary} disabled={disabled || isPending} onPointerEnter={() => prefetchVariant(variant.id)} onFocus={() => prefetchVariant(variant.id)} onClick={() => openVariant(variant.id)}>{variant.id === activeVariantId && isPending ? "Loading…" : variant.id === activeVariantId ? "Editing" : "Edit"}</button>
+              <ActionButton type="button" className={styles.secondary} disabled={disabled} pending={variant.id === activeVariantId && isPending} pendingLabel="Loading…" onPointerEnter={() => prefetchVariant(variant.id)} onFocus={() => prefetchVariant(variant.id)} onClick={() => openVariant(variant.id)}>{variant.id === activeVariantId ? "Editing" : "Edit"}</ActionButton>
             </div>)}
             {!product.variants.length && <p className={styles.bundleEmpty}>No bundle groups are available for this product.</p>}
           </div>

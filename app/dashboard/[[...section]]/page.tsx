@@ -2,7 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteResource, saveResource } from "../actions";
-import { safeRetailAll, safeRetailList, safeRetailPage, safeRetailRecord, type RetailPagination, type RetailRecord } from "@/lib/quithero-admin";
+import {
+  safeRetailAll,
+  safeRetailList,
+  safeRetailPage,
+  safeRetailRecord,
+  type RetailPagination,
+  type RetailRecord,
+} from "@/lib/quithero-admin";
 import styles from "./dashboard.module.css";
 import TagsInput from "./tags-input";
 import { CollectionCreateForm } from "./collection-create-fields";
@@ -10,22 +17,47 @@ import CollectionDeleteButton from "./collection-delete-button";
 import BundlesPage from "./bundles-page";
 import FrequentlyBoughtTogetherEditor from "./frequently-bought-together-editor";
 import { logoutStaff } from "../login/actions";
-import { getAllFrequentlyBoughtTogether, getFrequentlyBoughtTogether, type FrequentlyBoughtTogether } from "@/lib/sanity-storefront";
-import { dynamicCollectionProductIds, type CollectionProductOption, type CollectionRule } from "@/lib/collection-products";
+import {
+  getAllFrequentlyBoughtTogether,
+  getFrequentlyBoughtTogether,
+  type FrequentlyBoughtTogether,
+} from "@/lib/sanity-storefront";
+import {
+  dynamicCollectionProductIds,
+  type CollectionProductOption,
+  type CollectionRule,
+} from "@/lib/collection-products";
 import { ActionButton, ActionLink } from "./action-controls";
 import ResourceSaveForm from "./resource-save-form";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
 const routes = [
-  [], ["products"], ["products", "create"], ["products", "edit"], ["products", "variants"],
-  ["products", "images"], ["products", "options"], ["products", "tags"], ["products", "collections"], ["products", "frequently-bought"],
-  ["collections"], ["collections", "edit"], ["bundles"],
-  ["customers"], ["customers", "details"], ["customers", "edit"],
-  ["orders"], ["orders", "details"], ["inventory"], ["inventory", "history"],
+  [],
+  ["products"],
+  ["products", "create"],
+  ["products", "edit"],
+  ["products", "variants"],
+  ["products", "images"],
+  ["products", "options"],
+  ["products", "tags"],
+  ["products", "collections"],
+  ["products", "frequently-bought"],
+  ["collections"],
+  ["collections", "edit"],
+  ["bundles"],
+  ["customers"],
+  ["customers", "details"],
+  ["customers", "edit"],
+  ["orders"],
+  ["orders", "details"],
+  ["inventory"],
+  ["inventory", "history"],
 ];
 
-export function generateStaticParams() { return routes.map((section) => ({ section })); }
+export function generateStaticParams() {
+  return routes.map((section) => ({ section }));
+}
 
 type Props = {
   params: Promise<{ section?: string[] }>;
@@ -42,227 +74,1726 @@ const nav = [
   { label: "Inventory", href: "/dashboard/inventory", icon: "▥" },
 ];
 
-function text(value: unknown, fallback = "—") { return typeof value === "string" || typeof value === "number" ? String(value) : fallback; }
-function money(value: unknown) { const amount = Number(value); return Number.isFinite(amount) ? new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(amount) : "—"; }
-const storefrontBaseUrl = (process.env.STOREFRONT_BASE_URL ?? "https://quitrx-website-front-ecru.vercel.app").replace(/\/$/, "");
+function text(value: unknown, fallback = "—") {
+  return typeof value === "string" || typeof value === "number" ? String(value) : fallback;
+}
+function money(value: unknown) {
+  const amount = Number(value);
+  return Number.isFinite(amount)
+    ? new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(amount)
+    : "—";
+}
+const storefrontBaseUrl = (
+  process.env.STOREFRONT_BASE_URL ?? "https://quitrx-website-front-ecru.vercel.app"
+).replace(/\/$/, "");
 function storefrontUrl(resource: "products" | "collections", item: RetailRecord) {
   const url = text(item.url, "");
   if (url) return new URL(url, `${storefrontBaseUrl}/`).toString();
   return `${storefrontBaseUrl}/${resource}/${encodeURIComponent(text(item.slug, ""))}`;
 }
-function nested(item: RetailRecord, key: string) { const value = item[key]; return value && typeof value === "object" ? value as RetailRecord : undefined; }
-function orderItems(order: RetailRecord) { return Array.isArray(order.items) ? order.items as RetailRecord[] : Array.isArray(order.lineItems) ? order.lineItems as RetailRecord[] : []; }
+function nested(item: RetailRecord, key: string) {
+  const value = item[key];
+  return value && typeof value === "object" ? (value as RetailRecord) : undefined;
+}
+function orderItems(order: RetailRecord) {
+  return Array.isArray(order.items)
+    ? (order.items as RetailRecord[])
+    : Array.isArray(order.lineItems)
+      ? (order.lineItems as RetailRecord[])
+      : [];
+}
 function customerName(order: RetailRecord) {
   const customer = nested(order, "customer");
   const firstName = customer?.firstName ?? order.billingFirstName ?? order.shippingFirstName;
   const lastName = customer?.lastName ?? order.billingLastName ?? order.shippingLastName;
-  return [text(firstName, ""), text(lastName, "")].filter(Boolean).join(" ") || text(order.customerEmail ?? customer?.email);
+  return (
+    [text(firstName, ""), text(lastName, "")].filter(Boolean).join(" ") ||
+    text(order.customerEmail ?? customer?.email)
+  );
 }
 function orderDate(value: unknown) {
   const date = new Date(text(value, ""));
-  return Number.isNaN(date.getTime()) ? text(value) : new Intl.DateTimeFormat("en-AU", { dateStyle: "medium", timeStyle: "short" }).format(date);
+  return Number.isNaN(date.getTime())
+    ? text(value)
+    : new Intl.DateTimeFormat("en-AU", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
-function dateInput(value: unknown) { return text(value, "").slice(0, 10); }
+function dateInput(value: unknown) {
+  return text(value, "").slice(0, 10);
+}
 function metafieldValue(item: RetailRecord, key: string) {
-  const metafields = Array.isArray(item.metafields) ? item.metafields as RetailRecord[] : [];
+  const metafields = Array.isArray(item.metafields) ? (item.metafields as RetailRecord[]) : [];
   return metafields.find((field) => field.key === key)?.value;
 }
 
-function Header({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) {
-  return <header className={styles.pageHeader}><div><p className={styles.eyebrow}>QuitRX operations</p><h1>{title}</h1><p>{description}</p></div>{action}</header>;
+function Header({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <header className={styles.pageHeader}>
+      <div>
+        <p className={styles.eyebrow}>QuitRX operations</p>
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </div>
+      {action}
+    </header>
+  );
 }
 
 function Notice({ message }: { message?: string }) {
-  return message ? <div className={styles.notice}><strong>API connection needed</strong><span>{message}</span></div> : null;
+  return message ? (
+    <div className={styles.notice}>
+      <strong>API connection needed</strong>
+      <span>{message}</span>
+    </div>
+  ) : null;
 }
 
 function Search({ placeholder, query }: { placeholder: string; query?: string }) {
-  return <form className={styles.search}><span>⌕</span><input name="q" aria-label="Search" placeholder={placeholder} defaultValue={query}/><ActionButton pendingLabel="Searching…">Search</ActionButton></form>;
+  return (
+    <form className={styles.search}>
+      <span>⌕</span>
+      <input name="q" aria-label="Search" placeholder={placeholder} defaultValue={query} />
+      <ActionButton pendingLabel="Searching…">Search</ActionButton>
+    </form>
+  );
 }
 
 function Status({ value }: { value: unknown }) {
   const label = text(value, "ACTIVE");
-  return <span className={`${styles.status} ${/draft|pending|low/i.test(label) ? styles.warning : ""}`}>{label.replaceAll("_", " ")}</span>;
+  return (
+    <span className={`${styles.status} ${/draft|pending|low/i.test(label) ? styles.warning : ""}`}>
+      {label.replaceAll("_", " ")}
+    </span>
+  );
 }
 
 function Table({ heads, children }: { heads: string[]; children: React.ReactNode }) {
-  return <div className={styles.tableWrap}><table><thead><tr>{heads.map((head) => <th key={head}>{head}</th>)}</tr></thead><tbody>{children}</tbody></table></div>;
+  return (
+    <div className={styles.tableWrap}>
+      <table>
+        <thead>
+          <tr>
+            {heads.map((head) => (
+              <th key={head}>{head}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
 }
 
-function Pagination({ pagination, path, query, status }: { pagination: RetailPagination; path: string; query?: string; status?: string }) {
+function Pagination({
+  pagination,
+  path,
+  query,
+  status,
+}: {
+  pagination: RetailPagination;
+  path: string;
+  query?: string;
+  status?: string;
+}) {
   if (pagination.totalPages <= 1) return null;
-  const href = (page: number) => `${path}?page=${page}${query ? `&q=${encodeURIComponent(query)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}`;
-  return <nav className={styles.pagination} aria-label="Pagination"><span>Showing page {pagination.page} of {pagination.totalPages} · {pagination.total.toLocaleString()} records</span><div>{pagination.page > 1 ? <Link href={href(pagination.page - 1)}>Previous</Link> : <span>Previous</span>}{pagination.page < pagination.totalPages ? <Link href={href(pagination.page + 1)}>Next</Link> : <span>Next</span>}</div></nav>;
+  const href = (page: number) =>
+    `${path}?page=${page}${query ? `&q=${encodeURIComponent(query)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}`;
+  return (
+    <nav className={styles.pagination} aria-label="Pagination">
+      <span>
+        Showing page {pagination.page} of {pagination.totalPages} ·{" "}
+        {pagination.total.toLocaleString()} records
+      </span>
+      <div>
+        {pagination.page > 1 ? (
+          <Link href={href(pagination.page - 1)}>Previous</Link>
+        ) : (
+          <span>Previous</span>
+        )}
+        {pagination.page < pagination.totalPages ? (
+          <Link href={href(pagination.page + 1)}>Next</Link>
+        ) : (
+          <span>Next</span>
+        )}
+      </div>
+    </nav>
+  );
 }
 
-function Dashboard({ productTotal, customerTotal, orders, variants, error }: { productTotal: number; customerTotal: number; orders: RetailRecord[]; variants: RetailRecord[]; error?: string }) {
-  const revenue = orders.reduce((sum, order) => sum + Number(order.total ?? order.totalPrice ?? 0), 0);
+function Dashboard({
+  productTotal,
+  customerTotal,
+  orders,
+  variants,
+  error,
+}: {
+  productTotal: number;
+  customerTotal: number;
+  orders: RetailRecord[];
+  variants: RetailRecord[];
+  error?: string;
+}) {
+  const revenue = orders.reduce(
+    (sum, order) => sum + Number(order.total ?? order.totalPrice ?? 0),
+    0,
+  );
   const stock = variants.reduce((sum, variant) => sum + Number(variant.inventory ?? 0), 0);
   const lowStock = variants.filter((variant) => Number(variant.inventory ?? 0) <= 10).length;
-  return <><Header title="Good morning, team" description="Here’s what’s happening across your store today." action={<ActionLink className={styles.primary} href="/dashboard/products/create">+ Add product</ActionLink>}/><Notice message={error}/>
-    <section className={styles.metrics}>
-      {[ ["Total sales", money(revenue), "Across loaded orders"], ["Orders", orders.length, "Current API results"], ["Products", productTotal, "Product records"], ["Customers", customerTotal, "Customer records"], ["Units in stock", stock, `${lowStock} low-stock variants`] ].map(([label, value, note]) => <article key={label}><span>{label}</span><strong>{value}</strong><small>{note}</small></article>)}
-    </section>
-    <div className={styles.twoCols}><section className={styles.card}><div className={styles.cardTitle}><div><h2>Recent orders</h2><p>Latest customer purchases</p></div><Link href="/dashboard/orders">View all</Link></div><Table heads={["Order", "Customer", "Total", "Status"]}>{orders.slice(0, 5).map((order, index) => <tr key={text(order.id, String(index))}><td><ActionLink href={`/dashboard/orders/details?id=${text(order.id)}`}>#{text(order.orderNumber ?? order.id, String(index + 1))}</ActionLink></td><td>{text(order.customerName ?? nested(order, "customer")?.email)}</td><td>{money(order.total ?? order.totalPrice)}</td><td><Status value={order.status}/></td></tr>)}</Table></section>
-    <section className={styles.card}><div className={styles.cardTitle}><div><h2>Inventory health</h2><p>Variants needing attention</p></div><Link href="/dashboard/inventory">Manage</Link></div><div className={styles.stockList}>{variants.slice(0, 6).map((variant, index) => <div key={text(variant.id, String(index))}><span><strong>{text(variant.name)}</strong><small>{text(variant.sku)}</small></span><b>{text(variant.inventory, "0")} units</b></div>)}</div></section></div></>;
+  return (
+    <>
+      <Header
+        title="Good morning, team"
+        description="Here’s what’s happening across your store today."
+        action={
+          <ActionLink className={styles.primary} href="/dashboard/products/create">
+            + Add product
+          </ActionLink>
+        }
+      />
+      <Notice message={error} />
+      <section className={styles.metrics}>
+        {[
+          ["Total sales", money(revenue), "Across loaded orders"],
+          ["Orders", orders.length, "Current API results"],
+          ["Products", productTotal, "Product records"],
+          ["Customers", customerTotal, "Customer records"],
+          ["Units in stock", stock, `${lowStock} low-stock variants`],
+        ].map(([label, value, note]) => (
+          <article key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+            <small>{note}</small>
+          </article>
+        ))}
+      </section>
+      <div className={styles.twoCols}>
+        <section className={styles.card}>
+          <div className={styles.cardTitle}>
+            <div>
+              <h2>Recent orders</h2>
+              <p>Latest customer purchases</p>
+            </div>
+            <Link href="/dashboard/orders">View all</Link>
+          </div>
+          <Table heads={["Order", "Customer", "Total", "Status"]}>
+            {orders.slice(0, 5).map((order, index) => (
+              <tr key={text(order.id, String(index))}>
+                <td>
+                  <ActionLink href={`/dashboard/orders/details?id=${text(order.id)}`}>
+                    #{text(order.orderNumber ?? order.id, String(index + 1))}
+                  </ActionLink>
+                </td>
+                <td>{text(order.customerName ?? nested(order, "customer")?.email)}</td>
+                <td>{money(order.total ?? order.totalPrice)}</td>
+                <td>
+                  <Status value={order.status} />
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </section>
+        <section className={styles.card}>
+          <div className={styles.cardTitle}>
+            <div>
+              <h2>Inventory health</h2>
+              <p>Variants needing attention</p>
+            </div>
+            <Link href="/dashboard/inventory">Manage</Link>
+          </div>
+          <div className={styles.stockList}>
+            {variants.slice(0, 6).map((variant, index) => (
+              <div key={text(variant.id, String(index))}>
+                <span>
+                  <strong>{text(variant.name)}</strong>
+                  <small>{text(variant.sku)}</small>
+                </span>
+                <b>{text(variant.inventory, "0")} units</b>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </>
+  );
 }
 
-function Products({ items, query, status, page, pagination, error }: { items: RetailRecord[]; query: string; status: string; page: number; pagination: RetailPagination; error?: string }) {
-  const filtered = items.filter((item) => {
-    const matchesQuery = !query || `${text(item.name)} ${text(item.slug)} ${text(item.status)} ${text(nested(item, "brand")?.name)} ${text(nested(item, "productType")?.name)}`.toLowerCase().includes(query.toLowerCase());
-    const matchesStatus = !status || text(item.status, "").toLowerCase() === status.toLowerCase();
-    return matchesQuery && matchesStatus;
-  });
-  const isFiltered = Boolean(query || status);
-  const filteredPagination = isFiltered ? { page, limit: 50, total: filtered.length, totalPages: Math.max(1, Math.ceil(filtered.length / 50)) } : pagination;
-  const visibleItems = isFiltered ? filtered.slice((page - 1) * 50, page * 50) : filtered;
-  return <><Header title="Products" description="Manage products and everything customers see in your store." action={<ActionLink className={styles.primary} href="/dashboard/products/create" pendingLabel="Loading…">+ Create product</ActionLink>}/><Notice message={error}/><div className={styles.toolbar}><form className={styles.search}><span>⌕</span><input name="q" aria-label="Search products" placeholder="Search name, handle, brand or type" defaultValue={query}/><select name="status" aria-label="Filter by status" defaultValue={status}><option value="">All statuses</option><option value="ACTIVE">Active</option><option value="DRAFT">Draft</option><option value="ARCHIVED">Archived</option></select><ActionButton pendingLabel="Applying…">Apply</ActionButton></form><div className={styles.subnav}>{[["Frequently Bought","frequently-bought"],["Variants","variants"],["Images","images"],["Options","options"],["Tags","tags"]].map(([label, path]) => <Link key={path} href={`/dashboard/products/${path}`}>{label}</Link>)}</div></div><Table heads={["Product", "Brand", "Type", "Status", "Actions"]}>{visibleItems.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.name)}</strong><small>{text(item.slug)}</small></td><td>{text(nested(item, "brand")?.name ?? item.brandId)}</td><td>{text(nested(item, "productType")?.name ?? item.productTypeId)}</td><td><Status value={item.status}/></td><td className={styles.actions}><a href={storefrontUrl("products", item)} target="_blank" rel="noopener noreferrer">View</a><ActionLink href={`/dashboard/products/edit?id=${text(item.id)}`}>Edit</ActionLink><form action={deleteResource}><input type="hidden" name="_resource" value="products"/><input type="hidden" name="_id" value={text(item.id)}/><ActionButton pendingLabel="Deleting…">Delete</ActionButton></form></td></tr>)}</Table>{!visibleItems.length ? <div className={styles.notice}><strong>No products found</strong><span>Try changing the search text or status filter.</span></div> : null}<Pagination pagination={filteredPagination} path="/dashboard/products" query={query} status={status}/></>;
+function Products({
+  items,
+  query,
+  status,
+  page,
+  error,
+}: {
+  items: RetailRecord[];
+  query: string;
+  status: string;
+  page: number;
+  error?: string;
+}) {
+  const filtered = items
+    .filter((item) => {
+      const matchesQuery =
+        !query ||
+        `${text(item.name)} ${text(item.slug)} ${text(item.status)} ${text(nested(item, "brand")?.name)} ${text(nested(item, "productType")?.name)}`
+          .toLowerCase()
+          .includes(query.toLowerCase());
+      const matchesStatus =
+        !status || text(item.status, "").toLowerCase() === status.toLowerCase();
+      return matchesQuery && matchesStatus;
+    })
+    .sort((a, b) => {
+      const newest = Date.parse(text(b.createdAt, ""));
+      const oldest = Date.parse(text(a.createdAt, ""));
+      return (Number.isNaN(newest) ? 0 : newest) - (Number.isNaN(oldest) ? 0 : oldest);
+    });
+  const filteredPagination = {
+    page,
+    limit: 50,
+    total: filtered.length,
+    totalPages: Math.max(1, Math.ceil(filtered.length / 50)),
+  };
+  const visibleItems = filtered.slice((page - 1) * 50, page * 50);
+  return (
+    <>
+      <Header
+        title="Products"
+        description="Manage products and everything customers see in your store."
+        action={
+          <ActionLink
+            className={styles.primary}
+            href="/dashboard/products/create"
+            pendingLabel="Loading…"
+          >
+            + Create product
+          </ActionLink>
+        }
+      />
+      <Notice message={error} />
+      <div className={styles.toolbar}>
+        <form className={styles.search}>
+          <span>⌕</span>
+          <input
+            name="q"
+            aria-label="Search products"
+            placeholder="Search name, handle, brand or type"
+            defaultValue={query}
+          />
+          <select name="status" aria-label="Filter by status" defaultValue={status}>
+            <option value="">All statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="DRAFT">Draft</option>
+            <option value="ARCHIVED">Archived</option>
+          </select>
+          <ActionButton pendingLabel="Applying…">Apply</ActionButton>
+        </form>
+        <div className={styles.subnav}>
+          {[
+            ["Frequently Bought", "frequently-bought"],
+            ["Variants", "variants"],
+            ["Images", "images"],
+            ["Options", "options"],
+            ["Tags", "tags"],
+          ].map(([label, path]) => (
+            <Link key={path} href={`/dashboard/products/${path}`}>
+              {label}
+            </Link>
+          ))}
+        </div>
+      </div>
+      <Table heads={["Product", "Brand", "Type", "Status", "Actions"]}>
+        {visibleItems.map((item, index) => (
+          <tr key={text(item.id, String(index))}>
+            <td>
+              <strong>{text(item.name)}</strong>
+              <small>{text(item.slug)}</small>
+            </td>
+            <td>{text(nested(item, "brand")?.name ?? item.brandId)}</td>
+            <td>{text(nested(item, "productType")?.name ?? item.productTypeId)}</td>
+            <td>
+              <Status value={item.status} />
+            </td>
+            <td className={styles.actions}>
+              <a href={storefrontUrl("products", item)} target="_blank" rel="noopener noreferrer">
+                View
+              </a>
+              <ActionLink href={`/dashboard/products/edit?id=${text(item.id)}`}>Edit</ActionLink>
+              <form action={deleteResource}>
+                <input type="hidden" name="_resource" value="products" />
+                <input type="hidden" name="_id" value={text(item.id)} />
+                <ActionButton pendingLabel="Deleting…">Delete</ActionButton>
+              </form>
+            </td>
+          </tr>
+        ))}
+      </Table>
+      {!visibleItems.length ? (
+        <div className={styles.notice}>
+          <strong>No products found</strong>
+          <span>Try changing the search text or status filter.</span>
+        </div>
+      ) : null}
+      <Pagination
+        pagination={filteredPagination}
+        path="/dashboard/products"
+        query={query}
+        status={status}
+      />
+    </>
+  );
 }
 
-function FrequentlyBoughtList({ recommendations, products, query, error }: { recommendations: FrequentlyBoughtTogether[]; products: RetailRecord[]; query: string; error?: string }) {
-  const productById = new Map(products.flatMap((product) => typeof product.id === "string" ? [[product.id, product] as const] : []));
+function FrequentlyBoughtList({
+  recommendations,
+  products,
+  query,
+  error,
+}: {
+  recommendations: FrequentlyBoughtTogether[];
+  products: RetailRecord[];
+  query: string;
+  error?: string;
+}) {
+  const productById = new Map(
+    products.flatMap((product) =>
+      typeof product.id === "string" ? [[product.id, product] as const] : [],
+    ),
+  );
   const rows = recommendations.filter((recommendation) => {
     if (!query) return true;
     const source = productById.get(recommendation.productId);
-    const related = recommendation.relatedProductIds.map((id) => text(productById.get(id)?.name, id)).join(" ");
-    return `${text(source?.name, recommendation.productId)} ${text(source?.slug, "")} ${related}`.toLowerCase().includes(query.toLowerCase());
+    const related = recommendation.relatedProductIds
+      .map((id) => text(productById.get(id)?.name, id))
+      .join(" ");
+    return `${text(source?.name, recommendation.productId)} ${text(source?.slug, "")} ${related}`
+      .toLowerCase()
+      .includes(query.toLowerCase());
   });
-  return <><Header title="Frequently Bought Together" description="Monitor products that have storefront recommendations configured." action={<Link className={styles.secondary} href="/dashboard/products">Back to products</Link>}/><Notice message={error}/><div className={styles.toolbar}><Search placeholder="Search product or recommendation" query={query}/></div><Table heads={["Product", "Recommended products", "Count", "Last updated", "Actions"]}>{rows.map((recommendation) => { const source = productById.get(recommendation.productId); return <tr key={recommendation.productId}><td><strong>{text(source?.name, "Product unavailable")}</strong><small>{text(source?.slug, recommendation.productId)}</small></td><td><div className={styles.recommendationSummary}>{recommendation.relatedProductIds.map((id) => <span key={id}>{text(productById.get(id)?.name, id)}</span>)}</div></td><td>{recommendation.relatedProductIds.length}</td><td>{orderDate(recommendation.updatedAt)}</td><td><ActionLink href={`/dashboard/products/edit?id=${encodeURIComponent(recommendation.productId)}`}>Edit</ActionLink></td></tr>; })}</Table>{!rows.length && <div className={styles.notice}><strong>No frequently bought products found</strong><span>{query ? "Try changing the search text." : "Add recommendations from a product's Edit page."}</span></div>}</>;
+  return (
+    <>
+      <Header
+        title="Frequently Bought Together"
+        description="Monitor products that have storefront recommendations configured."
+        action={
+          <Link className={styles.secondary} href="/dashboard/products">
+            Back to products
+          </Link>
+        }
+      />
+      <Notice message={error} />
+      <div className={styles.toolbar}>
+        <Search placeholder="Search product or recommendation" query={query} />
+      </div>
+      <Table heads={["Product", "Recommended products", "Count", "Last updated", "Actions"]}>
+        {rows.map((recommendation) => {
+          const source = productById.get(recommendation.productId);
+          return (
+            <tr key={recommendation.productId}>
+              <td>
+                <strong>{text(source?.name, "Product unavailable")}</strong>
+                <small>{text(source?.slug, recommendation.productId)}</small>
+              </td>
+              <td>
+                <div className={styles.recommendationSummary}>
+                  {recommendation.relatedProductIds.map((id) => (
+                    <span key={id}>{text(productById.get(id)?.name, id)}</span>
+                  ))}
+                </div>
+              </td>
+              <td>{recommendation.relatedProductIds.length}</td>
+              <td>{orderDate(recommendation.updatedAt)}</td>
+              <td>
+                <ActionLink
+                  href={`/dashboard/products/edit?id=${encodeURIComponent(recommendation.productId)}`}
+                >
+                  Edit
+                </ActionLink>
+              </td>
+            </tr>
+          );
+        })}
+      </Table>
+      {!rows.length && (
+        <div className={styles.notice}>
+          <strong>No frequently bought products found</strong>
+          <span>
+            {query
+              ? "Try changing the search text."
+              : "Add recommendations from a product's Edit page."}
+          </span>
+        </div>
+      )}
+    </>
+  );
 }
 
-function ProductForm({ item, brands, productTypes, collections, availableTags, products = [], recommendationIds = [], recommendationError }: { item?: RetailRecord; brands: RetailRecord[]; productTypes: RetailRecord[]; collections: RetailRecord[]; availableTags: RetailRecord[]; products?: RetailRecord[]; recommendationIds?: string[]; recommendationError?: string }) {
-  const tagOptions = availableTags.flatMap((tag) => typeof tag.id === "string" && typeof tag.name === "string" ? [{ value: tag.id, label: tag.name }] : []);
-  const productTags = Array.isArray(item?.tags) ? item.tags.flatMap((tag) => {
-    if (typeof tag === "string") return [{ value: tag, label: tagOptions.find((option) => option.value === tag)?.label ?? tag }];
-    if (!tag || typeof tag !== "object") return [];
-    const record = tag as RetailRecord;
-    const linkedTag = nested(record, "tag");
-    const value = text(record.tagId ?? linkedTag?.id ?? record.id ?? record.name, "");
-    return value ? [{ value, label: text(linkedTag?.name ?? record.name, tagOptions.find((option) => option.value === value)?.label ?? value) }] : [];
-  }) : [];
-  const productCollections = collections.filter((collection) => Array.isArray(collection.products) && (collection.products as RetailRecord[]).some((product) => product.productId === item?.id || nested(product, "product")?.id === item?.id || (!product.collectionId && product.id === item?.id)));
-  const recommendationProducts = products.flatMap((product) => typeof product.id === "string" ? [{ id: product.id, name: text(product.name, "Unnamed product"), slug: text(product.slug, ""), brand: text(nested(product, "brand")?.name ?? product.brand, "") }] : []);
-  const existingProductTags = Array.isArray(item?.tags) ? item.tags.flatMap((tag) => {
-    if (!tag || typeof tag !== "object") return [];
-    const record = tag as RetailRecord;
-    const linkedTag = nested(record, "tag");
-    const tagId = text(record.tagId ?? linkedTag?.id ?? (!linkedTag ? record.id : undefined), "");
-    return tagId ? [{ id: typeof record.tagId === "string" || linkedTag ? text(record.id, "") : "", tagId }] : [];
-  }) : [];
-  return <><Header title={item ? "Edit product" : "Create product"} description="Product information is saved directly to the QuitHero Retail API." action={<Link className={styles.secondary} href="/dashboard/products">Back to products</Link>}/><ResourceSaveForm className={styles.form}><input type="hidden" name="_resource" value="products"/><input type="hidden" name="_id" value={text(item?.id, "")}/><input type="hidden" name="_existingProductTags" value={JSON.stringify(existingProductTags)}/><input type="hidden" name="_returnTo" value="/dashboard/products"/><section className={styles.formCard}><h2>Product details</h2><div className={styles.formGrid}><label>Name<input required name="name" defaultValue={text(item?.name, "")}/></label><label>Slug<input required name="slug" defaultValue={text(item?.slug, "")}/></label><label className={styles.full}>Short description<textarea name="shortDescription" defaultValue={text(item?.shortDescription, "")}/></label><label className={styles.full}>Description<textarea rows={7} name="description" defaultValue={text(item?.description, "")}/></label><label>Status<select name="status" defaultValue={text(item?.status, "DRAFT")}><option>DRAFT</option><option>ACTIVE</option><option>ARCHIVED</option></select></label><label>Primary image ID<input name="imageId" defaultValue={text(item?.imageId, "")}/></label><label>SEO title<input name="seoTitle" defaultValue={text(item?.seoTitle, "")}/></label><label>SEO description<input name="seoDescription" defaultValue={text(item?.seoDescription, "")}/></label></div></section><section className={styles.formCard}><h2>Product organization</h2><div className={styles.organizationGrid}><label>Type<select required name="productTypeId" defaultValue={text(item?.productTypeId ?? nested(item ?? {}, "productType")?.id, "")}><option value="" disabled>Select a type</option>{productTypes.map((type) => <option key={text(type.id)} value={text(type.id)}>{text(type.name)}</option>)}</select></label><label>Vendor<select required name="brandId" defaultValue={text(item?.brandId ?? nested(item ?? {}, "brand")?.id, "")}><option value="" disabled>Select a vendor</option>{brands.map((brand) => <option key={text(brand.id)} value={text(brand.id)}>{text(brand.name)}</option>)}</select></label><div className={styles.organizationField}><div><span>Collections</span><Link href="/dashboard/collections" aria-label="Manage collections">+</Link></div><div className={styles.organizationChips}>{productCollections.length ? productCollections.map((collection) => <span className={styles.tagChip} key={text(collection.id)}>{text(collection.name)}</span>) : <small>No collections assigned</small>}</div></div><div className={styles.organizationField}><div><span>Tags</span><Link href="/dashboard/products/tags" aria-label="Manage tags">+</Link></div><TagsInput initialTags={productTags} options={tagOptions} ariaLabel="Add product tag" allowCreate/></div></div></section><div className={styles.formActions}><Link href="/dashboard/products">Cancel</Link><ActionButton className={styles.primary} pendingLabel={item ? "Saving…" : "Creating…"}>{item ? "Save changes" : "Create product"}</ActionButton></div></ResourceSaveForm>{typeof item?.id === "string" && <><Notice message={recommendationError}/><FrequentlyBoughtTogetherEditor productId={item.id} products={recommendationProducts} initialIds={recommendationIds}/></>}</>;
+function ProductForm({
+  item,
+  brands,
+  productTypes,
+  collections,
+  availableTags,
+  products = [],
+  recommendationIds = [],
+  recommendationError,
+}: {
+  item?: RetailRecord;
+  brands: RetailRecord[];
+  productTypes: RetailRecord[];
+  collections: RetailRecord[];
+  availableTags: RetailRecord[];
+  products?: RetailRecord[];
+  recommendationIds?: string[];
+  recommendationError?: string;
+}) {
+  const tagOptions = availableTags.flatMap((tag) =>
+    typeof tag.id === "string" && typeof tag.name === "string"
+      ? [{ value: tag.id, label: tag.name }]
+      : [],
+  );
+  const productTags = Array.isArray(item?.tags)
+    ? item.tags.flatMap((tag) => {
+        if (typeof tag === "string")
+          return [
+            { value: tag, label: tagOptions.find((option) => option.value === tag)?.label ?? tag },
+          ];
+        if (!tag || typeof tag !== "object") return [];
+        const record = tag as RetailRecord;
+        const linkedTag = nested(record, "tag");
+        const value = text(record.tagId ?? linkedTag?.id ?? record.id ?? record.name, "");
+        return value
+          ? [
+              {
+                value,
+                label: text(
+                  linkedTag?.name ?? record.name,
+                  tagOptions.find((option) => option.value === value)?.label ?? value,
+                ),
+              },
+            ]
+          : [];
+      })
+    : [];
+  const productCollections = collections.filter(
+    (collection) =>
+      Array.isArray(collection.products) &&
+      (collection.products as RetailRecord[]).some(
+        (product) =>
+          product.productId === item?.id ||
+          nested(product, "product")?.id === item?.id ||
+          (!product.collectionId && product.id === item?.id),
+      ),
+  );
+  const recommendationProducts = products.flatMap((product) =>
+    typeof product.id === "string"
+      ? [
+          {
+            id: product.id,
+            name: text(product.name, "Unnamed product"),
+            slug: text(product.slug, ""),
+            brand: text(nested(product, "brand")?.name ?? product.brand, ""),
+          },
+        ]
+      : [],
+  );
+  return (
+    <>
+      <Header
+        title={item ? "Edit product" : "Create product"}
+        description="Product information is saved directly to the QuitHero Retail API."
+        action={
+          <Link className={styles.secondary} href="/dashboard/products">
+            Back to products
+          </Link>
+        }
+      />
+      <ResourceSaveForm className={styles.form}>
+        <input type="hidden" name="_resource" value="products" />
+        <input type="hidden" name="_id" value={text(item?.id, "")} />
+        <input type="hidden" name="_returnTo" value="/dashboard/products" />
+        <section className={styles.formCard}>
+          <h2>Product details</h2>
+          <div className={styles.formGrid}>
+            <label>
+              Name
+              <input required name="name" defaultValue={text(item?.name, "")} />
+            </label>
+            <label>
+              Slug
+              <input required name="slug" defaultValue={text(item?.slug, "")} />
+            </label>
+            <label className={styles.full}>
+              Short description
+              <textarea name="shortDescription" defaultValue={text(item?.shortDescription, "")} />
+            </label>
+            <label className={styles.full}>
+              Description
+              <textarea rows={7} name="description" defaultValue={text(item?.description, "")} />
+            </label>
+            <label>
+              Status
+              <select name="status" defaultValue={text(item?.status, "DRAFT")}>
+                <option>DRAFT</option>
+                <option>ACTIVE</option>
+                <option>ARCHIVED</option>
+              </select>
+            </label>
+            <label>
+              Primary image ID
+              <input name="imageId" defaultValue={text(item?.imageId, "")} />
+            </label>
+            <label>
+              SEO title
+              <input name="seoTitle" defaultValue={text(item?.seoTitle, "")} />
+            </label>
+            <label>
+              SEO description
+              <input name="seoDescription" defaultValue={text(item?.seoDescription, "")} />
+            </label>
+          </div>
+        </section>
+        <section className={styles.formCard}>
+          <h2>Product organization</h2>
+          <div className={styles.organizationGrid}>
+            <label>
+              Type
+              <select
+                required
+                name="productTypeId"
+                defaultValue={text(
+                  item?.productTypeId ?? nested(item ?? {}, "productType")?.id,
+                  "",
+                )}
+              >
+                <option value="" disabled>
+                  Select a type
+                </option>
+                {productTypes.map((type) => (
+                  <option key={text(type.id)} value={text(type.id)}>
+                    {text(type.name)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Vendor
+              <select
+                required
+                name="brandId"
+                defaultValue={text(item?.brandId ?? nested(item ?? {}, "brand")?.id, "")}
+              >
+                <option value="" disabled>
+                  Select a vendor
+                </option>
+                {brands.map((brand) => (
+                  <option key={text(brand.id)} value={text(brand.id)}>
+                    {text(brand.name)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className={styles.organizationField}>
+              <div>
+                <span>Collections</span>
+                <Link href="/dashboard/collections" aria-label="Manage collections">
+                  +
+                </Link>
+              </div>
+              <div className={styles.organizationChips}>
+                {productCollections.length ? (
+                  productCollections.map((collection) => (
+                    <span className={styles.tagChip} key={text(collection.id)}>
+                      {text(collection.name)}
+                    </span>
+                  ))
+                ) : (
+                  <small>No collections assigned</small>
+                )}
+              </div>
+            </div>
+            <div className={styles.organizationField}>
+              <div>
+                <span>Tags</span>
+                <Link href="/dashboard/products/tags" aria-label="Manage tags">
+                  +
+                </Link>
+              </div>
+              <TagsInput
+                initialTags={productTags}
+                options={tagOptions}
+                ariaLabel="Select product tags"
+                allowCreate={false}
+              />
+              <small>
+                You can select existing tags, but QuitHero currently does not expose a working API
+                field for saving product-tag assignments.
+              </small>
+            </div>
+          </div>
+        </section>
+        <div className={styles.formActions}>
+          <Link href="/dashboard/products">Cancel</Link>
+          <ActionButton className={styles.primary} pendingLabel={item ? "Saving…" : "Creating…"}>
+            {item ? "Save changes" : "Create product"}
+          </ActionButton>
+        </div>
+      </ResourceSaveForm>
+      {typeof item?.id === "string" && (
+        <>
+          <Notice message={recommendationError} />
+          <FrequentlyBoughtTogetherEditor
+            productId={item.id}
+            products={recommendationProducts}
+            initialIds={recommendationIds}
+          />
+        </>
+      )}
+    </>
+  );
 }
 
-const resourceConfig: Record<string, { title: string; description: string; resource: string; heads: string[]; fields: [string, string, string?][] }> = {
-  variants: { title: "Product variants", description: "Manage pricing, SKUs and inventory by variant.", resource: "product-variants", heads: ["Variant", "SKU", "Price", "Available", "Actions"], fields: [["productId","Product ID"],["name","Variant name"],["sku","SKU"],["price","Price","number"],["inventory","Inventory","number"]] },
-  images: { title: "Product images", description: "Add image URLs, alt text and display order.", resource: "product-images", heads: ["Image URL", "Product", "Alt text", "Order", "Actions"], fields: [["productId","Product ID"],["url","Image URL","url"],["altText","Alt text"],["sortOrder","Sort order","number"]] },
-  options: { title: "Options & attributes", description: "Create reusable options such as strength, flavour or size.", resource: "product-options", heads: ["Option", "Slug", "ID", "", "Actions"], fields: [["name","Option name"],["slug","Slug"]] },
-  tags: { title: "Tags", description: "Organise and merchandise products with tags.", resource: "tags", heads: ["Tag", "Slug", "SEO title", "", "Actions"], fields: [["name","Tag name"],["slug","Slug"],["image","Image URL","url"],["seoTitle","SEO title"]] },
-  collections: { title: "Collections", description: "Group products into storefront collections.", resource: "collections", heads: ["Collection", "Slug", "SEO title", "", "Actions"], fields: [["name","Collection name"],["slug","Slug"],["description","Description"],["image","Image URL","url"],["seoTitle","SEO title"]] },
+const resourceConfig: Record<
+  string,
+  {
+    title: string;
+    description: string;
+    resource: string;
+    heads: string[];
+    fields: [string, string, string?][];
+  }
+> = {
+  variants: {
+    title: "Product variants",
+    description: "Manage pricing, SKUs and inventory by variant.",
+    resource: "product-variants",
+    heads: ["Variant", "SKU", "Price", "Available", "Actions"],
+    fields: [
+      ["productId", "Product ID"],
+      ["name", "Variant name"],
+      ["sku", "SKU"],
+      ["price", "Price", "number"],
+      ["inventory", "Inventory", "number"],
+    ],
+  },
+  images: {
+    title: "Product images",
+    description: "Add image URLs, alt text and display order.",
+    resource: "product-images",
+    heads: ["Image URL", "Product", "Alt text", "Order", "Actions"],
+    fields: [
+      ["productId", "Product ID"],
+      ["url", "Image URL", "url"],
+      ["altText", "Alt text"],
+      ["sortOrder", "Sort order", "number"],
+    ],
+  },
+  options: {
+    title: "Options & attributes",
+    description: "Create reusable options such as strength, flavour or size.",
+    resource: "product-options",
+    heads: ["Option", "Slug", "ID", "", "Actions"],
+    fields: [
+      ["name", "Option name"],
+      ["slug", "Slug"],
+    ],
+  },
+  tags: {
+    title: "Tags",
+    description: "Organise and merchandise products with tags.",
+    resource: "tags",
+    heads: ["Tag", "Slug", "SEO title", "", "Actions"],
+    fields: [
+      ["name", "Tag name"],
+      ["slug", "Slug"],
+      ["image", "Image URL", "url"],
+      ["seoTitle", "SEO title"],
+    ],
+  },
+  collections: {
+    title: "Collections",
+    description: "Group products into storefront collections.",
+    resource: "collections",
+    heads: ["Collection", "Slug", "SEO title", "", "Actions"],
+    fields: [
+      ["name", "Collection name"],
+      ["slug", "Slug"],
+      ["description", "Description"],
+      ["image", "Image URL", "url"],
+      ["seoTitle", "SEO title"],
+    ],
+  },
 };
 
 function collectionProductOptions(products: RetailRecord[]) {
-  return products.flatMap((product) => typeof product.id === "string" ? [{ id: product.id, name: text(product.name, "Unnamed product"), slug: text(product.slug, ""), brand: text(nested(product, "brand")?.name ?? product.brand, ""), tags: Array.isArray(product.tags) ? product.tags.map((tag) => typeof tag === "string" ? tag : text(nested(tag as RetailRecord, "tag")?.name ?? (tag as RetailRecord).name, "")).filter(Boolean) : [] }] : []);
+  return products.flatMap((product) =>
+    typeof product.id === "string"
+      ? [
+          {
+            id: product.id,
+            name: text(product.name, "Unnamed product"),
+            slug: text(product.slug, ""),
+            brand: text(nested(product, "brand")?.name ?? product.brand, ""),
+            tags: Array.isArray(product.tags)
+              ? product.tags
+                  .map((tag) =>
+                    typeof tag === "string"
+                      ? tag
+                      : text(
+                          nested(tag as RetailRecord, "tag")?.name ?? (tag as RetailRecord).name,
+                          "",
+                        ),
+                  )
+                  .filter(Boolean)
+              : [],
+          },
+        ]
+      : [],
+  );
 }
 
 function collectionProductCount(collection: RetailRecord, products: CollectionProductOption[]) {
-  if (collection.type !== "DYNAMIC") return Array.isArray(collection.products) ? collection.products.length : Array.isArray(collection.productIds) ? collection.productIds.length : 0;
-  const rules = Array.isArray(collection.rules) ? collection.rules.flatMap((rule): CollectionRule[] => {
-    if (!rule || typeof rule !== "object") return [];
-    const value = rule as RetailRecord;
-    return ["name", "brand", "tag"].includes(String(value.field)) && ["equals", "contains"].includes(String(value.operator)) && typeof value.value === "string"
-      ? [{ field: value.field as CollectionRule["field"], operator: value.operator as CollectionRule["operator"], value: value.value }]
-      : [];
-  }) : [];
-  return dynamicCollectionProductIds(products, rules, collection.match === "ANY" ? "ANY" : "ALL").length;
+  if (collection.type !== "DYNAMIC")
+    return Array.isArray(collection.products)
+      ? collection.products.length
+      : Array.isArray(collection.productIds)
+        ? collection.productIds.length
+        : 0;
+  const rules = Array.isArray(collection.rules)
+    ? collection.rules.flatMap((rule): CollectionRule[] => {
+        if (!rule || typeof rule !== "object") return [];
+        const value = rule as RetailRecord;
+        return ["name", "brand", "tag"].includes(String(value.field)) &&
+          ["equals", "contains"].includes(String(value.operator)) &&
+          typeof value.value === "string"
+          ? [
+              {
+                field: value.field as CollectionRule["field"],
+                operator: value.operator as CollectionRule["operator"],
+                value: value.value,
+              },
+            ]
+          : [];
+      })
+    : [];
+  return dynamicCollectionProductIds(products, rules, collection.match === "ANY" ? "ANY" : "ALL")
+    .length;
 }
 
-function ResourcePage({ kind, items, products = [], error, path = `/dashboard/products/${kind}` }: { kind: string; items: RetailRecord[]; products?: RetailRecord[]; error?: string; path?: string }) {
+function ResourcePage({
+  kind,
+  items,
+  products = [],
+  error,
+  path = `/dashboard/products/${kind}`,
+}: {
+  kind: string;
+  items: RetailRecord[];
+  products?: RetailRecord[];
+  error?: string;
+  path?: string;
+}) {
   const config = resourceConfig[kind];
   const productOptions = collectionProductOptions(products);
-  return <><Header title={config.title} description={config.description}/><Notice message={error}/><details className={styles.creator}><summary>+ Add {config.title.toLowerCase().replace(/s$/, "")}</summary>{kind === "collections" ? <CollectionCreateForm products={productOptions}/> : <form action={saveResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_returnTo" value={path}/><div className={styles.inlineForm}>{config.fields.map(([name, label, type]) => <label key={name}>{label}<input required={["productId","name","sku","price","url","slug"].includes(name)} type={type ?? "text"} step={type === "number" ? "any" : undefined} name={name}/></label>)}</div><ActionButton className={styles.primary} pendingLabel="Saving…">Save</ActionButton></form>}</details><Table heads={config.heads}>{items.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.name ?? item.url)}</strong><small>{kind === "collections" ? `${collectionProductCount(item, productOptions)} products` : text(item.productId)}</small></td><td>{text(item.sku ?? item.slug ?? item.productId)}</td><td>{kind === "variants" ? money(item.price) : text(item.altText ?? item.seoTitle ?? item.id)}</td><td>{text(item.inventory ?? item.sortOrder, "")}</td><td className={styles.actions}>{kind === "collections" && <><a href={storefrontUrl("collections", item)} target="_blank" rel="noopener noreferrer">View</a><ActionLink href={`/dashboard/collections/edit?id=${text(item.id)}`}>Edit</ActionLink></>}{kind === "collections" ? <CollectionDeleteButton id={text(item.id, "")} name={text(item.name, "collection")}/> : <form action={deleteResource}><input type="hidden" name="_resource" value={config.resource}/><input type="hidden" name="_id" value={text(item.id)}/><ActionButton pendingLabel="Deleting…">Delete</ActionButton></form>}</td></tr>)}</Table></>;
+  return (
+    <>
+      <Header title={config.title} description={config.description} />
+      <Notice message={error} />
+      <details className={styles.creator}>
+        <summary>+ Add {config.title.toLowerCase().replace(/s$/, "")}</summary>
+        {kind === "collections" ? (
+          <CollectionCreateForm products={productOptions} />
+        ) : (
+          <form action={saveResource}>
+            <input type="hidden" name="_resource" value={config.resource} />
+            <input type="hidden" name="_returnTo" value={path} />
+            <div className={styles.inlineForm}>
+              {config.fields.map(([name, label, type]) => (
+                <label key={name}>
+                  {label}
+                  <input
+                    required={["productId", "name", "sku", "price", "url", "slug"].includes(name)}
+                    type={type ?? "text"}
+                    step={type === "number" ? "any" : undefined}
+                    name={name}
+                  />
+                </label>
+              ))}
+            </div>
+            <ActionButton className={styles.primary} pendingLabel="Saving…">
+              Save
+            </ActionButton>
+          </form>
+        )}
+      </details>
+      <Table heads={config.heads}>
+        {items.map((item, index) => (
+          <tr key={text(item.id, String(index))}>
+            <td>
+              <strong>{text(item.name ?? item.url)}</strong>
+              <small>
+                {kind === "collections"
+                  ? `${collectionProductCount(item, productOptions)} products`
+                  : text(item.productId)}
+              </small>
+            </td>
+            <td>{text(item.sku ?? item.slug ?? item.productId)}</td>
+            <td>
+              {kind === "variants"
+                ? money(item.price)
+                : text(item.altText ?? item.seoTitle ?? item.id)}
+            </td>
+            <td>{text(item.inventory ?? item.sortOrder, "")}</td>
+            <td className={styles.actions}>
+              {kind === "collections" && (
+                <>
+                  <a
+                    href={storefrontUrl("collections", item)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View
+                  </a>
+                  <ActionLink href={`/dashboard/collections/edit?id=${text(item.id)}`}>
+                    Edit
+                  </ActionLink>
+                </>
+              )}
+              {kind === "collections" ? (
+                <CollectionDeleteButton
+                  id={text(item.id, "")}
+                  name={text(item.name, "collection")}
+                />
+              ) : (
+                <form action={deleteResource}>
+                  <input type="hidden" name="_resource" value={config.resource} />
+                  <input type="hidden" name="_id" value={text(item.id)} />
+                  <ActionButton pendingLabel="Deleting…">Delete</ActionButton>
+                </form>
+              )}
+            </td>
+          </tr>
+        ))}
+      </Table>
+    </>
+  );
 }
 
-function CollectionEdit({ item, products, error }: { item?: RetailRecord; products: RetailRecord[]; error?: string }) {
-  if (!item) return <><Header title="Collection not found" description="Choose a collection from the collection list."/><Notice message={error}/><Link className={styles.primary} href="/dashboard/collections">Back to collections</Link></>;
-  return <><Header title={`Edit ${text(item.name, "collection")}`} description="Update collection details and product membership." action={<Link className={styles.secondary} href="/dashboard/collections">Back to collections</Link>}/><Notice message={error}/><section className={styles.formCard}><h2>Collection details</h2><CollectionCreateForm products={collectionProductOptions(products)} initial={item}/></section></>;
+function CollectionEdit({
+  item,
+  products,
+  error,
+}: {
+  item?: RetailRecord;
+  products: RetailRecord[];
+  error?: string;
+}) {
+  if (!item)
+    return (
+      <>
+        <Header
+          title="Collection not found"
+          description="Choose a collection from the collection list."
+        />
+        <Notice message={error} />
+        <Link className={styles.primary} href="/dashboard/collections">
+          Back to collections
+        </Link>
+      </>
+    );
+  return (
+    <>
+      <Header
+        title={`Edit ${text(item.name, "collection")}`}
+        description="Update collection details and product membership."
+        action={
+          <Link className={styles.secondary} href="/dashboard/collections">
+            Back to collections
+          </Link>
+        }
+      />
+      <Notice message={error} />
+      <section className={styles.formCard}>
+        <h2>Collection details</h2>
+        <CollectionCreateForm products={collectionProductOptions(products)} initial={item} />
+      </section>
+    </>
+  );
 }
 
-function Customers({ items, query, pagination, error }: { items: RetailRecord[]; query: string; pagination: RetailPagination; error?: string }) {
-  const filtered = items.filter((item) => !query || `${text(item.firstName)} ${text(item.lastName)} ${text(item.email)}`.toLowerCase().includes(query.toLowerCase()));
-  return <><Header title="Customers" description="Search customer accounts, purchase history and prescription status."/><Notice message={error}/><div className={styles.toolbar}><Search placeholder="Search name or email"/></div><Table heads={["Customer", "Contact", "Orders", "Total spent", "Status", ""]}>{filtered.map((item, index) => <tr key={text(item.id, String(index))}><td><strong>{text(item.firstName)} {text(item.lastName, "")}</strong><small>{text(item.id)}</small></td><td>{text(item.email)}<small>{text(item.phone)}</small></td><td>{text(item.numberOfOrders, "0")}</td><td>{money(item.totalSpent)}</td><td><Status value={item.state}/></td><td><ActionLink href={`/dashboard/customers/details?id=${text(item.id)}`}>View</ActionLink></td></tr>)}</Table><Pagination pagination={pagination} path="/dashboard/customers" query={query}/></>;
+function Customers({
+  items,
+  query,
+  pagination,
+  error,
+}: {
+  items: RetailRecord[];
+  query: string;
+  pagination: RetailPagination;
+  error?: string;
+}) {
+  const filtered = items.filter(
+    (item) =>
+      !query ||
+      `${text(item.firstName)} ${text(item.lastName)} ${text(item.email)}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+  );
+  return (
+    <>
+      <Header
+        title="Customers"
+        description="Search customer accounts, purchase history and prescription status."
+      />
+      <Notice message={error} />
+      <div className={styles.toolbar}>
+        <Search placeholder="Search name or email" />
+      </div>
+      <Table heads={["Customer", "Contact", "Orders", "Total spent", "Status", ""]}>
+        {filtered.map((item, index) => (
+          <tr key={text(item.id, String(index))}>
+            <td>
+              <strong>
+                {text(item.firstName)} {text(item.lastName, "")}
+              </strong>
+              <small>{text(item.id)}</small>
+            </td>
+            <td>
+              {text(item.email)}
+              <small>{text(item.phone)}</small>
+            </td>
+            <td>{text(item.numberOfOrders, "0")}</td>
+            <td>{money(item.totalSpent)}</td>
+            <td>
+              <Status value={item.state} />
+            </td>
+            <td>
+              <ActionLink href={`/dashboard/customers/details?id=${text(item.id)}`}>
+                View
+              </ActionLink>
+            </td>
+          </tr>
+        ))}
+      </Table>
+      <Pagination pagination={pagination} path="/dashboard/customers" query={query} />
+    </>
+  );
 }
 
 function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: boolean }) {
-  if (!item) return <><Header title="Customer not found" description="Choose a customer from the customer list."/><Link className={styles.primary} href="/dashboard/customers">Back to customers</Link></>;
+  if (!item)
+    return (
+      <>
+        <Header
+          title="Customer not found"
+          description="Choose a customer from the customer list."
+        />
+        <Link className={styles.primary} href="/dashboard/customers">
+          Back to customers
+        </Link>
+      </>
+    );
   if (editing) {
     const meta = (field: string, key: string) => metafieldValue(item, key) ?? item[field];
     const tags = Array.isArray(item.tags) ? item.tags.map(String) : [];
-    return <><Header title="Edit customer" description="Update customer information, metafields and tags in QuitHero."/><ResourceSaveForm className={styles.form}><input type="hidden" name="_resource" value="customers"/><input type="hidden" name="_id" value={text(item.id)}/><input type="hidden" name="_returnTo" value={`/dashboard/customers/details?id=${text(item.id)}`}/><section className={styles.formCard}><h2>Customer details</h2><div className={styles.formGrid}>{[["firstName","First name"],["lastName","Last name"],["email","Email"],["phone","Phone"]].map(([name,label]) => <label key={name}>{label}<input name={name} defaultValue={text(item[name], "")}/></label>)}</div></section><section className={styles.formCard}><h2>Tags</h2><TagsInput initialTags={tags}/></section><section className={styles.formCard}><h2>Metafield</h2><div className={styles.formGrid}><label>Script expiry<input type="date" name="scriptExpiry" defaultValue={dateInput(meta("scriptExpiry", "script_expiry"))}/></label><label>Script ID<input name="scriptId" defaultValue={text(meta("scriptId", "script_id"), "")}/></label><label>Consult purchase<select name="consultPurchase" defaultValue={String(meta("consultPurchase", "consult_purchase") ?? false)}><option value="true">True</option><option value="false">False</option></select></label><label>Birthday<input type="date" name="birthday" defaultValue={dateInput(meta("birthday", "birthday"))}/></label><label>Script validity<input name="scriptValidity" defaultValue={text(meta("scriptValidity", "script_validity"), "")}/></label><label>Renewal form<input name="renewalForm" defaultValue={text(meta("renewalForm", "renewal_form"), "")}/></label><label>Script active<select name="scriptActive" defaultValue={String(meta("scriptActive", "script_active") ?? false)}><option value="true">True</option><option value="false">False</option></select></label><label>Gender<input name="gender" defaultValue={text(meta("gender", "gender"), "")}/></label><label>Vape tag<input name="vapeTag" defaultValue={text(meta("vapeTag", "vape_tag"), "")}/></label><label>Pouch tag<input name="pouchTag" defaultValue={text(meta("pouchTag", "pouch_tag"), "")}/></label><label className={styles.full}>Document<input name="document" defaultValue={text(meta("document", "document"), "")}/></label><label>Social login<input name="socLogin" defaultValue={text(meta("socLogin", "soc_login"), "")}/></label><label>Script uploaded<input name="scriptUploaded" defaultValue={text(meta("scriptUploaded", "script_uploaded"), "")}/></label></div></section><div className={styles.formActions}><Link href={`/dashboard/customers/details?id=${text(item.id)}`}>Cancel</Link><ActionButton className={styles.primary} pendingLabel="Saving…">Save changes</ActionButton></div></ResourceSaveForm></>;
+    return (
+      <>
+        <Header
+          title="Edit customer"
+          description="Update customer information, metafields and tags in QuitHero."
+        />
+        <ResourceSaveForm className={styles.form}>
+          <input type="hidden" name="_resource" value="customers" />
+          <input type="hidden" name="_id" value={text(item.id)} />
+          <input
+            type="hidden"
+            name="_returnTo"
+            value={`/dashboard/customers/details?id=${text(item.id)}`}
+          />
+          <section className={styles.formCard}>
+            <h2>Customer details</h2>
+            <div className={styles.formGrid}>
+              {[
+                ["firstName", "First name"],
+                ["lastName", "Last name"],
+                ["email", "Email"],
+                ["phone", "Phone"],
+              ].map(([name, label]) => (
+                <label key={name}>
+                  {label}
+                  <input name={name} defaultValue={text(item[name], "")} />
+                </label>
+              ))}
+            </div>
+          </section>
+          <section className={styles.formCard}>
+            <h2>Tags</h2>
+            <TagsInput initialTags={tags} />
+          </section>
+          <section className={styles.formCard}>
+            <h2>Metafield</h2>
+            <div className={styles.formGrid}>
+              <label>
+                Script expiry
+                <input
+                  type="date"
+                  name="scriptExpiry"
+                  defaultValue={dateInput(meta("scriptExpiry", "script_expiry"))}
+                />
+              </label>
+              <label>
+                Script ID
+                <input name="scriptId" defaultValue={text(meta("scriptId", "script_id"), "")} />
+              </label>
+              <label>
+                Consult purchase
+                <select
+                  name="consultPurchase"
+                  defaultValue={String(meta("consultPurchase", "consult_purchase") ?? false)}
+                >
+                  <option value="true">True</option>
+                  <option value="false">False</option>
+                </select>
+              </label>
+              <label>
+                Birthday
+                <input
+                  type="date"
+                  name="birthday"
+                  defaultValue={dateInput(meta("birthday", "birthday"))}
+                />
+              </label>
+              <label>
+                Script validity
+                <input
+                  name="scriptValidity"
+                  defaultValue={text(meta("scriptValidity", "script_validity"), "")}
+                />
+              </label>
+              <label>
+                Renewal form
+                <input
+                  name="renewalForm"
+                  defaultValue={text(meta("renewalForm", "renewal_form"), "")}
+                />
+              </label>
+              <label>
+                Script active
+                <select
+                  name="scriptActive"
+                  defaultValue={String(meta("scriptActive", "script_active") ?? false)}
+                >
+                  <option value="true">True</option>
+                  <option value="false">False</option>
+                </select>
+              </label>
+              <label>
+                Gender
+                <input name="gender" defaultValue={text(meta("gender", "gender"), "")} />
+              </label>
+              <label>
+                Vape tag
+                <input name="vapeTag" defaultValue={text(meta("vapeTag", "vape_tag"), "")} />
+              </label>
+              <label>
+                Pouch tag
+                <input name="pouchTag" defaultValue={text(meta("pouchTag", "pouch_tag"), "")} />
+              </label>
+              <label className={styles.full}>
+                Document
+                <input name="document" defaultValue={text(meta("document", "document"), "")} />
+              </label>
+              <label>
+                Social login
+                <input name="socLogin" defaultValue={text(meta("socLogin", "soc_login"), "")} />
+              </label>
+              <label>
+                Script uploaded
+                <input
+                  name="scriptUploaded"
+                  defaultValue={text(meta("scriptUploaded", "script_uploaded"), "")}
+                />
+              </label>
+            </div>
+          </section>
+          <div className={styles.formActions}>
+            <Link href={`/dashboard/customers/details?id=${text(item.id)}`}>Cancel</Link>
+            <ActionButton className={styles.primary} pendingLabel="Saving…">
+              Save changes
+            </ActionButton>
+          </div>
+        </ResourceSaveForm>
+      </>
+    );
   }
-  return <><Header title={`${text(item.firstName)} ${text(item.lastName, "")}`} description={text(item.email)} action={<ActionLink className={styles.primary} href={`/dashboard/customers/edit?id=${text(item.id)}`}>Edit customer</ActionLink>}/><div className={styles.detailGrid}><section className={styles.card}><h2>Customer information</h2>{[["Email",item.email],["Phone",item.phone],["Birthday",item.birthday],["Account state",item.state],["Verified email",item.verifiedEmail ? "Yes" : "No"]].map(([label,value]) => <div className={styles.detailRow} key={String(label)}><span>{text(label)}</span><strong>{text(value)}</strong></div>)}</section><section className={styles.card}><h2>Prescription & purchases</h2>{[["Total orders",item.numberOfOrders],["Total spent",money(item.totalSpent)],["Script ID",item.scriptId],["Script expiry",item.scriptExpiry],["Script active",item.scriptActive ? "Yes" : "No"]].map(([label,value]) => <div className={styles.detailRow} key={String(label)}><span>{text(label)}</span><strong>{text(value)}</strong></div>)}</section></div></>;
+  return (
+    <>
+      <Header
+        title={`${text(item.firstName)} ${text(item.lastName, "")}`}
+        description={text(item.email)}
+        action={
+          <ActionLink
+            className={styles.primary}
+            href={`/dashboard/customers/edit?id=${text(item.id)}`}
+          >
+            Edit customer
+          </ActionLink>
+        }
+      />
+      <div className={styles.detailGrid}>
+        <section className={styles.card}>
+          <h2>Customer information</h2>
+          {[
+            ["Email", item.email],
+            ["Phone", item.phone],
+            ["Birthday", item.birthday],
+            ["Account state", item.state],
+            ["Verified email", item.verifiedEmail ? "Yes" : "No"],
+          ].map(([label, value]) => (
+            <div className={styles.detailRow} key={String(label)}>
+              <span>{text(label)}</span>
+              <strong>{text(value)}</strong>
+            </div>
+          ))}
+        </section>
+        <section className={styles.card}>
+          <h2>Prescription & purchases</h2>
+          {[
+            ["Total orders", item.numberOfOrders],
+            ["Total spent", money(item.totalSpent)],
+            ["Script ID", item.scriptId],
+            ["Script expiry", item.scriptExpiry],
+            ["Script active", item.scriptActive ? "Yes" : "No"],
+          ].map(([label, value]) => (
+            <div className={styles.detailRow} key={String(label)}>
+              <span>{text(label)}</span>
+              <strong>{text(value)}</strong>
+            </div>
+          ))}
+        </section>
+      </div>
+    </>
+  );
 }
 
-function Orders({ items, query, detail, error }: { items: RetailRecord[]; query: string; detail?: RetailRecord; error?: string }) {
-  if (detail) { const customer = nested(detail, "customer"); const lineItems = orderItems(detail); return <><Header title={`Order #${text(detail.orderNumber ?? detail.id)}`} description={`Placed by ${customerName(detail)}`} action={<Link className={styles.secondary} href="/dashboard/orders">Back to orders</Link>}/><div className={styles.detailGrid}><section className={styles.card}><h2>Order summary</h2>{[["Status",detail.status],["Payment",detail.paymentStatus ?? detail.financialStatus],["Fulfilment",detail.fulfillmentStatus],["Subtotal",money(detail.subtotal)],["Shipping",money(detail.shippingTotal)],["Total",money(detail.total ?? detail.totalPrice)]].map(([label,value]) => <div className={styles.detailRow} key={String(label)}><span>{text(label)}</span><strong>{text(value)}</strong></div>)}</section><section className={styles.card}><h2>Customer</h2><p><strong>{customerName(detail)}</strong></p><p>{text(detail.customerEmail ?? customer?.email, "")}</p><p>{text(detail.billingPhone ?? detail.shippingPhone ?? customer?.phone, "")}</p></section></div><section className={styles.card}><h2>Order items</h2><Table heads={["Item", "SKU", "Quantity", "Unit price", "Total"]}>{lineItems.map((line,index) => <tr key={text(line.id,String(index))}><td><strong>{text(line.productName ?? line.name ?? line.title)}</strong><small>{text(line.variantName, "")}</small></td><td>{text(line.sku)}</td><td>{text(line.quantity,"1")}</td><td>{money(line.unitPrice ?? line.price)}</td><td>{money(line.total ?? Number(line.unitPrice ?? line.price) * Number(line.quantity ?? 1))}</td></tr>)}</Table></section><div className={styles.notice}><strong>Status updates are read-only</strong><span>The published UpdateOrderDto has no documented fields. Add status controls once the API contract exposes them.</span></div></>; }
-  const filtered = items.filter((item) => !query || JSON.stringify(item).toLowerCase().includes(query.toLowerCase()));
-  return <><Header title="Orders" description="Review purchases, customers, items and fulfilment state."/><Notice message={error}/><div className={styles.toolbar}><Search placeholder="Search order, customer or item" query={query}/></div><Table heads={["Order", "Customer", "Items", "Date", "Price", "Status", ""]}>{filtered.map((item,index) => { const lines = orderItems(item); const quantity = lines.reduce((sum, line) => sum + Number(line.quantity ?? 1), 0); return <tr key={text(item.id,String(index))}><td><strong>#{text(item.orderNumber ?? item.id)}</strong></td><td><strong>{customerName(item)}</strong><small>{text(item.customerEmail ?? nested(item,"customer")?.email, "")}</small></td><td><strong>{text(lines[0]?.productName ?? lines[0]?.name, "No items")}</strong><small>{lines.length ? `${quantity} ${quantity === 1 ? "item" : "items"}${lines.length > 1 ? ` across ${lines.length} products` : ""}` : ""}</small></td><td>{orderDate(item.createdAt)}</td><td>{money(item.total ?? item.totalPrice)}</td><td><Status value={item.status}/></td><td><ActionLink href={`/dashboard/orders/details?id=${text(item.id)}`}>View</ActionLink></td></tr>; })}</Table></>;
+function Orders({
+  items,
+  query,
+  detail,
+  error,
+}: {
+  items: RetailRecord[];
+  query: string;
+  detail?: RetailRecord;
+  error?: string;
+}) {
+  if (detail) {
+    const customer = nested(detail, "customer");
+    const lineItems = orderItems(detail);
+    return (
+      <>
+        <Header
+          title={`Order #${text(detail.orderNumber ?? detail.id)}`}
+          description={`Placed by ${customerName(detail)}`}
+          action={
+            <Link className={styles.secondary} href="/dashboard/orders">
+              Back to orders
+            </Link>
+          }
+        />
+        <div className={styles.detailGrid}>
+          <section className={styles.card}>
+            <h2>Order summary</h2>
+            {[
+              ["Status", detail.status],
+              ["Payment", detail.paymentStatus ?? detail.financialStatus],
+              ["Fulfilment", detail.fulfillmentStatus],
+              ["Subtotal", money(detail.subtotal)],
+              ["Shipping", money(detail.shippingTotal)],
+              ["Total", money(detail.total ?? detail.totalPrice)],
+            ].map(([label, value]) => (
+              <div className={styles.detailRow} key={String(label)}>
+                <span>{text(label)}</span>
+                <strong>{text(value)}</strong>
+              </div>
+            ))}
+          </section>
+          <section className={styles.card}>
+            <h2>Customer</h2>
+            <p>
+              <strong>{customerName(detail)}</strong>
+            </p>
+            <p>{text(detail.customerEmail ?? customer?.email, "")}</p>
+            <p>{text(detail.billingPhone ?? detail.shippingPhone ?? customer?.phone, "")}</p>
+          </section>
+        </div>
+        <section className={styles.card}>
+          <h2>Order items</h2>
+          <Table heads={["Item", "SKU", "Quantity", "Unit price", "Total"]}>
+            {lineItems.map((line, index) => (
+              <tr key={text(line.id, String(index))}>
+                <td>
+                  <strong>{text(line.productName ?? line.name ?? line.title)}</strong>
+                  <small>{text(line.variantName, "")}</small>
+                </td>
+                <td>{text(line.sku)}</td>
+                <td>{text(line.quantity, "1")}</td>
+                <td>{money(line.unitPrice ?? line.price)}</td>
+                <td>
+                  {money(
+                    line.total ?? Number(line.unitPrice ?? line.price) * Number(line.quantity ?? 1),
+                  )}
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </section>
+        <div className={styles.notice}>
+          <strong>Status updates are read-only</strong>
+          <span>
+            The published UpdateOrderDto has no documented fields. Add status controls once the API
+            contract exposes them.
+          </span>
+        </div>
+      </>
+    );
+  }
+  const filtered = items.filter(
+    (item) => !query || JSON.stringify(item).toLowerCase().includes(query.toLowerCase()),
+  );
+  return (
+    <>
+      <Header
+        title="Orders"
+        description="Review purchases, customers, items and fulfilment state."
+      />
+      <Notice message={error} />
+      <div className={styles.toolbar}>
+        <Search placeholder="Search order, customer or item" query={query} />
+      </div>
+      <Table heads={["Order", "Customer", "Items", "Date", "Price", "Status", ""]}>
+        {filtered.map((item, index) => {
+          const lines = orderItems(item);
+          const quantity = lines.reduce((sum, line) => sum + Number(line.quantity ?? 1), 0);
+          return (
+            <tr key={text(item.id, String(index))}>
+              <td>
+                <strong>#{text(item.orderNumber ?? item.id)}</strong>
+              </td>
+              <td>
+                <strong>{customerName(item)}</strong>
+                <small>{text(item.customerEmail ?? nested(item, "customer")?.email, "")}</small>
+              </td>
+              <td>
+                <strong>{text(lines[0]?.productName ?? lines[0]?.name, "No items")}</strong>
+                <small>
+                  {lines.length
+                    ? `${quantity} ${quantity === 1 ? "item" : "items"}${lines.length > 1 ? ` across ${lines.length} products` : ""}`
+                    : ""}
+                </small>
+              </td>
+              <td>{orderDate(item.createdAt)}</td>
+              <td>{money(item.total ?? item.totalPrice)}</td>
+              <td>
+                <Status value={item.status} />
+              </td>
+              <td>
+                <ActionLink href={`/dashboard/orders/details?id=${text(item.id)}`}>View</ActionLink>
+              </td>
+            </tr>
+          );
+        })}
+      </Table>
+    </>
+  );
 }
 
-function Inventory({ variants, history, query, stockFilter, sort, error }: { variants: RetailRecord[]; history?: RetailRecord[]; query: string; stockFilter: string; sort: string; error?: string }) {
-  if (history) return <><Header title="Inventory history" description="Audit activity returned by QuitHero." action={<Link className={styles.secondary} href="/dashboard/inventory">Back to inventory</Link>}/><Notice message={error}/><Table heads={["Event", "Resource", "Staff", "Date"]}>{history.map((item,index) => <tr key={text(item.id,String(index))}><td>{text(item.action ?? item.event)}</td><td>{text(item.resource ?? item.entity)}</td><td>{text(item.user ?? item.staffEmail)}</td><td>{text(item.createdAt)}</td></tr>)}</Table></>;
-  const filtered = variants.filter((item) => {
-    const available = Number(item.inventory ?? 0);
-    const matchesQuery = !query || `${text(item.name, "")} ${text(item.sku, "")} ${text(item.productId, "")}`.toLowerCase().includes(query.toLowerCase());
-    const matchesStock = !stockFilter || (stockFilter === "out" ? available <= 0 : stockFilter === "low" ? available > 0 && available <= 10 : available > 0);
-    return matchesQuery && matchesStock;
-  }).sort((a, b) => {
-    const [field = "product", direction = "asc"] = sort.split("-");
-    const multiplier = direction === "desc" ? -1 : 1;
-    const fields: Record<string, keyof RetailRecord> = { product: "name", sku: "sku", available: "inventory", allocated: "allocatedInventory", incoming: "incomingInventory" };
-    const key = fields[field] ?? "name";
-    if (["inventory", "allocatedInventory", "incomingInventory"].includes(key)) return (Number(a[key] ?? 0) - Number(b[key] ?? 0)) * multiplier;
-    return text(a[key], "").localeCompare(text(b[key], ""), undefined, { numeric: true, sensitivity: "base" }) * multiplier;
-  });
-  return <><Header title="Inventory" description="Manage available, allocated and incoming stock by product variant." action={<ActionLink className={styles.secondary} href="/dashboard/inventory/history">View history</ActionLink>}/><Notice message={error}/><div className={styles.toolbar}><form className={`${styles.search} ${styles.inventorySearch}`}><span>⌕</span><input name="q" aria-label="Search inventory" placeholder="Search product, SKU or product ID" defaultValue={query}/><select name="stock" aria-label="Filter by stock" defaultValue={stockFilter}><option value="">All stock</option><option value="in">In stock</option><option value="low">Low stock</option><option value="out">Out of stock</option></select><select name="sort" aria-label="Sort inventory" defaultValue={sort}><option value="product-asc">Product: A–Z</option><option value="product-desc">Product: Z–A</option><option value="sku-asc">SKU: A–Z</option><option value="sku-desc">SKU: Z–A</option><option value="available-desc">Available: high to low</option><option value="available-asc">Available: low to high</option><option value="allocated-desc">Allocated: high to low</option><option value="incoming-desc">Incoming: high to low</option></select><ActionButton pendingLabel="Applying…">Apply</ActionButton></form></div><Table heads={["Variant", "SKU", "Available", "Allocated", "Incoming", "Health"]}>{filtered.map((item,index) => <tr key={text(item.id,String(index))}><td><strong>{text(item.name)}</strong><small>{text(item.productId)}</small></td><td>{text(item.sku)}</td><td>{text(item.inventory,"0")}</td><td>{text(item.allocatedInventory,"0")}</td><td>{text(item.incomingInventory,"0")}</td><td><Status value={Number(item.inventory ?? 0) <= 0 ? "OUT OF STOCK" : Number(item.inventory ?? 0) <= 10 ? "LOW STOCK" : "HEALTHY"}/></td></tr>)}</Table>{!filtered.length ? <div className={styles.notice}><strong>No inventory found</strong><span>Try changing the search, stock filter, or sort option.</span></div> : null}</>;
+function Inventory({
+  variants,
+  history,
+  query,
+  stockFilter,
+  sort,
+  error,
+}: {
+  variants: RetailRecord[];
+  history?: RetailRecord[];
+  query: string;
+  stockFilter: string;
+  sort: string;
+  error?: string;
+}) {
+  if (history)
+    return (
+      <>
+        <Header
+          title="Inventory history"
+          description="Audit activity returned by QuitHero."
+          action={
+            <Link className={styles.secondary} href="/dashboard/inventory">
+              Back to inventory
+            </Link>
+          }
+        />
+        <Notice message={error} />
+        <Table heads={["Event", "Resource", "Staff", "Date"]}>
+          {history.map((item, index) => (
+            <tr key={text(item.id, String(index))}>
+              <td>{text(item.action ?? item.event)}</td>
+              <td>{text(item.resource ?? item.entity)}</td>
+              <td>{text(item.user ?? item.staffEmail)}</td>
+              <td>{text(item.createdAt)}</td>
+            </tr>
+          ))}
+        </Table>
+      </>
+    );
+  const filtered = variants
+    .filter((item) => {
+      const available = Number(item.inventory ?? 0);
+      const matchesQuery =
+        !query ||
+        `${text(item.name, "")} ${text(item.sku, "")} ${text(item.productId, "")}`
+          .toLowerCase()
+          .includes(query.toLowerCase());
+      const matchesStock =
+        !stockFilter ||
+        (stockFilter === "out"
+          ? available <= 0
+          : stockFilter === "low"
+            ? available > 0 && available <= 10
+            : available > 0);
+      return matchesQuery && matchesStock;
+    })
+    .sort((a, b) => {
+      const [field = "product", direction = "asc"] = sort.split("-");
+      const multiplier = direction === "desc" ? -1 : 1;
+      const fields: Record<string, keyof RetailRecord> = {
+        product: "name",
+        sku: "sku",
+        available: "inventory",
+        allocated: "allocatedInventory",
+        incoming: "incomingInventory",
+      };
+      const key = fields[field] ?? "name";
+      if (["inventory", "allocatedInventory", "incomingInventory"].includes(key))
+        return (Number(a[key] ?? 0) - Number(b[key] ?? 0)) * multiplier;
+      return (
+        text(a[key], "").localeCompare(text(b[key], ""), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }) * multiplier
+      );
+    });
+  return (
+    <>
+      <Header
+        title="Inventory"
+        description="Manage available, allocated and incoming stock by product variant."
+        action={
+          <ActionLink className={styles.secondary} href="/dashboard/inventory/history">
+            View history
+          </ActionLink>
+        }
+      />
+      <Notice message={error} />
+      <div className={styles.toolbar}>
+        <form className={`${styles.search} ${styles.inventorySearch}`}>
+          <span>⌕</span>
+          <input
+            name="q"
+            aria-label="Search inventory"
+            placeholder="Search product, SKU or product ID"
+            defaultValue={query}
+          />
+          <select name="stock" aria-label="Filter by stock" defaultValue={stockFilter}>
+            <option value="">All stock</option>
+            <option value="in">In stock</option>
+            <option value="low">Low stock</option>
+            <option value="out">Out of stock</option>
+          </select>
+          <select name="sort" aria-label="Sort inventory" defaultValue={sort}>
+            <option value="product-asc">Product: A–Z</option>
+            <option value="product-desc">Product: Z–A</option>
+            <option value="sku-asc">SKU: A–Z</option>
+            <option value="sku-desc">SKU: Z–A</option>
+            <option value="available-desc">Available: high to low</option>
+            <option value="available-asc">Available: low to high</option>
+            <option value="allocated-desc">Allocated: high to low</option>
+            <option value="incoming-desc">Incoming: high to low</option>
+          </select>
+          <ActionButton pendingLabel="Applying…">Apply</ActionButton>
+        </form>
+      </div>
+      <Table heads={["Variant", "SKU", "Available", "Allocated", "Incoming", "Health"]}>
+        {filtered.map((item, index) => (
+          <tr key={text(item.id, String(index))}>
+            <td>
+              <strong>{text(item.name)}</strong>
+              <small>{text(item.productId)}</small>
+            </td>
+            <td>{text(item.sku)}</td>
+            <td>{text(item.inventory, "0")}</td>
+            <td>{text(item.allocatedInventory, "0")}</td>
+            <td>{text(item.incomingInventory, "0")}</td>
+            <td>
+              <Status
+                value={
+                  Number(item.inventory ?? 0) <= 0
+                    ? "OUT OF STOCK"
+                    : Number(item.inventory ?? 0) <= 10
+                      ? "LOW STOCK"
+                      : "HEALTHY"
+                }
+              />
+            </td>
+          </tr>
+        ))}
+      </Table>
+      {!filtered.length ? (
+        <div className={styles.notice}>
+          <strong>No inventory found</strong>
+          <span>Try changing the search, stock filter, or sort option.</span>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 export default async function DashboardPage({ params, searchParams }: Props) {
-  const { section = [] } = await params; const queryParams = await searchParams;
+  const { section = [] } = await params;
+  const queryParams = await searchParams;
   if (!routes.some((route) => route.join("/") === section.join("/"))) notFound();
-  const [area = "dashboard", sub] = section; const q = typeof queryParams.q === "string" ? queryParams.q.trim() : ""; const status = typeof queryParams.status === "string" ? queryParams.status : ""; const stockFilter = typeof queryParams.stock === "string" && ["in", "low", "out"].includes(queryParams.stock) ? queryParams.stock : ""; const sort = typeof queryParams.sort === "string" ? queryParams.sort : "product-asc"; const id = typeof queryParams.id === "string" ? queryParams.id : ""; const page = Math.max(1, Number(queryParams.page) || 1);
+  const [area = "dashboard", sub] = section;
+  const q = typeof queryParams.q === "string" ? queryParams.q.trim() : "";
+  const status = typeof queryParams.status === "string" ? queryParams.status : "";
+  const stockFilter =
+    typeof queryParams.stock === "string" && ["in", "low", "out"].includes(queryParams.stock)
+      ? queryParams.stock
+      : "";
+  const sort = typeof queryParams.sort === "string" ? queryParams.sort : "product-asc";
+  const id = typeof queryParams.id === "string" ? queryParams.id : "";
+  const page = Math.max(1, Number(queryParams.page) || 1);
   const active = area === "dashboard" ? "/dashboard" : `/dashboard/${area}`;
   let content: React.ReactNode;
-  if (area === "dashboard") { const [p,c,o,v] = await Promise.all([safeRetailPage("/products",1),safeRetailPage("/customers",1),safeRetailList("/orders"),safeRetailList("/product-variants")]); content = <Dashboard productTotal={p.pagination.total} customerTotal={c.pagination.total} orders={o.data} variants={v.data} error={p.error ?? c.error ?? o.error ?? v.error}/>; }
-  else if (area === "products" && !sub) { const result = q || status ? await safeRetailAll("/products") : await safeRetailPage("/products", page, 50); content = <Products items={result.data} query={q} status={status} page={page} pagination={result.pagination} error={result.error}/>; }
-  else if (area === "products" && sub === "create") { const [brands, productTypes, collections, tags] = await Promise.all([safeRetailList("/brands"), safeRetailList("/product-type"), safeRetailList("/collections"), safeRetailAll("/tags")]); content = <ProductForm brands={brands.data} productTypes={productTypes.data} collections={collections.data} availableTags={tags.data}/>; }
-  else if (area === "products" && sub === "edit") {
-    const [result, brands, productTypes, collections, tags, products, recommendations] = await Promise.all([
-      safeRetailRecord(`/products/${encodeURIComponent(id)}`), safeRetailList("/brands"), safeRetailList("/product-type"), safeRetailList("/collections"), safeRetailAll("/tags"), safeRetailAll("/products"),
-      getFrequentlyBoughtTogether(id).then((data) => ({ data, error: undefined })).catch((error) => ({ data: [] as string[], error: error instanceof Error ? error.message : "Unable to load recommendations." })),
+  if (area === "dashboard") {
+    const [p, c, o, v] = await Promise.all([
+      safeRetailPage("/products", 1),
+      safeRetailPage("/customers", 1),
+      safeRetailList("/orders"),
+      safeRetailList("/product-variants"),
     ]);
-    content = <ProductForm item={result.data} brands={brands.data} productTypes={productTypes.data} collections={collections.data} availableTags={tags.data} products={products.data} recommendationIds={recommendations.data} recommendationError={tags.error ?? products.error ?? recommendations.error}/>;
-  }
-  else if (area === "products" && sub === "frequently-bought") {
+    content = (
+      <Dashboard
+        productTotal={p.pagination.total}
+        customerTotal={c.pagination.total}
+        orders={o.data}
+        variants={v.data}
+        error={p.error ?? c.error ?? o.error ?? v.error}
+      />
+    );
+  } else if (area === "products" && !sub) {
+    const result = await safeRetailAll("/products");
+    content = (
+      <Products
+        items={result.data}
+        query={q}
+        status={status}
+        page={page}
+        error={result.error}
+      />
+    );
+  } else if (area === "products" && sub === "create") {
+    const [brands, productTypes, collections, tags] = await Promise.all([
+      safeRetailList("/brands"),
+      safeRetailList("/product-type"),
+      safeRetailList("/collections"),
+      safeRetailAll("/tags"),
+    ]);
+    content = (
+      <ProductForm
+        brands={brands.data}
+        productTypes={productTypes.data}
+        collections={collections.data}
+        availableTags={tags.data}
+      />
+    );
+  } else if (area === "products" && sub === "edit") {
+    const [result, brands, productTypes, collections, tags, products, recommendations] =
+      await Promise.all([
+        safeRetailRecord(`/products/${encodeURIComponent(id)}`),
+        safeRetailList("/brands"),
+        safeRetailList("/product-type"),
+        safeRetailList("/collections"),
+        safeRetailAll("/tags"),
+        safeRetailAll("/products"),
+        getFrequentlyBoughtTogether(id)
+          .then((data) => ({ data, error: undefined }))
+          .catch((error) => ({
+            data: [] as string[],
+            error: error instanceof Error ? error.message : "Unable to load recommendations.",
+          })),
+      ]);
+    content = (
+      <ProductForm
+        item={result.data}
+        brands={brands.data}
+        productTypes={productTypes.data}
+        collections={collections.data}
+        availableTags={tags.data}
+        products={products.data}
+        recommendationIds={recommendations.data}
+        recommendationError={tags.error ?? products.error ?? recommendations.error}
+      />
+    );
+  } else if (area === "products" && sub === "frequently-bought") {
     const [products, recommendations] = await Promise.all([
       safeRetailAll("/products"),
-      getAllFrequentlyBoughtTogether().then((data) => ({ data, error: undefined })).catch((error) => ({ data: [] as FrequentlyBoughtTogether[], error: error instanceof Error ? error.message : "Unable to load recommendations." })),
+      getAllFrequentlyBoughtTogether()
+        .then((data) => ({ data, error: undefined }))
+        .catch((error) => ({
+          data: [] as FrequentlyBoughtTogether[],
+          error: error instanceof Error ? error.message : "Unable to load recommendations.",
+        })),
     ]);
-    content = <FrequentlyBoughtList recommendations={recommendations.data} products={products.data} query={q} error={products.error ?? recommendations.error}/>;
-  }
-  else if (area === "products" && resourceConfig[sub]) { const config = resourceConfig[sub]; const result = await safeRetailList(`/${config.resource}`); content = <ResourcePage kind={sub} items={result.data} error={result.error}/>; }
-  else if (area === "bundles") { content = <BundlesPage variantId={typeof queryParams.variantId === "string" ? queryParams.variantId : ""}/>; }
-  else if (area === "collections") {
+    content = (
+      <FrequentlyBoughtList
+        recommendations={recommendations.data}
+        products={products.data}
+        query={q}
+        error={products.error ?? recommendations.error}
+      />
+    );
+  } else if (area === "products" && resourceConfig[sub]) {
+    const config = resourceConfig[sub];
+    const result = await safeRetailList(`/${config.resource}`);
+    content = <ResourcePage kind={sub} items={result.data} error={result.error} />;
+  } else if (area === "bundles") {
+    content = (
+      <BundlesPage
+        variantId={typeof queryParams.variantId === "string" ? queryParams.variantId : ""}
+      />
+    );
+  } else if (area === "collections") {
     if (sub === "edit") {
-      const [result, products] = await Promise.all([id ? safeRetailRecord(`/collections/${encodeURIComponent(id)}`) : Promise.resolve({ data: undefined, error: undefined }), safeRetailAll("/products")]);
-      content = <CollectionEdit item={result.data} products={products.data} error={result.error ?? products.error}/>;
+      const [result, products] = await Promise.all([
+        id
+          ? safeRetailRecord(`/collections/${encodeURIComponent(id)}`)
+          : Promise.resolve({ data: undefined, error: undefined }),
+        safeRetailAll("/products"),
+      ]);
+      content = (
+        <CollectionEdit
+          item={result.data}
+          products={products.data}
+          error={result.error ?? products.error}
+        />
+      );
     } else {
-      const [result, products] = await Promise.all([safeRetailList("/collections"), safeRetailAll("/products")]);
-      content = <ResourcePage kind="collections" items={result.data} products={products.data} error={result.error ?? products.error} path="/dashboard/collections"/>;
+      const [result, products] = await Promise.all([
+        safeRetailList("/collections"),
+        safeRetailAll("/products"),
+      ]);
+      content = (
+        <ResourcePage
+          kind="collections"
+          items={result.data}
+          products={products.data}
+          error={result.error ?? products.error}
+          path="/dashboard/collections"
+        />
+      );
     }
+  } else if (area === "customers" && !sub) {
+    const result = await safeRetailPage("/customers", page, 50);
+    content = (
+      <Customers
+        items={result.data}
+        query={q}
+        pagination={result.pagination}
+        error={result.error}
+      />
+    );
+  } else if (area === "customers") {
+    const result = await safeRetailRecord(`/customers/${encodeURIComponent(id)}`);
+    content = <CustomerDetail item={result.data} editing={sub === "edit"} />;
+  } else if (area === "orders") {
+    const result = await safeRetailList("/orders");
+    content = (
+      <Orders
+        items={result.data}
+        query={q}
+        detail={sub === "details" ? result.data.find((item) => item.id === id) : undefined}
+        error={result.error}
+      />
+    );
+  } else {
+    const result = await safeRetailList(sub === "history" ? "/audit-logs" : "/product-variants");
+    content = (
+      <Inventory
+        variants={sub ? [] : result.data}
+        history={sub === "history" ? result.data : undefined}
+        query={q}
+        stockFilter={stockFilter}
+        sort={sort}
+        error={result.error}
+      />
+    );
   }
-  else if (area === "customers" && !sub) { const result = await safeRetailPage("/customers", page, 50); content = <Customers items={result.data} query={q} pagination={result.pagination} error={result.error}/>; }
-  else if (area === "customers") { const result = await safeRetailRecord(`/customers/${encodeURIComponent(id)}`); content = <CustomerDetail item={result.data} editing={sub === "edit"}/>; }
-  else if (area === "orders") { const result = await safeRetailList("/orders"); content = <Orders items={result.data} query={q} detail={sub === "details" ? result.data.find((item) => item.id === id) : undefined} error={result.error}/>; }
-  else { const result = await safeRetailList(sub === "history" ? "/audit-logs" : "/product-variants"); content = <Inventory variants={sub ? [] : result.data} history={sub === "history" ? result.data : undefined} query={q} stockFilter={stockFilter} sort={sort} error={result.error}/>; }
-  return <div className={styles.shell}><aside><Link className={styles.logo} href="/"><span>Q</span><strong>QuitRX</strong></Link><nav>{nav.map((item) => <Link className={active === item.href ? styles.active : ""} key={item.href} href={item.href}><i>{item.icon}</i>{item.label}</Link>)}</nav><div className={styles.profile}><span>ST</span><div><strong>Staff account</strong><small>Operations</small></div><form action={logoutStaff}><ActionButton pendingLabel="Signing out…">Logout</ActionButton></form></div></aside><main><div className={styles.mobileTop}><Link className={styles.logo} href="/"><span>Q</span><strong>QuitRX</strong></Link><nav>{nav.map((item) => <Link key={item.href} href={item.href}>{item.label}</Link>)}</nav><form action={logoutStaff}><ActionButton pendingLabel="Signing out…">Logout</ActionButton></form></div>{content}</main></div>;
+  return (
+    <div className={styles.shell}>
+      <aside>
+        <Link className={styles.logo} href="/">
+          <span>Q</span>
+          <strong>QuitRX</strong>
+        </Link>
+        <nav>
+          {nav.map((item) => (
+            <Link
+              className={active === item.href ? styles.active : ""}
+              key={item.href}
+              href={item.href}
+            >
+              <i>{item.icon}</i>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <div className={styles.profile}>
+          <span>ST</span>
+          <div>
+            <strong>Staff account</strong>
+            <small>Operations</small>
+          </div>
+          <form action={logoutStaff}>
+            <ActionButton pendingLabel="Signing out…">Logout</ActionButton>
+          </form>
+        </div>
+      </aside>
+      <main>
+        <div className={styles.mobileTop}>
+          <Link className={styles.logo} href="/">
+            <span>Q</span>
+            <strong>QuitRX</strong>
+          </Link>
+          <nav>
+            {nav.map((item) => (
+              <Link key={item.href} href={item.href}>
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+          <form action={logoutStaff}>
+            <ActionButton pendingLabel="Signing out…">Logout</ActionButton>
+          </form>
+        </div>
+        {content}
+      </main>
+    </div>
+  );
 }

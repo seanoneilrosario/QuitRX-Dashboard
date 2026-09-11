@@ -36,7 +36,7 @@ test("only catalog list reads use the short-lived cache", async () => {
     assert.equal(options.next.tags[0], api.RETAIL_CATALOG_TAG);
   }
   for (const [endpoint, init] of [
-    ["/products/123"], ["/customers"], ["/orders"], ["/product-variants"], ["/audit-logs"],
+    ["/products/123"], ["/customers"], ["/orders"], ["/audit-logs"],
     ["/products", { method: "POST" }], ["/products/123", { method: "PATCH" }],
     ["/products/123", { method: "DELETE" }], ["/products", { cache: "no-store" }],
   ]) {
@@ -121,6 +121,31 @@ test("successful saves and deletes expire the catalog; failed writes do not", as
   }
 });
 
+test("deleting an already absent resource clears the stale catalog row", async () => {
+  const events = [];
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": {
+      updateTag: (tag) => events.push(tag),
+      revalidatePath: () => events.push("revalidate"),
+    },
+    "next/navigation": { redirect: () => {} },
+    "@/lib/quithero-admin": {
+      RETAIL_CATALOG_TAG: "retail-catalog",
+      retailRequest: async () => {
+        throw new Error("QuitHero API returned 404: Product not found");
+      },
+    },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
+  }, { Error });
+  const form = new FormData();
+  form.set("_resource", "products");
+  form.set("_id", "missing-product");
+
+  await actions.deleteResource(form);
+
+  assert.deepEqual(events, ["retail-catalog", "revalidate"]);
+});
+
 test("product creation recovers when QuitHero commits the product before returning 500", async () => {
   const events = [];
   const actions = load("app/dashboard/actions.ts", {
@@ -135,7 +160,9 @@ test("product creation recovers when QuitHero commits the product before returni
       retailRequest: async (path, options) => {
         events.push(`${options.method ?? "GET"} ${path}`);
         if (options.method === "POST") throw new Error("QuitHero API returned 500: Internal server error");
-        return { data: [{ id: "product-1", slug: "sample-product" }] };
+        return path.includes("page=1")
+          ? { data: [{ id: "other-product", slug: "other-product" }], pagination: { totalPages: 2 } }
+          : { data: [{ id: "product-1", slug: "sample-product" }], pagination: { totalPages: 2 } };
       },
     },
     "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
@@ -145,13 +172,52 @@ test("product creation recovers when QuitHero commits the product before returni
   form.set("_returnTo", "/dashboard/products");
   form.set("name", "SampleProduct");
   form.set("slug", "sample-product");
-  form.set("_existingProductTags", "[]");
 
   await actions.saveResource(form);
 
   assert.deepEqual(events, [
     "POST /products",
     "GET /products?page=1&limit=100",
+    "GET /products?page=2&limit=100",
+    "retail-catalog",
+    "revalidate",
+    "redirect /dashboard/products",
+  ]);
+});
+
+test("unsupported product-tag assignments do not turn a successful product save into an error", async () => {
+  const events = [];
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": {
+      updateTag: (tag) => events.push(tag),
+      revalidatePath: () => events.push("revalidate"),
+    },
+    "next/navigation": { redirect: (path) => events.push(`redirect ${path}`) },
+    "@/lib/quithero-admin": {
+      RETAIL_CATALOG_TAG: "retail-catalog",
+      retailRequest: async (path) => {
+        events.push(path);
+        if (path === "/products") return { id: "product-1" };
+        throw new Error(
+          "QuitHero API returned 400: property productId should not exist property tagId should not exist",
+        );
+      },
+    },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
+  }, { Error });
+  const form = new FormData();
+  form.set("_resource", "products");
+  form.set("_returnTo", "/dashboard/products");
+  form.set("name", "Tagged product");
+  form.set("slug", "tagged-product");
+  form.set("tags", "tag-1");
+  form.set("_existingProductTags", "[]");
+
+  await actions.saveResource(form);
+
+  assert.deepEqual(events, [
+    "/products",
+    "/product-tags",
     "retail-catalog",
     "revalidate",
     "redirect /dashboard/products",

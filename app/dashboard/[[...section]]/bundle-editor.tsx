@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { saveBundle, type BundleActionState } from "../bundle-actions";
 import type { BundleSelection } from "@/lib/product-bundles";
 import styles from "./dashboard.module.css";
@@ -22,6 +23,7 @@ function signature(selections: EditorSelection[]) {
 }
 
 export default function BundleEditor({ parent, groupNumber, products, variants, bundleProductIds, initial }: { parent: BundleVariant; groupNumber: number; products: BundleProduct[]; variants: BundleVariant[]; bundleProductIds: string[]; initial: BundleSelection[] }) {
+  const router = useRouter();
   const initialSelections = useMemo(() => selectionsFromComponents(initial), [initial]);
   const [selections, setSelections] = useState(initialSelections);
   const [savedSelections, setSavedSelections] = useState(initialSelections);
@@ -33,6 +35,12 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
   const bundleIds = useMemo(() => new Set(bundleProductIds), [bundleProductIds]);
   const dirty = signature(selections) !== signature(savedSelections);
   const hasEmptySelection = selections.some((selection) => !selection.options.length);
+
+  const closeModal = useCallback(() => {
+    setOpen(false);
+    window.dispatchEvent(new Event("bundle-editor-close"));
+    router.replace("/dashboard/bundles", { scroll: false });
+  }, [router]);
 
   const availableProducts = useMemo(() => products.flatMap((product) => {
     if (product.id === parent.productId || bundleIds.has(product.id)) return [];
@@ -61,7 +69,7 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
   useEffect(() => {
     const selectBundle = (event: Event) => setOpen((event as CustomEvent<string>).detail === parent.id);
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") closeModal();
     };
     window.addEventListener("bundle-editor-select", selectBundle);
     window.addEventListener("keydown", closeOnEscape);
@@ -69,7 +77,7 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
       window.removeEventListener("bundle-editor-select", selectBundle);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [parent.id]);
+  }, [closeModal, parent.id]);
 
   useEffect(() => {
     if (!open) return;
@@ -121,14 +129,14 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
 
   if (!open) return null;
 
-  return <div className={styles.bundleModal} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
+  return <div className={styles.bundleModal} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}>
     <form id="bundle-editor" action={submit} className={`${styles.form} ${styles.bundleModalPanel}`} role="dialog" aria-modal="true" aria-labelledby="bundle-editor-title">
     <input type="hidden" name="productId" value={parent.productId}/>
     <input type="hidden" name="variantId" value={parent.id}/>
     <input type="hidden" name="components" value={JSON.stringify(componentsFromSelections(selections))}/>
     <fieldset disabled={pending} className={styles.bundleFields}>
       <section className={styles.formCard}>
-        <div className={styles.bundleEditorHeader}><div><h2 id="bundle-editor-title">Edit Bundle — Group {groupNumber}: {parent.label}</h2><p>{parent.productLabel}</p></div><div className={styles.bundleModalHeaderActions}><strong>{selections.length} {selections.length === 1 ? "selection" : "selections"} · {selectedCount} allowed</strong><button type="button" className={styles.bundleModalClose} aria-label="Close edit bundle" onClick={() => setOpen(false)}>×</button></div></div>
+        <div className={styles.bundleEditorHeader}><div><h2 id="bundle-editor-title">Edit Bundle — Group {groupNumber}: {parent.label}</h2><p>{parent.productLabel}</p></div><div className={styles.bundleModalHeaderActions}><strong>{selections.length} {selections.length === 1 ? "selection" : "selections"} · {selectedCount} allowed</strong><button type="button" className={styles.bundleModalClose} aria-label="Close edit bundle" onClick={closeModal}>×</button></div></div>
         <p className={styles.bundleIntro}>Each selection becomes one storefront choice. Choose all product variants allowed for that selection; the same variant can be used in multiple selections.</p>
         <label className={styles.bundleSearch}>Search product variants<input type="search" placeholder="Search product, variant or SKU" value={query} onChange={(event) => setQuery(event.target.value)}/></label>
         <div className={styles.bundleSlots}>
@@ -146,7 +154,7 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
         </div>
         {!selections.length && <p className={styles.bundleEmpty}>No selections configured yet.</p>}
         <button type="button" className={styles.secondary} onClick={addSelection}>+ Add selection</button>
-        <div className={styles.formActions}><button type="button" className={styles.secondary} onClick={() => setOpen(false)}>Cancel</button><button className={styles.primary} type="submit" disabled={!dirty || pending || hasEmptySelection}>{pending ? "Saving…" : dirty ? "Save bundle" : "Saved"}</button></div>
+        <div className={styles.formActions}><button type="button" className={styles.secondary} onClick={closeModal}>Cancel</button><button className={styles.primary} type="submit" disabled={!dirty || pending || hasEmptySelection}>{pending ? "Saving…" : dirty ? "Save bundle" : "Saved"}</button></div>
       </section>
     </fieldset>
     {state.message && <p role={state.success ? "status" : "alert"} className={styles.notice}>{state.message}</p>}

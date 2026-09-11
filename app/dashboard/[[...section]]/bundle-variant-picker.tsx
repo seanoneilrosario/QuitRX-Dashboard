@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BundleProduct, BundleVariant } from "./bundle-editor";
 import styles from "./dashboard.module.css";
 
@@ -17,6 +17,12 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
       || productVariants.some((variant) => `${variant.label} ${variant.sku}`.toLowerCase().includes(search));
     return matches ? [{ ...product, variants: productVariants }] : [];
   });
+
+  useEffect(() => {
+    const clearActiveBundle = () => setActiveVariantId("");
+    window.addEventListener("bundle-editor-close", clearActiveBundle);
+    return () => window.removeEventListener("bundle-editor-close", clearActiveBundle);
+  }, []);
 
   function openVariant(nextId: string) {
     if (!nextId) return;

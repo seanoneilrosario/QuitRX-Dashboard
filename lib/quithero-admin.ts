@@ -4,7 +4,7 @@ const API_BASE = (process.env.QUITHERO_API_BASE_URL ?? "https://retail-api.quith
 
 export const RETAIL_CATALOG_TAG = "retail-catalog";
 const cachedCatalogPaths = new Set([
-  "/products", "/brands", "/product-type", "/collections", "/tags", "/product-options",
+  "/products", "/product-variants", "/brands", "/product-type", "/collections", "/tags", "/product-options",
 ]);
 
 export type RetailRecord = Record<string, unknown> & { id?: string };

@@ -28,6 +28,10 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
     router.replace(`/dashboard/bundles?variantId=${encodeURIComponent(nextId)}`, { scroll: false });
   }
 
+  function prefetchVariant(nextId: string) {
+    if (nextId !== variantId) router.prefetch(`/dashboard/bundles?variantId=${encodeURIComponent(nextId)}`);
+  }
+
   return <div className={styles.form}>
     <section className={styles.formCard}>
       <div className={styles.bundleListHeader}>
@@ -40,7 +44,7 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
           <div className={styles.bundleGroupList}>
             {product.variants.map((variant) => <div key={variant.id} className={variant.id === activeVariantId ? styles.bundleGroupActive : undefined}>
               <span><strong>{variant.label}</strong>{variant.sku && <small>SKU: {variant.sku}</small>}</span>
-              <button type="button" className={styles.secondary} disabled={disabled} onClick={() => openVariant(variant.id)}>{variant.id === activeVariantId ? "Editing" : "Edit"}</button>
+              <button type="button" className={styles.secondary} disabled={disabled} onPointerEnter={() => prefetchVariant(variant.id)} onFocus={() => prefetchVariant(variant.id)} onClick={() => openVariant(variant.id)}>{variant.id === activeVariantId ? "Editing" : "Edit"}</button>
             </div>)}
             {!product.variants.length && <p className={styles.bundleEmpty}>No bundle groups are available for this product.</p>}
           </div>

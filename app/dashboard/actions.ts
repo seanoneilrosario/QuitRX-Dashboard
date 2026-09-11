@@ -149,7 +149,7 @@ async function syncProductTags(productId: string, selected: string[], existing: 
   ]);
 }
 
-export async function saveResource(formData: FormData) {
+async function persistResource(formData: FormData) {
   const resource = String(formData.get("_resource") ?? "");
   const id = String(formData.get("_id") ?? "");
   const returnTo = String(formData.get("_returnTo") ?? "/dashboard");
@@ -171,6 +171,22 @@ export async function saveResource(formData: FormData) {
   }
   updateTag(RETAIL_CATALOG_TAG);
   revalidatePath("/dashboard", "layout");
+  return returnTo;
+}
+
+export async function saveResource(formData: FormData) {
+  redirect(await persistResource(formData));
+}
+
+export type ResourceActionState = { message: string; success: boolean };
+
+export async function saveResourceWithState(_previous: ResourceActionState, formData: FormData): Promise<ResourceActionState> {
+  let returnTo: string;
+  try {
+    returnTo = await persistResource(formData);
+  } catch (error) {
+    return { message: error instanceof Error ? error.message : "Unable to save this resource.", success: false };
+  }
   redirect(returnTo);
 }
 

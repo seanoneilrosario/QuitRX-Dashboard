@@ -616,7 +616,11 @@ function ProductForm({
       <ResourceSaveForm className={styles.form}>
         <input type="hidden" name="_resource" value="products" />
         <input type="hidden" name="_id" value={text(item?.id, "")} />
-        <input type="hidden" name="_returnTo" value="/dashboard/products" />
+        <input
+          type="hidden"
+          name="_returnTo"
+          value={item?.id ? `/dashboard/products/edit?id=${encodeURIComponent(item.id)}` : "/dashboard/products"}
+        />
         <section className={styles.formCard}>
           <h2>Product details</h2>
           <div className={styles.formGrid}>

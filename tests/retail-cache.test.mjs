@@ -121,6 +121,43 @@ test("successful saves and deletes expire the catalog; failed writes do not", as
   }
 });
 
+test("product creation recovers when QuitHero commits the product before returning 500", async () => {
+  const events = [];
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": {
+      updateTag: (tag) => events.push(tag),
+      revalidatePath: () => events.push("revalidate"),
+    },
+    "next/navigation": { redirect: (path) => events.push(`redirect ${path}`) },
+    "@/lib/quithero-admin": {
+      RETAIL_CATALOG_TAG: "retail-catalog",
+      records: (payload) => payload.data,
+      retailRequest: async (path, options) => {
+        events.push(`${options.method ?? "GET"} ${path}`);
+        if (options.method === "POST") throw new Error("QuitHero API returned 500: Internal server error");
+        return { data: [{ id: "product-1", slug: "sample-product" }] };
+      },
+    },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
+  }, { Error });
+  const form = new FormData();
+  form.set("_resource", "products");
+  form.set("_returnTo", "/dashboard/products");
+  form.set("name", "SampleProduct");
+  form.set("slug", "sample-product");
+  form.set("_existingProductTags", "[]");
+
+  await actions.saveResource(form);
+
+  assert.deepEqual(events, [
+    "POST /products",
+    "GET /products?page=1&limit=100",
+    "retail-catalog",
+    "revalidate",
+    "redirect /dashboard/products",
+  ]);
+});
+
 test("collection saves only fields supported by the retail API", async () => {
   let request;
   const actions = load("app/dashboard/actions.ts", {

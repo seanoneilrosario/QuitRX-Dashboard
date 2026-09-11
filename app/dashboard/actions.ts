@@ -2,7 +2,7 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
-import { RETAIL_CATALOG_TAG, retailRequest } from "@/lib/quithero-admin";
+import { records, RETAIL_CATALOG_TAG, retailRequest } from "@/lib/quithero-admin";
 import { deleteStorefrontCollection, syncStorefrontCollection } from "@/lib/sanity-storefront";
 
 const allowedResources = new Set([
@@ -149,6 +149,24 @@ async function syncProductTags(productId: string, selected: string[], existing: 
   ]);
 }
 
+async function recoverCreatedProduct(body: Record<string, unknown>, error: unknown) {
+  if (!(error instanceof Error) || !/^QuitHero API returned 5\d\d\b/.test(error.message)) return undefined;
+  const slug = typeof body.slug === "string" ? body.slug.trim() : "";
+  if (!slug) return undefined;
+
+  try {
+    const products = records(await retailRequest<unknown>("/products?page=1&limit=100", { cache: "no-store" }));
+    return products.find((product) => product.slug === slug && typeof product.id === "string");
+  } catch (recoveryError) {
+    console.error("[QuitHero dashboard] Unable to verify whether product creation succeeded", {
+      stage: "product-create-recovery",
+      slug,
+      recoveryError,
+    });
+    return undefined;
+  }
+}
+
 async function persistResource(formData: FormData) {
   const resource = String(formData.get("_resource") ?? "");
   const id = String(formData.get("_id") ?? "");
@@ -164,23 +182,36 @@ async function persistResource(formData: FormData) {
   try {
     saved = await retailRequest<unknown>(path, { method, body: JSON.stringify(body) });
   } catch (error) {
-    console.error("[QuitHero dashboard] Resource save request failed", {
-      stage: "resource-save",
-      resource,
-      method,
-      path,
-      resourceId: id || undefined,
-      fields: Object.keys(body),
-      product: resource === "products" ? {
-        name: body.name,
-        slug: body.slug,
-        brandId: body.brandId,
-        productTypeId: body.productTypeId,
-        status: body.status,
-      } : undefined,
-      error,
-    });
-    throw error;
+    const recovered = resource === "products" && method === "POST"
+      ? await recoverCreatedProduct(body, error)
+      : undefined;
+    if (recovered) {
+      saved = recovered;
+      console.warn("[QuitHero dashboard] Product creation returned an error after being committed", {
+        stage: "product-create-recovered",
+        productId: recovered.id,
+        slug: recovered.slug,
+        error,
+      });
+    } else {
+      console.error("[QuitHero dashboard] Resource save request failed", {
+        stage: "resource-save",
+        resource,
+        method,
+        path,
+        resourceId: id || undefined,
+        fields: Object.keys(body),
+        product: resource === "products" ? {
+          name: body.name,
+          slug: body.slug,
+          brandId: body.brandId,
+          productTypeId: body.productTypeId,
+          status: body.status,
+        } : undefined,
+        error,
+      });
+      throw error;
+    }
   }
   if (productTags) {
     const wrapper = saved && typeof saved === "object" ? saved as Record<string, unknown> : {};

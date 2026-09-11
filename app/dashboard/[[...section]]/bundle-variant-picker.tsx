@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import type { BundleProduct, BundleVariant } from "./bundle-editor";
 import styles from "./dashboard.module.css";
 
 export default function BundleVariantPicker({ products, variants, variantId, disabled }: { products: BundleProduct[]; variants: BundleVariant[]; variantId: string; disabled: boolean }) {
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [activeVariantId, setActiveVariantId] = useState(variantId);
   const search = query.trim().toLowerCase();
@@ -31,14 +32,17 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
     setActiveVariantId(nextId);
     window.dispatchEvent(new CustomEvent("bundle-editor-select", { detail: nextId }));
     if (nextId === variantId) return;
-    router.replace(`/dashboard/bundles?variantId=${encodeURIComponent(nextId)}`, { scroll: false });
+    startTransition(() => {
+      router.replace(`/dashboard/bundles?variantId=${encodeURIComponent(nextId)}`, { scroll: false });
+    });
   }
 
   function prefetchVariant(nextId: string) {
     if (nextId !== variantId) router.prefetch(`/dashboard/bundles?variantId=${encodeURIComponent(nextId)}`);
   }
 
-  return <div className={styles.form}>
+  return <>
+    <div className={styles.form}>
     <section className={styles.formCard}>
       <div className={styles.bundleListHeader}>
         <div><h2>Bundle products</h2><p>{products.length} {products.length === 1 ? "bundle" : "bundles"}</p></div>
@@ -50,7 +54,7 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
           <div className={styles.bundleGroupList}>
             {product.variants.map((variant) => <div key={variant.id} className={variant.id === activeVariantId ? styles.bundleGroupActive : undefined}>
               <span><strong>{variant.label}</strong>{variant.sku && <small>SKU: {variant.sku}</small>}</span>
-              <button type="button" className={styles.secondary} disabled={disabled} onPointerEnter={() => prefetchVariant(variant.id)} onFocus={() => prefetchVariant(variant.id)} onClick={() => openVariant(variant.id)}>{variant.id === activeVariantId ? "Editing" : "Edit"}</button>
+              <button type="button" className={styles.secondary} disabled={disabled || isPending} onPointerEnter={() => prefetchVariant(variant.id)} onFocus={() => prefetchVariant(variant.id)} onClick={() => openVariant(variant.id)}>{variant.id === activeVariantId && isPending ? "Loading…" : variant.id === activeVariantId ? "Editing" : "Edit"}</button>
             </div>)}
             {!product.variants.length && <p className={styles.bundleEmpty}>No bundle groups are available for this product.</p>}
           </div>
@@ -58,5 +62,7 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
         {!disabled && !filteredProducts.length && <p className={styles.bundleEmpty}>{products.length ? "No bundles match your search." : "No products tagged bundle are available."}</p>}
       </div>
     </section>
-  </div>;
+    </div>
+    {isPending && <div className={styles.bundleLoadingModal} role="status" aria-live="polite" aria-label="Loading bundle editor"><div><span className={styles.bundleLoadingSpinner}/><strong>Loading bundle…</strong><small>Preparing the bundle editor</small></div></div>}
+  </>;
 }

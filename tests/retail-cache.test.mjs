@@ -224,6 +224,37 @@ test("unsupported product-tag assignments do not turn a successful product save 
   ]);
 });
 
+test("product saves remove deselected tag relationships", async () => {
+  const requests = [];
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
+    "next/navigation": { redirect: () => {} },
+    "@/lib/quithero-admin": {
+      RETAIL_CATALOG_TAG: "retail-catalog",
+      retailRequest: async (path, options = {}) => {
+        requests.push({ path, method: options.method ?? "GET", body: options.body });
+        return { id: "product-1" };
+      },
+    },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
+  });
+  const form = new FormData();
+  form.set("_resource", "products");
+  form.set("_id", "product-1");
+  form.set("name", "Tagged product");
+  form.set("slug", "tagged-product");
+  form.set("tags", "tag-2");
+  form.set("_existingProductTags", JSON.stringify([{ id: "relationship-1", tagId: "tag-1" }]));
+
+  await actions.saveResource(form);
+
+  assert.deepEqual(requests.map(({ path, method }) => `${method} ${path}`), [
+    "PATCH /products/product-1",
+    "DELETE /product-tags/relationship-1",
+    "POST /product-tags",
+  ]);
+});
+
 test("collection saves only fields supported by the retail API", async () => {
   let request;
   const actions = load("app/dashboard/actions.ts", {

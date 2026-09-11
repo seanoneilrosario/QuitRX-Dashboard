@@ -580,6 +580,16 @@ function ProductForm({
           : [];
       })
     : [];
+  const existingProductTags = Array.isArray(item?.tags)
+    ? item.tags.flatMap((tag) => {
+        if (!tag || typeof tag !== "object") return [];
+        const record = tag as RetailRecord;
+        const linkedTag = nested(record, "tag");
+        const relationshipId = text(record.id, "");
+        const tagId = text(record.tagId ?? linkedTag?.id, "");
+        return relationshipId && tagId ? [{ id: relationshipId, tagId }] : [];
+      })
+    : [];
   const productCollections = collections.filter(
     (collection) =>
       Array.isArray(collection.products) &&
@@ -616,6 +626,11 @@ function ProductForm({
       <ResourceSaveForm className={styles.form}>
         <input type="hidden" name="_resource" value="products" />
         <input type="hidden" name="_id" value={text(item?.id, "")} />
+        <input
+          type="hidden"
+          name="_existingProductTags"
+          value={JSON.stringify(existingProductTags)}
+        />
         <input
           type="hidden"
           name="_returnTo"
@@ -734,10 +749,6 @@ function ProductForm({
                 ariaLabel="Select product tags"
                 allowCreate={false}
               />
-              <small>
-                You can select existing tags, but QuitHero currently does not expose a working API
-                field for saving product-tag assignments.
-              </small>
             </div>
           </div>
         </section>

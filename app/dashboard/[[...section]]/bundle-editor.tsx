@@ -28,6 +28,7 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
   const [query, setQuery] = useState("");
   const [state, setState] = useState<BundleActionState>({ message: "", success: false });
   const [pending, setPending] = useState(false);
+  const [open, setOpen] = useState(true);
   const [nextSelectionKey, setNextSelectionKey] = useState(() => Math.max(-1, ...initialSelections.map((selection) => selection.key)) + 1);
   const bundleIds = useMemo(() => new Set(bundleProductIds), [bundleProductIds]);
   const dirty = signature(selections) !== signature(savedSelections);
@@ -56,6 +57,25 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
       window.removeEventListener("bundle-variant-change", warnBeforeVariantChange);
     };
   }, [dirty]);
+
+  useEffect(() => {
+    const selectBundle = (event: Event) => setOpen((event as CustomEvent<string>).detail === parent.id);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("bundle-editor-select", selectBundle);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("bundle-editor-select", selectBundle);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [parent.id]);
+
+  useEffect(() => {
+    if (!open) return;
+    document.body.classList.add(styles.modalOpen);
+    return () => document.body.classList.remove(styles.modalOpen);
+  }, [open]);
 
   function addSelection() {
     setSelections((current) => [...current, { key: nextSelectionKey, position: current.length, name: `Selection ${current.length + 1}`, options: [] }]);
@@ -99,13 +119,16 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
 
   const selectedCount = selections.reduce((total, selection) => total + selection.options.length, 0);
 
-  return <form id="bundle-editor" action={submit} className={styles.form}>
+  if (!open) return null;
+
+  return <div className={styles.bundleModal} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
+    <form id="bundle-editor" action={submit} className={`${styles.form} ${styles.bundleModalPanel}`} role="dialog" aria-modal="true" aria-labelledby="bundle-editor-title">
     <input type="hidden" name="productId" value={parent.productId}/>
     <input type="hidden" name="variantId" value={parent.id}/>
     <input type="hidden" name="components" value={JSON.stringify(componentsFromSelections(selections))}/>
     <fieldset disabled={pending} className={styles.bundleFields}>
       <section className={styles.formCard}>
-        <div className={styles.bundleEditorHeader}><div><h2>Group {groupNumber}: {parent.label}</h2><p>{parent.productLabel}</p></div><strong>{selections.length} {selections.length === 1 ? "selection" : "selections"} · {selectedCount} allowed</strong></div>
+        <div className={styles.bundleEditorHeader}><div><h2 id="bundle-editor-title">Edit Bundle — Group {groupNumber}: {parent.label}</h2><p>{parent.productLabel}</p></div><div className={styles.bundleModalHeaderActions}><strong>{selections.length} {selections.length === 1 ? "selection" : "selections"} · {selectedCount} allowed</strong><button type="button" className={styles.bundleModalClose} aria-label="Close edit bundle" onClick={() => setOpen(false)}>×</button></div></div>
         <p className={styles.bundleIntro}>Each selection becomes one storefront choice. Choose all product variants allowed for that selection; the same variant can be used in multiple selections.</p>
         <label className={styles.bundleSearch}>Search product variants<input type="search" placeholder="Search product, variant or SKU" value={query} onChange={(event) => setQuery(event.target.value)}/></label>
         <div className={styles.bundleSlots}>
@@ -123,9 +146,10 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
         </div>
         {!selections.length && <p className={styles.bundleEmpty}>No selections configured yet.</p>}
         <button type="button" className={styles.secondary} onClick={addSelection}>+ Add selection</button>
-        <div className={styles.formActions}><button className={styles.primary} type="submit" disabled={!dirty || pending || hasEmptySelection}>{pending ? "Saving…" : dirty ? "Save bundle" : "Saved"}</button></div>
+        <div className={styles.formActions}><button type="button" className={styles.secondary} onClick={() => setOpen(false)}>Cancel</button><button className={styles.primary} type="submit" disabled={!dirty || pending || hasEmptySelection}>{pending ? "Saving…" : dirty ? "Save bundle" : "Saved"}</button></div>
       </section>
     </fieldset>
     {state.message && <p role={state.success ? "status" : "alert"} className={styles.notice}>{state.message}</p>}
-  </form>;
+    </form>
+  </div>;
 }

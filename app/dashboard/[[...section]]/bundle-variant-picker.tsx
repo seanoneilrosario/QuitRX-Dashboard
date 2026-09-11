@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { BundleProduct, BundleVariant } from "./bundle-editor";
 import styles from "./dashboard.module.css";
 
 export default function BundleVariantPicker({ products, variants, variantId, disabled }: { products: BundleProduct[]; variants: BundleVariant[]; variantId: string; disabled: boolean }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [activeVariantId, setActiveVariantId] = useState(variantId);
   const search = query.trim().toLowerCase();
   const filteredProducts = products.flatMap((product) => {
     const productVariants = variants.filter((variant) => variant.productId === product.id);
@@ -17,18 +18,13 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
     return matches ? [{ ...product, variants: productVariants }] : [];
   });
 
-  useEffect(() => {
-    if (!variantId) return;
-    const frame = window.requestAnimationFrame(() => {
-      document.getElementById("bundle-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [variantId]);
-
   function openVariant(nextId: string) {
     if (!nextId) return;
     const change = new Event("bundle-variant-change", { cancelable: true });
     if (!window.dispatchEvent(change)) return;
+    setActiveVariantId(nextId);
+    window.dispatchEvent(new CustomEvent("bundle-editor-select", { detail: nextId }));
+    if (nextId === variantId) return;
     router.replace(`/dashboard/bundles?variantId=${encodeURIComponent(nextId)}`, { scroll: false });
   }
 
@@ -42,9 +38,9 @@ export default function BundleVariantPicker({ products, variants, variantId, dis
         {filteredProducts.map((product) => <article key={product.id} className={styles.bundleListItem}>
           <div><strong>{product.label}</strong><small>{product.variants.length} {product.variants.length === 1 ? "group" : "groups"}</small></div>
           <div className={styles.bundleGroupList}>
-            {product.variants.map((variant) => <div key={variant.id} className={variant.id === variantId ? styles.bundleGroupActive : undefined}>
+            {product.variants.map((variant) => <div key={variant.id} className={variant.id === activeVariantId ? styles.bundleGroupActive : undefined}>
               <span><strong>{variant.label}</strong>{variant.sku && <small>SKU: {variant.sku}</small>}</span>
-              <button type="button" className={styles.secondary} disabled={disabled} onClick={() => openVariant(variant.id)}>{variant.id === variantId ? "Editing" : "Edit"}</button>
+              <button type="button" className={styles.secondary} disabled={disabled} onClick={() => openVariant(variant.id)}>{variant.id === activeVariantId ? "Editing" : "Edit"}</button>
             </div>)}
             {!product.variants.length && <p className={styles.bundleEmpty}>No bundle groups are available for this product.</p>}
           </div>

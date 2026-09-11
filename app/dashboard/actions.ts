@@ -158,16 +158,47 @@ async function persistResource(formData: FormData) {
   const productTags = resource === "products" ? productTagSelection(formData) : undefined;
   if (resource === "products") delete body.tags;
   if (resource === "collections" && !body.slug && typeof body.name === "string") body.slug = slugify(body.name);
-  const saved = await retailRequest<unknown>(`/${resource}${id ? `/${encodeURIComponent(id)}` : ""}`, {
-    method: id ? "PATCH" : "POST",
-    body: JSON.stringify(body),
-  });
+  const method = id ? "PATCH" : "POST";
+  const path = `/${resource}${id ? `/${encodeURIComponent(id)}` : ""}`;
+  let saved: unknown;
+  try {
+    saved = await retailRequest<unknown>(path, { method, body: JSON.stringify(body) });
+  } catch (error) {
+    console.error("[QuitHero dashboard] Resource save request failed", {
+      stage: "resource-save",
+      resource,
+      method,
+      path,
+      resourceId: id || undefined,
+      fields: Object.keys(body),
+      product: resource === "products" ? {
+        name: body.name,
+        slug: body.slug,
+        brandId: body.brandId,
+        productTypeId: body.productTypeId,
+        status: body.status,
+      } : undefined,
+      error,
+    });
+    throw error;
+  }
   if (productTags) {
     const wrapper = saved && typeof saved === "object" ? saved as Record<string, unknown> : {};
     const data = wrapper.data && typeof wrapper.data === "object" ? wrapper.data as Record<string, unknown> : wrapper;
     const productId = id || (typeof data.id === "string" ? data.id : "");
     if (!productId) throw new Error("Product was saved, but the Retail API did not return its ID for tag sync.");
-    await syncProductTags(productId, productTags.selected, productTags.existing, productTags.newTags);
+    try {
+      await syncProductTags(productId, productTags.selected, productTags.existing, productTags.newTags);
+    } catch (error) {
+      console.error("[QuitHero dashboard] Product tag sync failed", {
+        stage: "product-tag-sync",
+        productId,
+        selectedTagIds: productTags.selected,
+        newTagNames: productTags.newTags,
+        error,
+      });
+      throw error;
+    }
   }
   updateTag(RETAIL_CATALOG_TAG);
   revalidatePath("/dashboard", "layout");

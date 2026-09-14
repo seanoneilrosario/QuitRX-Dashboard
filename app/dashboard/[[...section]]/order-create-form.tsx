@@ -27,7 +27,7 @@ export default function OrderCreateForm({
   }
 
   return (
-    <details className={styles.creator}>
+    <details className={styles.creator} open>
       <summary>+ Create order</summary>
       <form action={action}>
         <input type="hidden" name="items" value={JSON.stringify(items.map(({ variantId, quantity }) => ({ variantId, quantity })))} />

@@ -52,6 +52,7 @@ const routes = [
   ["customers", "details"],
   ["customers", "edit"],
   ["orders"],
+  ["orders", "create"],
   ["orders", "details"],
   ["inventory"],
   ["inventory", "history"],
@@ -1300,15 +1301,11 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
 
 function Orders({
   items,
-  customers,
-  variants,
   query,
   detail,
   error,
 }: {
   items: RetailRecord[];
-  customers: RetailRecord[];
-  variants: RetailRecord[];
   query: string;
   detail?: RetailRecord;
   error?: string;
@@ -1392,12 +1389,9 @@ function Orders({
       <Header
         title="Orders"
         description="Review purchases, customers, items and fulfilment state."
+        action={<ActionLink href="/dashboard/orders/create">+ Create order</ActionLink>}
       />
       <Notice message={error} />
-      <OrderCreateForm
-        customers={customers.flatMap((customer) => typeof customer.id === "string" ? [{ id: customer.id, label: [text(customer.firstName, ""), text(customer.lastName, "")].filter(Boolean).join(" ") || text(customer.email, customer.id) }] : [])}
-        variants={variants.flatMap((variant) => typeof variant.id === "string" ? [{ id: variant.id, label: [text(variant.name, "Unnamed variant"), text(variant.sku, "")].filter(Boolean).join(" · "), price: Number(variant.price ?? 0), availableStock: availableStock(variant) }] : [])}
-      />
       <div className={styles.toolbar}>
         <Search placeholder="Search order, customer or item" query={query} />
       </div>
@@ -1434,6 +1428,60 @@ function Orders({
           );
         })}
       </Table>
+    </>
+  );
+}
+
+function OrderCreate({
+  customers,
+  variants,
+  error,
+}: {
+  customers: RetailRecord[];
+  variants: RetailRecord[];
+  error?: string;
+}) {
+  return (
+    <>
+      <Header
+        title="Create order"
+        description="Create a native AUD order for an existing customer."
+        action={
+          <Link className={styles.secondary} href="/dashboard/orders">
+            Back to orders
+          </Link>
+        }
+      />
+      <Notice message={error} />
+      <OrderCreateForm
+        customers={customers.flatMap((customer) =>
+          typeof customer.id === "string"
+            ? [
+                {
+                  id: customer.id,
+                  label:
+                    [text(customer.firstName, ""), text(customer.lastName, "")]
+                      .filter(Boolean)
+                      .join(" ") || text(customer.email, customer.id),
+                },
+              ]
+            : [],
+        )}
+        variants={variants.flatMap((variant) =>
+          typeof variant.id === "string"
+            ? [
+                {
+                  id: variant.id,
+                  label: [text(variant.name, "Unnamed variant"), text(variant.sku, "")]
+                    .filter(Boolean)
+                    .join(" · "),
+                  price: Number(variant.price ?? 0),
+                  availableStock: availableStock(variant),
+                },
+              ]
+            : [],
+        )}
+      />
     </>
   );
 }
@@ -1748,25 +1796,29 @@ export default async function DashboardPage({ params, searchParams }: Props) {
     const result = await safeRetailRecord(`/customers/${encodeURIComponent(id)}`);
     content = <CustomerDetail item={result.data} editing={sub === "edit"} />;
   } else if (area === "orders") {
-    // QuitHero throttles bursts from the same API key, so load the order form's
-    // supporting data sequentially instead of issuing three requests at once.
-    const result = await safeRetailList("/orders");
-    const customers = sub
-      ? { data: [], error: undefined }
-      : await safeRetailAll("/customers");
-    const variants = sub
-      ? { data: [], error: undefined }
-      : await safeRetailAll("/product-variants");
-    content = (
-      <Orders
-        items={result.data}
-        customers={customers.data}
-        variants={variants.data}
-        query={q}
-        detail={sub === "details" ? result.data.find((item) => item.id === id) : undefined}
-        error={result.error ?? customers.error ?? variants.error}
-      />
-    );
+    if (sub === "create") {
+      // Load form reference data only when it is needed. Sequential requests
+      // avoid tripping QuitHero's per-key burst throttle.
+      const customers = await safeRetailAll("/customers");
+      const variants = await safeRetailAll("/product-variants");
+      content = (
+        <OrderCreate
+          customers={customers.data}
+          variants={variants.data}
+          error={customers.error ?? variants.error}
+        />
+      );
+    } else {
+      const result = await safeRetailList("/orders");
+      content = (
+        <Orders
+          items={result.data}
+          query={q}
+          detail={sub === "details" ? result.data.find((item) => item.id === id) : undefined}
+          error={result.error}
+        />
+      );
+    }
   } else {
     const result = await safeRetailList(sub === "history" ? "/audit-logs" : "/product-variants");
     content = (

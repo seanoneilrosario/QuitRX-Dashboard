@@ -1748,11 +1748,15 @@ export default async function DashboardPage({ params, searchParams }: Props) {
     const result = await safeRetailRecord(`/customers/${encodeURIComponent(id)}`);
     content = <CustomerDetail item={result.data} editing={sub === "edit"} />;
   } else if (area === "orders") {
-    const [result, customers, variants] = await Promise.all([
-      safeRetailList("/orders"),
-      sub ? Promise.resolve({ data: [], error: undefined }) : safeRetailAll("/customers"),
-      sub ? Promise.resolve({ data: [], error: undefined }) : safeRetailAll("/product-variants"),
-    ]);
+    // QuitHero throttles bursts from the same API key, so load the order form's
+    // supporting data sequentially instead of issuing three requests at once.
+    const result = await safeRetailList("/orders");
+    const customers = sub
+      ? { data: [], error: undefined }
+      : await safeRetailAll("/customers");
+    const variants = sub
+      ? { data: [], error: undefined }
+      : await safeRetailAll("/product-variants");
     content = (
       <Orders
         items={result.data}

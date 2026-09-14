@@ -22,10 +22,10 @@ const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resol
 function retryDelay(response: Response, attempt: number) {
   const retryAfter = response.headers.get("retry-after");
   const seconds = retryAfter ? Number(retryAfter) : Number.NaN;
-  if (Number.isFinite(seconds)) return Math.min(Math.max(seconds * 1000, 0), 30000);
+  if (Number.isFinite(seconds)) return Math.min(Math.max(seconds * 1000, 1000), 30000);
 
   const date = retryAfter ? Date.parse(retryAfter) : Number.NaN;
-  if (Number.isFinite(date)) return Math.min(Math.max(date - Date.now(), 0), 30000);
+  if (Number.isFinite(date)) return Math.min(Math.max(date - Date.now(), 1000), 30000);
   return 1000 * (2 ** attempt);
 }
 

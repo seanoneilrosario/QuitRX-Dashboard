@@ -10,6 +10,13 @@ const cachedCatalogPaths = new Set([
 export type RetailRecord = Record<string, unknown> & { id?: string };
 export type RetailPagination = { page: number; limit: number; total: number; totalPages: number };
 
+export function availableStock(variant: RetailRecord) {
+  return Math.max(
+    0,
+    Number(variant.inventory ?? 0) - Number(variant.allocatedInventory ?? 0),
+  );
+}
+
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 function retryDelay(response: Response, attempt: number) {

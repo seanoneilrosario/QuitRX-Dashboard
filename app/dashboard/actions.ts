@@ -2,7 +2,7 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
-import { records, RETAIL_CATALOG_TAG, retailRequest } from "@/lib/quithero-admin";
+import { availableStock, records, RETAIL_CATALOG_TAG, retailRequest, safeRetailAll } from "@/lib/quithero-admin";
 import { deleteStorefrontCollection, syncStorefrontCollection } from "@/lib/sanity-storefront";
 
 const allowedResources = new Set([
@@ -413,6 +413,57 @@ export async function saveResource(formData: FormData) {
 }
 
 export type ResourceActionState = { message: string; success: boolean };
+
+export type OrderActionState = { message: string; success: boolean };
+
+export async function createOrder(
+  _previous: OrderActionState,
+  formData: FormData,
+): Promise<OrderActionState> {
+  try {
+    const customerId = String(formData.get("customerId") ?? "").trim();
+    const shipping = Number(formData.get("shipping"));
+    if (!customerId) throw new Error("Select a customer.");
+    if (!Number.isFinite(shipping) || shipping < 0) throw new Error("Enter a valid shipping cost.");
+
+    const rawItems: unknown = JSON.parse(String(formData.get("items") ?? "[]"));
+    if (!Array.isArray(rawItems) || !rawItems.length) throw new Error("Add at least one order item.");
+    const items = rawItems.map((item) => {
+      const value = item && typeof item === "object" ? item as Record<string, unknown> : {};
+      const variantId = String(value.variantId ?? "").trim();
+      const quantity = Number(value.quantity);
+      if (!variantId || !Number.isInteger(quantity) || quantity < 1) throw new Error("Choose a variant and enter a valid quantity for every item.");
+      return { variantId, quantity };
+    });
+    if (new Set(items.map((item) => item.variantId)).size !== items.length) throw new Error("Each variant can only be added once.");
+
+    const variantResult = await safeRetailAll("/product-variants");
+    if (variantResult.error) throw new Error(variantResult.error);
+    const variants = new Map(variantResult.data.flatMap((variant) => typeof variant.id === "string" ? [[variant.id, variant] as const] : []));
+    let subtotal = 0;
+    for (const item of items) {
+      const variant = variants.get(item.variantId);
+      if (!variant) throw new Error("One of the selected variants is no longer available.");
+      const available = availableStock(variant);
+      if (item.quantity > available) throw new Error(`${String(variant.name ?? variant.sku ?? "Variant")} only has ${available} available.`);
+      const price = Number(variant.price);
+      if (!Number.isFinite(price) || price < 0) throw new Error("One of the selected variants has an invalid price.");
+      subtotal += price * item.quantity;
+    }
+    subtotal = Number(subtotal.toFixed(2));
+    const total = Number((subtotal + Number(shipping.toFixed(2))).toFixed(2));
+    await retailRequest("/orders", {
+      method: "POST",
+      body: JSON.stringify({ source: "NATIVE", currencyCode: "AUD", subtotal, total, customerId, items }),
+    });
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/orders");
+    revalidatePath("/dashboard/inventory");
+    return { message: "Order created.", success: true };
+  } catch (error) {
+    return { message: error instanceof Error ? error.message : "Unable to create order.", success: false };
+  }
+}
 
 export async function saveResourceWithState(
   _previous: ResourceActionState,

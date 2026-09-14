@@ -7,6 +7,7 @@ import {
   safeRetailList,
   safeRetailPage,
   safeRetailRecord,
+  availableStock,
   type RetailPagination,
   type RetailRecord,
 } from "@/lib/quithero-admin";
@@ -29,6 +30,7 @@ import {
 } from "@/lib/collection-products";
 import { ActionButton, ActionLink } from "./action-controls";
 import ResourceSaveForm from "./resource-save-form";
+import OrderCreateForm from "./order-create-form";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
@@ -244,8 +246,8 @@ function Dashboard({
     (sum, order) => sum + Number(order.total ?? order.totalPrice ?? 0),
     0,
   );
-  const stock = variants.reduce((sum, variant) => sum + Number(variant.inventory ?? 0), 0);
-  const lowStock = variants.filter((variant) => Number(variant.inventory ?? 0) <= 10).length;
+  const stock = variants.reduce((sum, variant) => sum + availableStock(variant), 0);
+  const lowStock = variants.filter((variant) => availableStock(variant) <= 10).length;
   return (
     <>
       <Header
@@ -314,7 +316,7 @@ function Dashboard({
                   <strong>{text(variant.name)}</strong>
                   <small>{text(variant.sku)}</small>
                 </span>
-                <b>{text(variant.inventory, "0")} units</b>
+                <b>{availableStock(variant)} units</b>
               </div>
             ))}
           </div>
@@ -963,7 +965,7 @@ function ResourcePage({
                 ? money(item.price)
                 : text(item.altText ?? item.seoTitle ?? item.id)}
             </td>
-            <td>{text(item.inventory ?? item.sortOrder, "")}</td>
+            <td>{kind === "variants" ? availableStock(item) : text(item.sortOrder, "")}</td>
             <td className={styles.actions}>
               {kind === "collections" && (
                 <>
@@ -1298,11 +1300,15 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
 
 function Orders({
   items,
+  customers,
+  variants,
   query,
   detail,
   error,
 }: {
   items: RetailRecord[];
+  customers: RetailRecord[];
+  variants: RetailRecord[];
   query: string;
   detail?: RetailRecord;
   error?: string;
@@ -1388,6 +1394,10 @@ function Orders({
         description="Review purchases, customers, items and fulfilment state."
       />
       <Notice message={error} />
+      <OrderCreateForm
+        customers={customers.flatMap((customer) => typeof customer.id === "string" ? [{ id: customer.id, label: [text(customer.firstName, ""), text(customer.lastName, "")].filter(Boolean).join(" ") || text(customer.email, customer.id) }] : [])}
+        variants={variants.flatMap((variant) => typeof variant.id === "string" ? [{ id: variant.id, label: [text(variant.name, "Unnamed variant"), text(variant.sku, "")].filter(Boolean).join(" · "), price: Number(variant.price ?? 0), availableStock: availableStock(variant) }] : [])}
+      />
       <div className={styles.toolbar}>
         <Search placeholder="Search order, customer or item" query={query} />
       </div>
@@ -1470,7 +1480,7 @@ function Inventory({
     );
   const filtered = variants
     .filter((item) => {
-      const available = Number(item.inventory ?? 0);
+      const available = availableStock(item);
       const matchesQuery =
         !query ||
         `${text(item.name, "")} ${text(item.sku, "")} ${text(item.productId, "")}`
@@ -1491,10 +1501,10 @@ function Inventory({
       const fields: Record<string, keyof RetailRecord> = {
         product: "name",
         sku: "sku",
-        available: "inventory",
         allocated: "allocatedInventory",
         incoming: "incomingInventory",
       };
+      if (field === "available") return (availableStock(a) - availableStock(b)) * multiplier;
       const key = fields[field] ?? "name";
       if (["inventory", "allocatedInventory", "incomingInventory"].includes(key))
         return (Number(a[key] ?? 0) - Number(b[key] ?? 0)) * multiplier;
@@ -1553,15 +1563,15 @@ function Inventory({
               <small>{text(item.productId)}</small>
             </td>
             <td>{text(item.sku)}</td>
-            <td>{text(item.inventory, "0")}</td>
+            <td>{availableStock(item)}</td>
             <td>{text(item.allocatedInventory, "0")}</td>
             <td>{text(item.incomingInventory, "0")}</td>
             <td>
               <Status
                 value={
-                  Number(item.inventory ?? 0) <= 0
+                  availableStock(item) <= 0
                     ? "OUT OF STOCK"
-                    : Number(item.inventory ?? 0) <= 10
+                    : availableStock(item) <= 10
                       ? "LOW STOCK"
                       : "HEALTHY"
                 }
@@ -1738,13 +1748,19 @@ export default async function DashboardPage({ params, searchParams }: Props) {
     const result = await safeRetailRecord(`/customers/${encodeURIComponent(id)}`);
     content = <CustomerDetail item={result.data} editing={sub === "edit"} />;
   } else if (area === "orders") {
-    const result = await safeRetailList("/orders");
+    const [result, customers, variants] = await Promise.all([
+      safeRetailList("/orders"),
+      sub ? Promise.resolve({ data: [], error: undefined }) : safeRetailAll("/customers"),
+      sub ? Promise.resolve({ data: [], error: undefined }) : safeRetailAll("/product-variants"),
+    ]);
     content = (
       <Orders
         items={result.data}
+        customers={customers.data}
+        variants={variants.data}
         query={q}
         detail={sub === "details" ? result.data.find((item) => item.id === id) : undefined}
-        error={result.error}
+        error={result.error ?? customers.error ?? variants.error}
       />
     );
   } else {

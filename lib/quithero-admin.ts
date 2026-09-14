@@ -132,10 +132,17 @@ export async function safeRetailAll(path: string, limit = 100) {
   const first = await safeRetailPage(path, 1, limit);
   if (first.error || first.pagination.totalPages <= 1) return first;
   const data = [...first.data];
-  for (let page = 2; page <= first.pagination.totalPages; page += 1) {
-    const result = await safeRetailPage(path, page, limit);
-    if (result.error) return { ...first, data, error: result.error };
-    data.push(...result.data);
+  const pageConcurrency = 4;
+  for (let start = 2; start <= first.pagination.totalPages; start += pageConcurrency) {
+    const batch = await Promise.all(
+      Array.from(
+        { length: Math.min(pageConcurrency, first.pagination.totalPages - start + 1) },
+        (_, index) => safeRetailPage(path, start + index, limit),
+      ),
+    );
+    const failed = batch.find((result) => result.error);
+    if (failed) return { ...first, data, error: failed.error };
+    data.push(...batch.flatMap((result) => result.data));
   }
   return { ...first, data, error: undefined };
 }

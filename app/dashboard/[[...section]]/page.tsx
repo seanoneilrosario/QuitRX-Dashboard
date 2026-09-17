@@ -1676,23 +1676,61 @@ function auditActor(item: RetailRecord) {
   return auditValue(item, ["staffEmail", "userEmail", "actorEmail", "userId", "staffId"]);
 }
 
-function auditDetails(item: RetailRecord) {
-  const details = item.details ?? item.metadata ?? item.changes ?? item.payload;
-  if (typeof details === "string" || typeof details === "number") return String(details);
-  if (!details || typeof details !== "object") {
-    return auditValue(item, ["description", "message", "summary"]);
-  }
-  return Object.entries(details as Record<string, unknown>)
-    .map(([key, value]) => {
-      const label = key.replace(/([a-z])([A-Z])/g, "$1 $2");
-      const rendered =
-        typeof value === "string" || typeof value === "number" || typeof value === "boolean"
-          ? String(value)
-          : JSON.stringify(value);
-      return rendered ? `${label}: ${rendered}` : "";
-    })
+function auditEntityLabel(item: RetailRecord) {
+  const entity = nested(item, "newData") ?? nested(item, "oldData");
+  if (!entity) return "";
+  const name = [text(entity.firstName, ""), text(entity.lastName, "")]
     .filter(Boolean)
-    .join(" · ");
+    .join(" ");
+  return name || auditValue(entity, ["name", "title", "email", "sku", "orderNumber"]);
+}
+
+function auditDataValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "None";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (Array.isArray(value) && value.every((entry) => typeof entry !== "object")) {
+    return value.length ? value.join(", ") : "None";
+  }
+  return "Updated";
+}
+
+function auditChanges(item: RetailRecord) {
+  const oldData = nested(item, "oldData");
+  const newData = nested(item, "newData");
+  if (!oldData || !newData) return [];
+
+  return Object.keys(newData)
+    .filter((key) => key in oldData && JSON.stringify(oldData[key]) !== JSON.stringify(newData[key]))
+    .map((key) => ({
+      field: key.replace(/([a-z])([A-Z])/g, "$1 $2"),
+      before: auditDataValue(oldData[key]),
+      after: auditDataValue(newData[key]),
+    }));
+}
+
+function AuditDetails({ item }: { item: RetailRecord }) {
+  const changes = auditChanges(item);
+  if (changes.length) {
+    return (
+      <div className={styles.activityChanges}>
+        {changes.map((change) => (
+          <div key={change.field}>
+            <strong>{change.field}</strong>
+            <span>{change.before}</span>
+            <i aria-hidden="true">→</i>
+            <span>{change.after}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const details = item.details ?? item.metadata ?? item.changes ?? item.payload;
+  const summary = auditValue(item, ["description", "message", "summary"]);
+  if (summary) return summary;
+  if (typeof details === "string" || typeof details === "number") return String(details);
+  return auditValue(item, ["action"]) === "CREATE" ? "Record created" : auditValue(item, ["action"]) === "DELETE" ? "Record deleted" : "—";
 }
 
 function StoreActivity({ items, error }: { items: RetailRecord[]; error?: string }) {
@@ -1715,7 +1753,7 @@ function StoreActivity({ items, error }: { items: RetailRecord[]; error?: string
           <span>New store actions will appear here.</span>
         </div>
       ) : activities.length ? (
-        <Table heads={["Activity", "Resource", "Details", "Staff", "Date"]}>
+        <Table heads={["Activity", "Resource", "Changes", "Source / Staff", "Date"]}>
           {activities.map((item, index) => {
             const occurredAt = auditValue(item, ["createdAt", "timestamp", "date", "occurredAt"]);
             return (
@@ -1725,10 +1763,14 @@ function StoreActivity({ items, error }: { items: RetailRecord[]; error?: string
                 </td>
                 <td>
                   {auditValue(item, ["resource", "entity", "entityType", "model"]) || "—"}
+                  <small>{auditEntityLabel(item)}</small>
                   <small>{auditValue(item, ["resourceId", "entityId", "targetId"])}</small>
                 </td>
-                <td className={styles.activityDetails}>{auditDetails(item) || "—"}</td>
-                <td>{auditActor(item) || "—"}</td>
+                <td className={styles.activityDetails}><AuditDetails item={item} /></td>
+                <td>
+                  <Status value={auditValue(item, ["source"]) || "UNKNOWN"} />
+                  <small>{auditActor(item) || "—"}</small>
+                </td>
                 <td className={styles.activityDate}>{orderDate(occurredAt)}</td>
               </tr>
             );

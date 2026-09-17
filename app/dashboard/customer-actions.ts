@@ -76,6 +76,7 @@ export async function createCustomer(
     if (typeof customer.id === "string" && customer.id)
       destination = `/dashboard/customers/details?id=${encodeURIComponent(customer.id)}`;
   } catch (error) {
+    console.error("[QuitRX] Add customer failed", error);
     return { message: error instanceof Error ? error.message : "Unable to add customer." };
   }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { createCustomer } from "../customer-actions";
 import { ActionButton } from "./action-controls";
 import TagsInput from "./tags-input";
@@ -10,8 +10,23 @@ import styles from "./dashboard.module.css";
 export default function CustomerCreateForm() {
   const [state, action, pending] = useActionState(createCustomer, { message: "" });
 
+  useEffect(() => {
+    if (state.message) {
+      console.error("[QuitRX] Add customer failed", {
+        endpoint: "POST /customers",
+        message: state.message,
+      });
+    }
+  }, [state]);
+
   return (
-    <form action={action} className={styles.form}>
+    <form
+      action={action}
+      className={styles.form}
+      onSubmit={() =>
+        console.info("[QuitRX] Add customer submitted", { endpoint: "POST /customers" })
+      }
+    >
       <section className={styles.formCard}>
         <h2>Customer details</h2>
         <div className={styles.formGrid}>

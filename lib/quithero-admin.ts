@@ -98,7 +98,7 @@ export function records(payload: unknown): RetailRecord[] {
   if (Array.isArray(payload)) return payload.filter((item): item is RetailRecord => Boolean(item && typeof item === "object"));
   if (!payload || typeof payload !== "object") return [];
   const wrapper = payload as Record<string, unknown>;
-  for (const key of ["data", "items", "results", "products", "customers", "orders", "collections"]) {
+  for (const key of ["data", "items", "results", "products", "customers", "orders", "collections", "auditLogs", "logs"]) {
     const result = records(wrapper[key]);
     if (result.length) return result;
   }

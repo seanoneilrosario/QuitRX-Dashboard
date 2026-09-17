@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { deleteResource, saveResource } from "../actions";
 import {
   safeRetailAll,
@@ -56,6 +57,7 @@ const routes = [
   ["orders", "details"],
   ["inventory"],
   ["inventory", "history"],
+  ["store-activity"],
 ];
 
 export function generateStaticParams() {
@@ -75,6 +77,7 @@ const nav = [
   { label: "Customers", href: "/dashboard/customers", icon: "♙" },
   { label: "Orders", href: "/dashboard/orders", icon: "▤" },
   { label: "Inventory", href: "/dashboard/inventory", icon: "▥" },
+  { label: "Store Activity", href: "/dashboard/store-activity", icon: "↻" },
 ];
 
 function text(value: unknown, fallback = "—") {
@@ -1653,6 +1656,108 @@ function Inventory({
   );
 }
 
+function auditValue(item: RetailRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = item[key];
+    if (typeof value === "string" || typeof value === "number") return String(value);
+  }
+  return "";
+}
+
+function auditActor(item: RetailRecord) {
+  const actor = nested(item, "user") ?? nested(item, "staff") ?? nested(item, "actor");
+  if (actor) {
+    const name = [text(actor.firstName, ""), text(actor.lastName, "")]
+      .filter(Boolean)
+      .join(" ");
+    return name || auditValue(actor, ["email", "name", "id"]);
+  }
+  return auditValue(item, ["staffEmail", "userEmail", "actorEmail", "userId", "staffId"]);
+}
+
+function auditDetails(item: RetailRecord) {
+  const details = item.details ?? item.metadata ?? item.changes ?? item.payload;
+  if (typeof details === "string" || typeof details === "number") return String(details);
+  if (!details || typeof details !== "object") {
+    return auditValue(item, ["description", "message", "summary"]);
+  }
+  return Object.entries(details as Record<string, unknown>)
+    .map(([key, value]) => {
+      const label = key.replace(/([a-z])([A-Z])/g, "$1 $2");
+      const rendered =
+        typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+          ? String(value)
+          : JSON.stringify(value);
+      return rendered ? `${label}: ${rendered}` : "";
+    })
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function StoreActivity({ items, error }: { items: RetailRecord[]; error?: string }) {
+  const activities = [...items].sort((a, b) => {
+    const aTime = Date.parse(auditValue(a, ["createdAt", "timestamp", "date", "occurredAt"]));
+    const bTime = Date.parse(auditValue(b, ["createdAt", "timestamp", "date", "occurredAt"]));
+    return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+  });
+
+  return (
+    <>
+      <Header
+        title="Store Activity"
+        description="Review recent changes and actions across your store."
+      />
+      <Notice message={error} />
+      {!error && !activities.length ? (
+        <div className={styles.emptyState}>
+          <strong>No store activity yet</strong>
+          <span>New store actions will appear here.</span>
+        </div>
+      ) : activities.length ? (
+        <Table heads={["Activity", "Resource", "Details", "Staff", "Date"]}>
+          {activities.map((item, index) => {
+            const occurredAt = auditValue(item, ["createdAt", "timestamp", "date", "occurredAt"]);
+            return (
+              <tr key={text(item.id, `${occurredAt}-${index}`)}>
+                <td>
+                  <strong>{auditValue(item, ["action", "event", "type"]) || "Activity"}</strong>
+                </td>
+                <td>
+                  {auditValue(item, ["resource", "entity", "entityType", "model"]) || "—"}
+                  <small>{auditValue(item, ["resourceId", "entityId", "targetId"])}</small>
+                </td>
+                <td className={styles.activityDetails}>{auditDetails(item) || "—"}</td>
+                <td>{auditActor(item) || "—"}</td>
+                <td className={styles.activityDate}>{orderDate(occurredAt)}</td>
+              </tr>
+            );
+          })}
+        </Table>
+      ) : null}
+    </>
+  );
+}
+
+async function StoreActivitySection() {
+  const result = await safeRetailList("/audit-logs");
+  return <StoreActivity items={result.data} error={result.error} />;
+}
+
+function StoreActivityLoading() {
+  return (
+    <>
+      <Header
+        title="Store Activity"
+        description="Review recent changes and actions across your store."
+      />
+      <div className={styles.loadingState} role="status">
+        <span className={styles.loadingSpinner} aria-hidden="true" />
+        <strong>Loading store activity…</strong>
+      </div>
+    </>
+  );
+}
+
 export default async function DashboardPage({ params, searchParams }: Props) {
   const { section = [] } = await params;
   const queryParams = await searchParams;
@@ -1838,6 +1943,12 @@ export default async function DashboardPage({ params, searchParams }: Props) {
         />
       );
     }
+  } else if (area === "store-activity") {
+    content = (
+      <Suspense fallback={<StoreActivityLoading />}>
+        <StoreActivitySection />
+      </Suspense>
+    );
   } else {
     const result = await safeRetailList(sub === "history" ? "/audit-logs" : "/product-variants");
     content = (

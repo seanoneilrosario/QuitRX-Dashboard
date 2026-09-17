@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createCollection } from "../actions";
 import { collectionProductIds, dynamicCollectionProductIds, type CollectionProductOption, type CollectionRule } from "@/lib/collection-products";
 import styles from "./dashboard.module.css";
@@ -17,11 +17,42 @@ export default function CollectionCreateFields({ initial }: { initial?: Record<s
   const [name, setName] = useState(typeof initial?.name === "string" ? initial.name : "");
   const [slug, setSlug] = useState(typeof initial?.slug === "string" ? initial.slug : "");
   const [slugEdited, setSlugEdited] = useState(Boolean(initial?.slug));
+  const initialImage = typeof initial?.image === "string" ? initial.image : "";
+  const [imagePreview, setImagePreview] = useState("");
+  const imageInput = useRef<HTMLInputElement>(null);
+  const previewUrl = useRef("");
+
+  useEffect(() => {
+    const form = imageInput.current?.form;
+    const clearPreview = () => {
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+      previewUrl.current = "";
+      setImagePreview("");
+    };
+    form?.addEventListener("reset", clearPreview);
+    return () => {
+      form?.removeEventListener("reset", clearPreview);
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+    };
+  }, []);
+
   return <>
     <label>Collection name<input required name="name" value={name} onChange={(event) => { const nextName = event.target.value; setName(nextName); if (!slugEdited) setSlug(slugify(nextName)); }}/></label>
     <label>Slug<input required name="slug" value={slug} onChange={(event) => { setSlugEdited(true); setSlug(slugify(event.target.value)); }}/></label>
     <label className={styles.full}>Description<textarea name="description" defaultValue={typeof initial?.description === "string" ? initial.description : ""}/></label>
-    <label>Image URL<input type="url" name="image" defaultValue={typeof initial?.image === "string" ? initial.image : ""}/></label>
+    <input type="hidden" name="image" value={typeof initial?.image === "string" ? initial.image : ""}/>
+    <label className={styles.full}>Image<input ref={imageInput} type="file" name="_imageFile" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => {
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+      const file = event.target.files?.[0];
+      previewUrl.current = file ? URL.createObjectURL(file) : "";
+      setImagePreview(previewUrl.current);
+    }}/><small>JPEG, PNG, WebP or GIF, up to 4 MB.{initial?.image ? " Leave empty to keep the current image." : ""}</small>
+      {(imagePreview || initialImage) && (
+        // Local file previews use browser blob URLs without image optimization.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={imagePreview || initialImage} alt={imagePreview ? "Selected collection image preview" : "Current collection image"} style={{ display: "block", width: "100%", maxWidth: 280, height: 180, objectFit: "contain", borderRadius: 8 }}/>
+      )}
+    </label>
     <label>SEO title<input name="seoTitle" defaultValue={typeof initial?.seoTitle === "string" ? initial.seoTitle : ""}/></label>
     <label>SEO description<input name="seoDescription" defaultValue={typeof initial?.seoDescription === "string" ? initial.seoDescription : ""}/></label>
   </>;

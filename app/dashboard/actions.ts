@@ -3,7 +3,8 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { availableStock, records, RETAIL_CATALOG_TAG, retailRequest, safeRetailAll } from "@/lib/quithero-admin";
-import { deleteStorefrontCollection, syncStorefrontCollection } from "@/lib/sanity-storefront";
+import { deleteStorefrontCollection, syncStorefrontCollection, uploadCollectionImage } from "@/lib/sanity-storefront";
+import { auth } from "@/auth";
 
 const allowedResources = new Set([
   "products",
@@ -100,10 +101,16 @@ export async function createCollection(
   formData: FormData,
 ): Promise<CollectionActionState> {
   try {
+    const session = await auth();
+    if (!session?.user || !(session.user as typeof session.user & { isStaff?: boolean }).isStaff)
+      throw new Error("You must be signed in as staff to save collections.");
     const id = String(formData.get("_id") ?? "");
     const body = payload(formData);
     if (!body.slug && typeof body.name === "string") body.slug = slugify(body.name);
     validateCollection(body, Boolean(id));
+    const imageFile = formData.get("_imageFile");
+    if (imageFile instanceof File && imageFile.size > 0)
+      body.image = await uploadCollectionImage(imageFile);
     const retailBody = { ...body };
     if (retailBody.type === "DYNAMIC") delete retailBody.productIds;
     const saved = await retailRequest<unknown>(

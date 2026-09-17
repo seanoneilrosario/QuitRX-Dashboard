@@ -33,6 +33,7 @@ import {
 import { ActionButton, ActionLink } from "./action-controls";
 import ResourceSaveForm from "./resource-save-form";
 import OrderCreateForm from "./order-create-form";
+import CustomerCreateForm from "./customer-create-form";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
@@ -51,6 +52,7 @@ const routes = [
   ["collections", "edit"],
   ["bundles"],
   ["customers"],
+  ["customers", "create"],
   ["customers", "details"],
   ["customers", "edit"],
   ["orders"],
@@ -1086,6 +1088,11 @@ function Customers({
       <Header
         title="Customers"
         description="Search customer accounts, purchase history and prescription status."
+        action={
+          <ActionLink className={styles.primary} href="/dashboard/customers/create">
+            Add customer
+          </ActionLink>
+        }
       />
       <Notice message={error} />
       <div className={styles.toolbar}>
@@ -1965,6 +1972,13 @@ export default async function DashboardPage({ params, searchParams }: Props) {
         pagination={result.pagination}
         error={result.error}
       />
+    );
+  } else if (area === "customers" && sub === "create") {
+    content = (
+      <>
+        <Header title="Add customer" description="Create a customer record in QuitHero." />
+        <CustomerCreateForm />
+      </>
     );
   } else if (area === "customers") {
     const result = await safeRetailRecord(`/customers/${encodeURIComponent(id)}`);

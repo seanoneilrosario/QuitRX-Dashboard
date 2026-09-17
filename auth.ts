@@ -61,6 +61,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       if (account?.provider === "staff-credentials" && user) {
         const staff = user as typeof user & { staffAccessToken?: string };
         token.isStaff = Boolean(staff.staffAccessToken);
+        token.staffAccessToken = staff.staffAccessToken;
       }
       return token;
     },
@@ -68,7 +69,14 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       const userId = token.id ?? token.sub;
       if (session.user && typeof userId === "string") {
         session.user.id = userId;
-        (session.user as typeof session.user & { isStaff?: boolean }).isStaff = token.isStaff === true;
+        const staffUser = session.user as typeof session.user & {
+          isStaff?: boolean;
+          accessToken?: string;
+        };
+        staffUser.isStaff = token.isStaff === true;
+        if (typeof token.staffAccessToken === "string") {
+          staffUser.accessToken = token.staffAccessToken;
+        }
       }
       return session;
     },

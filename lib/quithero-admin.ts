@@ -64,11 +64,15 @@ export async function retailRequest<T = unknown>(path: string, init: RequestInit
   const cacheCatalog = (init.method ?? "GET").toUpperCase() === "GET"
     && cachedCatalogPaths.has(path.split("?")[0])
     && init.cache !== "no-store";
+  const suppliedHeaders = (init.headers ?? {}) as Record<string, string>;
+  const usesBearerToken = Object.keys(suppliedHeaders).some(
+    (name) => name.toLowerCase() === "authorization",
+  );
   const request = {
     ...init,
     headers: {
       "content-type": "application/json",
-      "x-api-key": apiKey(),
+      ...(usesBearerToken ? {} : { "x-api-key": apiKey() }),
       ...init.headers,
     },
     cache: cacheCatalog ? "force-cache" as const : "no-store" as const,
@@ -105,9 +109,9 @@ export function records(payload: unknown): RetailRecord[] {
   return [];
 }
 
-export async function safeRetailList(path: string) {
+export async function safeRetailList(path: string, init: RequestInit = {}) {
   try {
-    return { data: records(await retailRequest(path)), error: undefined };
+    return { data: records(await retailRequest(path, init)), error: undefined };
   } catch (error) {
     return { data: [], error: error instanceof Error ? error.message : "Unable to reach QuitHero." };
   }

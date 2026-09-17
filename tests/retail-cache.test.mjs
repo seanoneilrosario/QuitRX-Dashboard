@@ -44,6 +44,12 @@ test("only catalog list reads use the short-lived cache", async () => {
     assert.equal(calls.at(-1).cache, "no-store");
     assert.equal(calls.at(-1).next, undefined);
   }
+
+  await api.retailRequest("/audit-logs", {
+    headers: { authorization: "Bearer staff-token" },
+  });
+  assert.equal(calls.at(-1).headers.authorization, "Bearer staff-token");
+  assert.equal(calls.at(-1).headers["x-api-key"], undefined);
 });
 
 test("rate-limited reads and idempotent bundle saves are retried", async () => {

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { auth } from "@/auth";
 import { deleteResource, saveResource } from "../actions";
 import {
   safeRetailAll,
@@ -1739,7 +1740,14 @@ function StoreActivity({ items, error }: { items: RetailRecord[]; error?: string
 }
 
 async function StoreActivitySection() {
-  const result = await safeRetailList("/audit-logs");
+  const session = await auth();
+  const accessToken = (session?.user as { accessToken?: string } | undefined)?.accessToken;
+  if (!accessToken) {
+    return <StoreActivity items={[]} error="Your staff session does not include an access token. Please sign in again." />;
+  }
+  const result = await safeRetailList("/audit-logs", {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
   return <StoreActivity items={result.data} error={result.error} />;
 }
 

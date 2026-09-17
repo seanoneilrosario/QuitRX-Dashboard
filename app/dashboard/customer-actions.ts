@@ -23,9 +23,7 @@ export async function createCustomer(
       "firstName",
       "lastName",
       "phone",
-      "scriptExpiry",
       "scriptId",
-      "birthday",
       "scriptValidity",
       "renewalForm",
       "gender",
@@ -37,6 +35,21 @@ export async function createCustomer(
     ]) {
       const value = String(formData.get(field) ?? "").trim();
       if (value) body[field] = value;
+    }
+    for (const [field, label] of [
+      ["scriptExpiry", "Script expiry"],
+      ["birthday", "Birthday"],
+    ]) {
+      const value = String(formData.get(field) ?? "").trim();
+      if (!value) continue;
+      const date = new Date(`${value}T00:00:00.000Z`);
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+        !Number.isFinite(date.getTime()) ||
+        date.toISOString().slice(0, 10) !== value
+      )
+        throw new Error(`${label} must be a valid date.`);
+      body[field] = date.toISOString();
     }
     for (const field of ["consultPurchase", "scriptActive"]) {
       const value = String(formData.get(field) ?? "false");

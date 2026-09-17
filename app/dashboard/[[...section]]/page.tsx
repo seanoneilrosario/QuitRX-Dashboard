@@ -329,12 +329,14 @@ function Dashboard({
 
 function Products({
   items,
+  variants,
   query,
   status,
   page,
   error,
 }: {
   items: RetailRecord[];
+  variants: RetailRecord[];
   query: string;
   status: string;
   page: number;
@@ -410,15 +412,27 @@ function Products({
           ))}
         </div>
       </div>
-      <Table heads={["Product", "Brand", "Type", "Status", "Actions"]}>
-        {visibleItems.map((item, index) => (
-          <tr key={text(item.id, String(index))}>
+      <Table heads={["Product", "Brand", "Type", "Inventory", "Status", "Actions"]}>
+        {visibleItems.map((item, index) => {
+          const productVariants = variants.filter(
+            (variant) => text(variant.productId, "") === text(item.id, ""),
+          );
+          const inventory = productVariants.reduce(
+            (total, variant) => total + availableStock(variant),
+            0,
+          );
+          return (
+            <tr key={text(item.id, String(index))}>
             <td>
               <strong>{text(item.name)}</strong>
               <small>{text(item.slug)}</small>
             </td>
             <td>{text(nested(item, "brand")?.name ?? item.brandId)}</td>
             <td>{text(nested(item, "productType")?.name ?? item.productTypeId)}</td>
+            <td>
+              {inventory} in stock for {productVariants.length}{" "}
+              {productVariants.length === 1 ? "variant" : "variants"}
+            </td>
             <td>
               <Status value={item.status} />
             </td>
@@ -433,8 +447,9 @@ function Products({
                 <ActionButton pendingLabel="Deleting…">Delete</ActionButton>
               </form>
             </td>
-          </tr>
-        ))}
+            </tr>
+          );
+        })}
       </Table>
       {!visibleItems.length ? (
         <div className={styles.notice}>
@@ -1671,14 +1686,18 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       />
     );
   } else if (area === "products" && !sub) {
-    const result = await safeRetailAll("/products");
+    const [result, variants] = await Promise.all([
+      safeRetailAll("/products"),
+      safeRetailAll("/product-variants"),
+    ]);
     content = (
       <Products
         items={result.data}
+        variants={variants.data}
         query={q}
         status={status}
         page={page}
-        error={result.error}
+        error={result.error ?? variants.error}
       />
     );
   } else if (area === "products" && sub === "create") {

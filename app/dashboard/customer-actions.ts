@@ -18,11 +18,39 @@ export async function createCustomer(
     const email = String(formData.get("email") ?? "").trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
 
-    const body: Record<string, string> = { email };
-    for (const field of ["firstName", "lastName", "phone"]) {
+    const body: Record<string, string | boolean | string[]> = { email };
+    for (const field of [
+      "firstName",
+      "lastName",
+      "phone",
+      "scriptExpiry",
+      "scriptId",
+      "birthday",
+      "scriptValidity",
+      "renewalForm",
+      "gender",
+      "vapeTag",
+      "pouchTag",
+      "document",
+      "socLogin",
+      "scriptUploaded",
+    ]) {
       const value = String(formData.get(field) ?? "").trim();
       if (value) body[field] = value;
     }
+    for (const field of ["consultPurchase", "scriptActive"]) {
+      const value = String(formData.get(field) ?? "false");
+      if (value !== "true" && value !== "false") throw new Error(`Invalid ${field} value.`);
+      body[field] = value === "true";
+    }
+    body.tags = [
+      ...new Set(
+        String(formData.get("tags") ?? "")
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      ),
+    ];
     const saved = await retailRequest<unknown>("/customers", {
       method: "POST",
       body: JSON.stringify(body),

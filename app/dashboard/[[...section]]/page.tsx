@@ -1191,9 +1191,8 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
   if (editing) {
     const meta = (field: string, key: string) => metafieldValue(item, key) ?? item[field];
     const tags = Array.isArray(item.tags) ? item.tags.map(String) : [];
-    const address = Array.isArray(item.addresses) && item.addresses.length
-      ? (item.addresses[0] as RetailRecord)
-      : nested(item, "address");
+    const addresses = customerAddresses(item);
+    const customerId = text(item.id, "");
     return (
       <>
         <Header
@@ -1227,61 +1226,6 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
           <section className={styles.formCard}>
             <h2>Tags</h2>
             <TagsInput initialTags={tags} />
-          </section>
-          <section className={styles.formCard}>
-            <h2>Address</h2>
-            <input type="hidden" name="_hasAddress" value={String(Boolean(address))} />
-            <input type="hidden" name="_addressId" value={text(address?.id, "")} />
-            <div className={styles.formGrid}>
-              <label className={styles.full}>
-                Address line 1
-                <input
-                  name="_address1"
-                  autoComplete="address-line1"
-                  defaultValue={text(address?.address1 ?? address?.line1, "")}
-                />
-              </label>
-              <label className={styles.full}>
-                Address line 2
-                <input
-                  name="_address2"
-                  autoComplete="address-line2"
-                  defaultValue={text(address?.address2 ?? address?.line2, "")}
-                />
-              </label>
-              <label>
-                City / suburb
-                <input
-                  name="_city"
-                  autoComplete="address-level2"
-                  defaultValue={text(address?.city, "")}
-                />
-              </label>
-              <label>
-                State
-                <input
-                  name="_state"
-                  autoComplete="address-level1"
-                  defaultValue={text(address?.state ?? address?.province, "")}
-                />
-              </label>
-              <label>
-                Postcode
-                <input
-                  name="_postcode"
-                  autoComplete="postal-code"
-                  defaultValue={text(address?.postcode ?? address?.zip, "")}
-                />
-              </label>
-              <label>
-                Country
-                <input
-                  name="_country"
-                  autoComplete="country-name"
-                  defaultValue={text(address?.country, "")}
-                />
-              </label>
-            </div>
           </section>
           <section className={styles.formCard}>
             <h2>Metafield</h2>
@@ -1376,6 +1320,50 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
             </ActionButton>
           </div>
         </ResourceSaveForm>
+        <section className={`${styles.card} ${styles.addressEditorSection}`}>
+          <div className={styles.addressHeader}>
+            <div>
+              <h2>Edit addresses</h2>
+              <p>{addresses.length ? `${addresses.length} saved address${addresses.length === 1 ? "" : "es"}` : "No saved addresses"}</p>
+            </div>
+          </div>
+          {addresses.length ? (
+            <div className={styles.addressList}>
+              {addresses.map((address, index) => {
+                const addressId = text(address.id, "");
+                return (
+                  <form
+                    action={updateCustomerAddress}
+                    className={`${styles.form} ${styles.addressCard} ${styles.addressForm}`}
+                    key={addressId || `address-${index}`}
+                  >
+                    <div className={styles.addressCardHeader}>
+                      <strong>Address {index + 1}</strong>
+                      {isDefaultAddress(item, address, index) ? <span className={styles.status}>Default</span> : null}
+                    </div>
+                    <input type="hidden" name="customerId" value={customerId} />
+                    <input type="hidden" name="addressId" value={addressId} />
+                    <div className={styles.formGrid}>
+                      <label className={styles.full}>Address line 1<input name="address1" autoComplete="address-line1" defaultValue={text(address.address1 ?? address.line1, "")} /></label>
+                      <label className={styles.full}>Address line 2<input name="address2" autoComplete="address-line2" defaultValue={text(address.address2 ?? address.line2, "")} /></label>
+                      <label>City / suburb<input name="city" autoComplete="address-level2" defaultValue={text(address.city, "")} /></label>
+                      <label>State<input name="state" autoComplete="address-level1" defaultValue={text(address.state ?? address.province, "")} /></label>
+                      <label>Postcode<input name="postcode" autoComplete="postal-code" defaultValue={text(address.postcode ?? address.zip, "")} /></label>
+                      <label>Country<input name="country" autoComplete="country-name" defaultValue={text(address.country, "")} /></label>
+                    </div>
+                    <div className={styles.addressActions}>
+                      <ActionButton className={styles.secondary} pendingLabel="Saving…" disabled={!addressId}>
+                        Save address
+                      </ActionButton>
+                    </div>
+                  </form>
+                );
+              })}
+            </div>
+          ) : (
+            <div className={styles.addressEmpty}>This customer does not have a saved address.</div>
+          )}
+        </section>
       </>
     );
   }
@@ -1448,12 +1436,8 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
                       <strong>Address {index + 1}</strong>
                       {isDefault ? <span className={styles.status}>Default</span> : null}
                     </div>
-                    <form
-                      action={updateCustomerAddress}
-                      className={`${styles.form} ${styles.addressForm}`}
-                    >
-                      <input type="hidden" name="customerId" value={customerId} />
-                      <input type="hidden" name="addressId" value={addressId} />
+                    <div className={`${styles.form} ${styles.addressForm}`}>
+                      <fieldset className={styles.readOnlyAddress} disabled>
                       <div className={styles.formGrid}>
                         <label className={styles.full}>
                           Address line 1
@@ -1504,6 +1488,7 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
                           />
                         </label>
                       </div>
+                      </fieldset>
                       <div className={styles.addressActions}>
                         {addressId ? (
                           <ActionButton className={styles.secondary} pendingLabel="Savingâ€¦">
@@ -1518,7 +1503,7 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
                           </Link>
                         )}
                       </div>
-                    </form>
+                    </div>
                     {!isDefault && addressId ? (
                       <form
                         action={setDefaultCustomerAddress}

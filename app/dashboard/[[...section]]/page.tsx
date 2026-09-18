@@ -1092,40 +1092,23 @@ function CollectionEdit({
 function Customers({
   items,
   query,
-  page,
+  pagination,
   error,
 }: {
   items: RetailRecord[];
   query: string;
-  page: number;
+  pagination: RetailPagination;
   error?: string;
 }) {
-  const pageSize = 50;
-  const filtered = items
-    .filter(
-      (item) =>
-        !query ||
-        [item.firstName, item.lastName, item.email, item.phone, item.shopifyId]
-          .map((value) => text(value, ""))
-          .join(" ")
-          .toLowerCase()
-          .includes(query.toLowerCase()),
-    )
-    .sort((left, right) => {
-      const leftCreated = Date.parse(text(left.createdAt, ""));
-      const rightCreated = Date.parse(text(right.createdAt, ""));
-      return (Number.isNaN(rightCreated) ? 0 : rightCreated) -
-        (Number.isNaN(leftCreated) ? 0 : leftCreated);
-    });
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const pagination: RetailPagination = {
-    page: currentPage,
-    limit: pageSize,
-    total: filtered.length,
-    totalPages,
-  };
+  const filtered = items.filter(
+    (item) =>
+      !query ||
+      [item.firstName, item.lastName, item.email, item.phone, item.shopifyId]
+        .map((value) => text(value, ""))
+        .join(" ")
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+  );
   return (
     <>
       <Header
@@ -1142,7 +1125,7 @@ function Customers({
         <Search placeholder="Search name, email, phone or Shopify ID" query={query} />
       </div>
       <Table heads={["Customer", "Contact", "Orders", "Total spent", "Status", ""]}>
-        {visible.map((item, index) => (
+        {filtered.map((item, index) => (
           <tr key={text(item.id, String(index))}>
             <td>
               <strong>
@@ -2188,12 +2171,12 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       );
     }
   } else if (area === "customers" && !sub) {
-    const result = await safeRetailAll("/customers", 50);
+    const result = await safeRetailPage("/customers", page, 50);
     content = (
       <Customers
         items={result.data}
         query={q}
-        page={page}
+        pagination={result.pagination}
         error={result.error}
       />
     );

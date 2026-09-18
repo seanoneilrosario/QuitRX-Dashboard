@@ -2176,7 +2176,7 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       );
     }
   } else if (area === "customers" && !sub) {
-    const limit = 50;
+    const limit = 20;
     const customerPath = q ? `/customers?search=${encodeURIComponent(q)}` : "/customers";
     const firstPage = await safeRetailPage(customerPath, 1, limit);
     const currentPage = Math.min(page, firstPage.pagination.totalPages);

@@ -327,6 +327,25 @@ async function persistResource(formData: FormData) {
   const returnTo = String(formData.get("_returnTo") ?? "/dashboard");
   if (!allowedResources.has(resource)) throw new Error("Unsupported resource.");
   const body = payload(formData);
+  if (resource === "customers") {
+    const address = {
+      address1: String(formData.get("_address1") ?? "").trim(),
+      address2: String(formData.get("_address2") ?? "").trim(),
+      city: String(formData.get("_city") ?? "").trim(),
+      state: String(formData.get("_state") ?? "").trim(),
+      postcode: String(formData.get("_postcode") ?? "").trim(),
+      country: String(formData.get("_country") ?? "").trim(),
+    };
+    if (formData.get("_hasAddress") === "true" || Object.values(address).some(Boolean)) {
+      body.address = {
+        ...address,
+        line1: address.address1,
+        line2: address.address2,
+        province: address.state,
+        zip: address.postcode,
+      };
+    }
+  }
   const productTags = resource === "products" ? productTagSelection(formData) : undefined;
   if (resource === "products") delete body.tags;
   if (resource === "collections" && !body.slug && typeof body.name === "string")

@@ -34,6 +34,7 @@ import { ActionButton, ActionLink } from "./action-controls";
 import ResourceSaveForm from "./resource-save-form";
 import OrderCreateForm from "./order-create-form";
 import CustomerCreateForm from "./customer-create-form";
+import { setDefaultCustomerAddress, updateCustomerAddress } from "../customer-actions";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
@@ -132,6 +133,29 @@ function dateInput(value: unknown) {
 function metafieldValue(item: RetailRecord, key: string) {
   const metafields = Array.isArray(item.metafields) ? (item.metafields as RetailRecord[]) : [];
   return metafields.find((field) => field.key === key)?.value;
+}
+
+function customerAddresses(item: RetailRecord) {
+  if (Array.isArray(item.addresses)) {
+    const addresses = item.addresses.filter(
+      (address): address is RetailRecord => Boolean(address && typeof address === "object"),
+    );
+    if (addresses.length) return addresses;
+  }
+  const address = nested(item, "address");
+  return address ? [address] : [];
+}
+
+function isDefaultAddress(item: RetailRecord, address: RetailRecord, index: number) {
+  if (address.isDefault === true || address.default === true) return true;
+  const addressId = text(address.id, "");
+  const defaultAddress = nested(item, "defaultAddress");
+  if (addressId && text(item.defaultAddressId, "") === addressId) return true;
+  if (addressId && text(defaultAddress?.id, "") === addressId) return true;
+  const primaryAddress = nested(item, "address");
+  return index === 0 && Boolean(primaryAddress) && (
+    !addressId || !primaryAddress?.id || text(primaryAddress.id, "") === addressId
+  );
 }
 
 function Header({
@@ -1145,6 +1169,10 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
   if (editing) {
     const meta = (field: string, key: string) => metafieldValue(item, key) ?? item[field];
     const tags = Array.isArray(item.tags) ? item.tags.map(String) : [];
+    const address = nested(item, "address") ??
+      (Array.isArray(item.addresses) && item.addresses.length
+        ? (item.addresses[0] as RetailRecord)
+        : undefined);
     return (
       <>
         <Header
@@ -1178,6 +1206,60 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
           <section className={styles.formCard}>
             <h2>Tags</h2>
             <TagsInput initialTags={tags} />
+          </section>
+          <section className={styles.formCard}>
+            <h2>Address</h2>
+            <input type="hidden" name="_hasAddress" value={String(Boolean(address))} />
+            <div className={styles.formGrid}>
+              <label className={styles.full}>
+                Address line 1
+                <input
+                  name="_address1"
+                  autoComplete="address-line1"
+                  defaultValue={text(address?.address1 ?? address?.line1, "")}
+                />
+              </label>
+              <label className={styles.full}>
+                Address line 2
+                <input
+                  name="_address2"
+                  autoComplete="address-line2"
+                  defaultValue={text(address?.address2 ?? address?.line2, "")}
+                />
+              </label>
+              <label>
+                City / suburb
+                <input
+                  name="_city"
+                  autoComplete="address-level2"
+                  defaultValue={text(address?.city, "")}
+                />
+              </label>
+              <label>
+                State
+                <input
+                  name="_state"
+                  autoComplete="address-level1"
+                  defaultValue={text(address?.state ?? address?.province, "")}
+                />
+              </label>
+              <label>
+                Postcode
+                <input
+                  name="_postcode"
+                  autoComplete="postal-code"
+                  defaultValue={text(address?.postcode ?? address?.zip, "")}
+                />
+              </label>
+              <label>
+                Country
+                <input
+                  name="_country"
+                  autoComplete="country-name"
+                  defaultValue={text(address?.country, "")}
+                />
+              </label>
+            </div>
           </section>
           <section className={styles.formCard}>
             <h2>Metafield</h2>
@@ -1275,6 +1357,8 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
       </>
     );
   }
+  const addresses = customerAddresses(item);
+  const customerId = text(item.id, "");
   return (
     <>
       <Header
@@ -1319,6 +1403,127 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
               <strong>{text(value)}</strong>
             </div>
           ))}
+        </section>
+        <section className={`${styles.card} ${styles.addressSection}`}>
+          <div className={styles.addressHeader}>
+            <div>
+              <h2>Addresses</h2>
+              <p>
+                {addresses.length
+                  ? `${addresses.length} saved address${addresses.length === 1 ? "" : "es"}`
+                  : "No saved addresses"}
+              </p>
+            </div>
+          </div>
+          {addresses.length ? (
+            <div className={styles.addressList}>
+              {addresses.map((address, index) => {
+                const addressId = text(address.id, "");
+                const isDefault = isDefaultAddress(item, address, index);
+                return (
+                  <article className={styles.addressCard} key={addressId || `address-${index}`}>
+                    <div className={styles.addressCardHeader}>
+                      <strong>Address {index + 1}</strong>
+                      {isDefault ? <span className={styles.status}>Default</span> : null}
+                    </div>
+                    <form
+                      action={updateCustomerAddress}
+                      className={`${styles.form} ${styles.addressForm}`}
+                    >
+                      <input type="hidden" name="customerId" value={customerId} />
+                      <input type="hidden" name="addressId" value={addressId} />
+                      <div className={styles.formGrid}>
+                        <label className={styles.full}>
+                          Address line 1
+                          <input
+                            name="address1"
+                            autoComplete="address-line1"
+                            defaultValue={text(address.address1 ?? address.line1, "")}
+                          />
+                        </label>
+                        <label className={styles.full}>
+                          Address line 2
+                          <input
+                            name="address2"
+                            autoComplete="address-line2"
+                            defaultValue={text(address.address2 ?? address.line2, "")}
+                          />
+                        </label>
+                        <label>
+                          City / suburb
+                          <input
+                            name="city"
+                            autoComplete="address-level2"
+                            defaultValue={text(address.city, "")}
+                          />
+                        </label>
+                        <label>
+                          State
+                          <input
+                            name="state"
+                            autoComplete="address-level1"
+                            defaultValue={text(address.state ?? address.province, "")}
+                          />
+                        </label>
+                        <label>
+                          Postcode
+                          <input
+                            name="postcode"
+                            autoComplete="postal-code"
+                            defaultValue={text(address.postcode ?? address.zip, "")}
+                          />
+                        </label>
+                        <label>
+                          Country
+                          <input
+                            name="country"
+                            autoComplete="country-name"
+                            defaultValue={text(address.country, "")}
+                          />
+                        </label>
+                      </div>
+                      <div className={styles.addressActions}>
+                        {addressId ? (
+                          <ActionButton className={styles.secondary} pendingLabel="Savingâ€¦">
+                            Save address
+                          </ActionButton>
+                        ) : (
+                          <Link
+                            className={styles.secondary}
+                            href={`/dashboard/customers/edit?id=${customerId}`}
+                          >
+                            Edit address
+                          </Link>
+                        )}
+                      </div>
+                    </form>
+                    {!isDefault && addressId ? (
+                      <form
+                        action={setDefaultCustomerAddress}
+                        className={styles.defaultAddressForm}
+                      >
+                        <input type="hidden" name="customerId" value={customerId} />
+                        <input type="hidden" name="addressId" value={addressId} />
+                        <ActionButton pendingLabel="Setting defaultâ€¦">
+                          Set as default
+                        </ActionButton>
+                      </form>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className={styles.addressEmpty}>
+              <span>This customer does not have a saved address.</span>
+              <ActionLink
+                className={styles.secondary}
+                href={`/dashboard/customers/edit?id=${customerId}`}
+              >
+                Add address
+              </ActionLink>
+            </div>
+          )}
         </section>
       </div>
     </>

@@ -83,3 +83,60 @@ export async function createCustomer(
   revalidatePath("/dashboard", "layout");
   redirect(destination);
 }
+
+function customerAddressIds(formData: FormData) {
+  const customerId = String(formData.get("customerId") ?? "").trim();
+  const addressId = String(formData.get("addressId") ?? "").trim();
+  if (!customerId || !addressId) throw new Error("Customer and address IDs are required.");
+  return { customerId, addressId };
+}
+
+async function requireStaff() {
+  const session = await auth();
+  if (!session?.user || !(session.user as typeof session.user & { isStaff?: boolean }).isStaff)
+    throw new Error("You must be signed in as staff to manage customer addresses.");
+}
+
+function revalidateCustomer(customerId: string) {
+  revalidatePath("/dashboard/customers");
+  revalidatePath("/dashboard/customers/details");
+  revalidatePath("/dashboard/customers/edit");
+  return `/dashboard/customers/details?id=${encodeURIComponent(customerId)}`;
+}
+
+export async function updateCustomerAddress(formData: FormData) {
+  await requireStaff();
+  const { customerId, addressId } = customerAddressIds(formData);
+  const address = {
+    address1: String(formData.get("address1") ?? "").trim(),
+    address2: String(formData.get("address2") ?? "").trim(),
+    city: String(formData.get("city") ?? "").trim(),
+    state: String(formData.get("state") ?? "").trim(),
+    postcode: String(formData.get("postcode") ?? "").trim(),
+    country: String(formData.get("country") ?? "").trim(),
+  };
+  await retailRequest(
+    `/customers/${encodeURIComponent(customerId)}/addresses/${encodeURIComponent(addressId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...address,
+        line1: address.address1,
+        line2: address.address2,
+        province: address.state,
+        zip: address.postcode,
+      }),
+    },
+  );
+  redirect(revalidateCustomer(customerId));
+}
+
+export async function setDefaultCustomerAddress(formData: FormData) {
+  await requireStaff();
+  const { customerId, addressId } = customerAddressIds(formData);
+  await retailRequest(
+    `/customers/${encodeURIComponent(customerId)}/addresses/${encodeURIComponent(addressId)}/default`,
+    { method: "PATCH" },
+  );
+  redirect(revalidateCustomer(customerId));
+}

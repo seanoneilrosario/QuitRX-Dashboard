@@ -251,15 +251,17 @@ function Pagination({
   path,
   query,
   status,
+  scrollTarget,
 }: {
   pagination: RetailPagination;
   path: string;
   query?: string;
   status?: string;
+  scrollTarget?: string;
 }) {
   if (pagination.totalPages <= 1) return null;
   const href = (page: number) =>
-    `${path}?page=${page}${query ? `&q=${encodeURIComponent(query)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}`;
+    `${path}?page=${page}${query ? `&q=${encodeURIComponent(query)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}${scrollTarget ? `#${scrollTarget}` : ""}`;
   return (
     <nav className={styles.pagination} aria-label="Pagination">
       <span>
@@ -1163,7 +1165,12 @@ function Customers({
           </tr>
         ))}
       </Table>
-      <Pagination pagination={pagination} path="/dashboard/customers" query={query} />
+      <Pagination
+        pagination={pagination}
+        path="/dashboard/customers"
+        query={query}
+        scrollTarget="dashboard-top"
+      />
     </>
   );
 }
@@ -2185,20 +2192,21 @@ export default async function DashboardPage({ params, searchParams }: Props) {
     }
   } else if (area === "customers" && !sub) {
     const limit = 50;
-    const result = await safeRetailAll("/customers", limit);
-    const customers = newestCustomersFirst(result.data).filter((customer) =>
-      customerMatchesQuery(customer, q),
-    );
-    const total = customers.length;
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-    const currentPage = Math.min(page, totalPages);
-    const start = (currentPage - 1) * limit;
+    const customerPath = q ? `/customers?search=${encodeURIComponent(q)}` : "/customers";
+    const firstPage = await safeRetailPage(customerPath, 1, limit);
+    const currentPage = Math.min(page, firstPage.pagination.totalPages);
+    const apiPage = firstPage.pagination.totalPages - currentPage + 1;
+    const result = apiPage === 1
+      ? firstPage
+      : await safeRetailPage(customerPath, apiPage, limit);
     content = (
       <Customers
-        items={customers.slice(start, start + limit)}
+        items={newestCustomersFirst(result.data).filter((customer) =>
+          customerMatchesQuery(customer, q),
+        )}
         query={q}
-        pagination={{ page: currentPage, limit, total, totalPages }}
-        error={result.error}
+        pagination={{ ...firstPage.pagination, page: currentPage }}
+        error={firstPage.error ?? result.error}
       />
     );
   } else if (area === "customers" && sub === "create") {
@@ -2285,6 +2293,7 @@ export default async function DashboardPage({ params, searchParams }: Props) {
         </div>
       </aside>
       <main>
+        <div id="dashboard-top" />
         <div className={styles.mobileTop}>
           <Link className={styles.logo} href="/">
             <span>Q</span>

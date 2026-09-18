@@ -327,6 +327,7 @@ async function persistResource(formData: FormData) {
   const returnTo = String(formData.get("_returnTo") ?? "/dashboard");
   if (!allowedResources.has(resource)) throw new Error("Unsupported resource.");
   const body = payload(formData);
+  let customerAddress: Record<string, string> | undefined;
   if (resource === "customers") {
     const address = {
       address1: String(formData.get("_address1") ?? "").trim(),
@@ -337,13 +338,10 @@ async function persistResource(formData: FormData) {
       country: String(formData.get("_country") ?? "").trim(),
     };
     if (formData.get("_hasAddress") === "true" || Object.values(address).some(Boolean)) {
-      body.address = {
-        ...address,
-        line1: address.address1,
-        line2: address.address2,
-        province: address.state,
-        zip: address.postcode,
-      };
+      const addressId = String(formData.get("_addressId") ?? "").trim();
+      if (!id || !addressId)
+        throw new Error("This saved address does not include an address ID and cannot be updated.");
+      customerAddress = address;
     }
   }
   const productTags = resource === "products" ? productTagSelection(formData) : undefined;
@@ -393,6 +391,13 @@ async function persistResource(formData: FormData) {
       });
       throw error;
     }
+  }
+  if (customerAddress) {
+    const addressId = String(formData.get("_addressId"));
+    await retailRequest(
+      `/customers/${encodeURIComponent(id)}/addresses/${encodeURIComponent(addressId)}`,
+      { method: "PATCH", body: JSON.stringify(customerAddress) },
+    );
   }
   if (productTags) {
     const wrapper = saved && typeof saved === "object" ? (saved as Record<string, unknown>) : {};

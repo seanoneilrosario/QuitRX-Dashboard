@@ -1169,10 +1169,9 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
   if (editing) {
     const meta = (field: string, key: string) => metafieldValue(item, key) ?? item[field];
     const tags = Array.isArray(item.tags) ? item.tags.map(String) : [];
-    const address = nested(item, "address") ??
-      (Array.isArray(item.addresses) && item.addresses.length
-        ? (item.addresses[0] as RetailRecord)
-        : undefined);
+    const address = Array.isArray(item.addresses) && item.addresses.length
+      ? (item.addresses[0] as RetailRecord)
+      : nested(item, "address");
     return (
       <>
         <Header
@@ -1210,6 +1209,7 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
           <section className={styles.formCard}>
             <h2>Address</h2>
             <input type="hidden" name="_hasAddress" value={String(Boolean(address))} />
+            <input type="hidden" name="_addressId" value={text(address?.id, "")} />
             <div className={styles.formGrid}>
               <label className={styles.full}>
                 Address line 1

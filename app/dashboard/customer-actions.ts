@@ -119,13 +119,7 @@ export async function updateCustomerAddress(formData: FormData) {
     `/customers/${encodeURIComponent(customerId)}/addresses/${encodeURIComponent(addressId)}`,
     {
       method: "PATCH",
-      body: JSON.stringify({
-        ...address,
-        line1: address.address1,
-        line2: address.address2,
-        province: address.state,
-        zip: address.postcode,
-      }),
+      body: JSON.stringify(address),
     },
   );
   redirect(revalidateCustomer(customerId));

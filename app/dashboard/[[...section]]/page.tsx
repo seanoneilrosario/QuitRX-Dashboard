@@ -1092,21 +1092,40 @@ function CollectionEdit({
 function Customers({
   items,
   query,
-  pagination,
+  page,
   error,
 }: {
   items: RetailRecord[];
   query: string;
-  pagination: RetailPagination;
+  page: number;
   error?: string;
 }) {
-  const filtered = items.filter(
-    (item) =>
-      !query ||
-      `${text(item.firstName)} ${text(item.lastName)} ${text(item.email)}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
+  const pageSize = 50;
+  const filtered = items
+    .filter(
+      (item) =>
+        !query ||
+        [item.firstName, item.lastName, item.email, item.phone, item.shopifyId]
+          .map((value) => text(value, ""))
+          .join(" ")
+          .toLowerCase()
+          .includes(query.toLowerCase()),
+    )
+    .sort((left, right) => {
+      const leftCreated = Date.parse(text(left.createdAt, ""));
+      const rightCreated = Date.parse(text(right.createdAt, ""));
+      return (Number.isNaN(rightCreated) ? 0 : rightCreated) -
+        (Number.isNaN(leftCreated) ? 0 : leftCreated);
+    });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const pagination: RetailPagination = {
+    page: currentPage,
+    limit: pageSize,
+    total: filtered.length,
+    totalPages,
+  };
   return (
     <>
       <Header
@@ -1120,10 +1139,10 @@ function Customers({
       />
       <Notice message={error} />
       <div className={styles.toolbar}>
-        <Search placeholder="Search name or email" />
+        <Search placeholder="Search name, email, phone or Shopify ID" query={query} />
       </div>
       <Table heads={["Customer", "Contact", "Orders", "Total spent", "Status", ""]}>
-        {filtered.map((item, index) => (
+        {visible.map((item, index) => (
           <tr key={text(item.id, String(index))}>
             <td>
               <strong>
@@ -2169,12 +2188,12 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       );
     }
   } else if (area === "customers" && !sub) {
-    const result = await safeRetailPage("/customers", page, 50);
+    const result = await safeRetailAll("/customers", 50);
     content = (
       <Customers
         items={result.data}
         query={q}
-        pagination={result.pagination}
+        page={page}
         error={result.error}
       />
     );

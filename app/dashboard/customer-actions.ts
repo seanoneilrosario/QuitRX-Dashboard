@@ -80,6 +80,7 @@ export async function createCustomer(
     return { message: error instanceof Error ? error.message : "Unable to add customer." };
   }
 
+  revalidatePath("/dashboard/customers");
   revalidatePath("/dashboard", "layout");
   redirect(destination);
 }

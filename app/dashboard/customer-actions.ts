@@ -105,10 +105,8 @@ function revalidateCustomer(customerId: string) {
   return `/dashboard/customers/details?id=${encodeURIComponent(customerId)}`;
 }
 
-export async function updateCustomerAddress(formData: FormData) {
-  await requireStaff();
-  const { customerId, addressId } = customerAddressIds(formData);
-  const address = {
+function customerAddress(formData: FormData) {
+  return {
     address1: String(formData.get("address1") ?? "").trim(),
     address2: String(formData.get("address2") ?? "").trim(),
     city: String(formData.get("city") ?? "").trim(),
@@ -116,11 +114,28 @@ export async function updateCustomerAddress(formData: FormData) {
     postcode: String(formData.get("postcode") ?? "").trim(),
     country: String(formData.get("country") ?? "").trim(),
   };
+}
+
+export async function createCustomerAddress(formData: FormData) {
+  await requireStaff();
+  const customerId = String(formData.get("customerId") ?? "").trim();
+  if (!customerId) throw new Error("Customer ID is required.");
+  await retailRequest(`/customers/${encodeURIComponent(customerId)}/addresses`, {
+    method: "POST",
+    body: JSON.stringify(customerAddress(formData)),
+  });
+  revalidateCustomer(customerId);
+  redirect(`/dashboard/customers/edit?id=${encodeURIComponent(customerId)}`);
+}
+
+export async function updateCustomerAddress(formData: FormData) {
+  await requireStaff();
+  const { customerId, addressId } = customerAddressIds(formData);
   await retailRequest(
     `/customers/${encodeURIComponent(customerId)}/addresses/${encodeURIComponent(addressId)}`,
     {
       method: "PATCH",
-      body: JSON.stringify(address),
+      body: JSON.stringify(customerAddress(formData)),
     },
   );
   redirect(revalidateCustomer(customerId));

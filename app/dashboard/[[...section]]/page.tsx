@@ -34,7 +34,11 @@ import { ActionButton, ActionLink } from "./action-controls";
 import ResourceSaveForm from "./resource-save-form";
 import OrderCreateForm from "./order-create-form";
 import CustomerCreateForm from "./customer-create-form";
-import { setDefaultCustomerAddress, updateCustomerAddress } from "../customer-actions";
+import {
+  createCustomerAddress,
+  setDefaultCustomerAddress,
+  updateCustomerAddress,
+} from "../customer-actions";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
@@ -1327,6 +1331,21 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
               <p>{addresses.length ? `${addresses.length} saved address${addresses.length === 1 ? "" : "es"}` : "No saved addresses"}</p>
             </div>
           </div>
+          <details className={styles.creator}>
+            <summary>Add address</summary>
+            <form action={createCustomerAddress} className={styles.form}>
+              <input type="hidden" name="customerId" value={customerId} />
+              <div className={styles.formGrid}>
+                <label className={styles.full}>Address line 1<input name="address1" autoComplete="address-line1" required /></label>
+                <label className={styles.full}>Address line 2<input name="address2" autoComplete="address-line2" /></label>
+                <label>City / suburb<input name="city" autoComplete="address-level2" required /></label>
+                <label>State<input name="state" autoComplete="address-level1" required /></label>
+                <label>Postcode<input name="postcode" autoComplete="postal-code" required /></label>
+                <label>Country<input name="country" autoComplete="country-name" required /></label>
+              </div>
+              <ActionButton className={styles.primary} pendingLabel="Adding…">Add address</ActionButton>
+            </form>
+          </details>
           {addresses.length ? (
             <div className={styles.addressList}>
               {addresses.map((address, index) => {
@@ -1352,6 +1371,11 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
                       <label>Country<input name="country" autoComplete="country-name" defaultValue={text(address.country, "")} /></label>
                     </div>
                     <div className={styles.addressActions}>
+                      {!isDefaultAddress(item, address, index) && addressId ? (
+                        <ActionButton formAction={setDefaultCustomerAddress} pendingLabel="Setting default…">
+                          Set as default
+                        </ActionButton>
+                      ) : null}
                       <ActionButton className={styles.secondary} pendingLabel="Saving…" disabled={!addressId}>
                         Save address
                       </ActionButton>

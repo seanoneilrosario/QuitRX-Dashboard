@@ -146,6 +146,28 @@ function customerAddresses(item: RetailRecord) {
   return address ? [address] : [];
 }
 
+function newestCustomersFirst(items: RetailRecord[]) {
+  return items
+    .map((item, index) => ({ item, index, createdAt: Date.parse(text(item.createdAt, "")) }))
+    .sort((a, b) => {
+      const aTime = Number.isNaN(a.createdAt) ? Number.NEGATIVE_INFINITY : a.createdAt;
+      const bTime = Number.isNaN(b.createdAt) ? Number.NEGATIVE_INFINITY : b.createdAt;
+      return bTime - aTime || a.index - b.index;
+    })
+    .map(({ item }) => item);
+}
+
+function customerMatchesQuery(item: RetailRecord, query: string) {
+  return (
+    !query ||
+    [item.firstName, item.lastName, item.email, item.phone, item.shopifyId]
+      .map((value) => text(value, ""))
+      .join(" ")
+      .toLowerCase()
+      .includes(query.toLowerCase())
+  );
+}
+
 function isDefaultAddress(item: RetailRecord, address: RetailRecord, index: number) {
   if (address.isDefault === true || address.default === true) return true;
   const addressId = text(address.id, "");
@@ -1100,15 +1122,6 @@ function Customers({
   pagination: RetailPagination;
   error?: string;
 }) {
-  const filtered = items.filter(
-    (item) =>
-      !query ||
-      [item.firstName, item.lastName, item.email, item.phone, item.shopifyId]
-        .map((value) => text(value, ""))
-        .join(" ")
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
   return (
     <>
       <Header
@@ -1125,7 +1138,7 @@ function Customers({
         <Search placeholder="Search name, email, phone or Shopify ID" query={query} />
       </div>
       <Table heads={["Customer", "Contact", "Orders", "Total spent", "Status", ""]}>
-        {filtered.map((item, index) => (
+        {items.map((item, index) => (
           <tr key={text(item.id, String(index))}>
             <td>
               <strong>
@@ -2171,12 +2184,20 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       );
     }
   } else if (area === "customers" && !sub) {
-    const result = await safeRetailPage("/customers", page, 50);
+    const limit = 50;
+    const result = await safeRetailAll("/customers", limit);
+    const customers = newestCustomersFirst(result.data).filter((customer) =>
+      customerMatchesQuery(customer, q),
+    );
+    const total = customers.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const currentPage = Math.min(page, totalPages);
+    const start = (currentPage - 1) * limit;
     content = (
       <Customers
-        items={result.data}
+        items={customers.slice(start, start + limit)}
         query={q}
-        pagination={result.pagination}
+        pagination={{ page: currentPage, limit, total, totalPages }}
         error={result.error}
       />
     );

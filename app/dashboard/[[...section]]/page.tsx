@@ -33,6 +33,7 @@ import {
 import { ActionButton, ActionLink } from "./action-controls";
 import ResourceSaveForm from "./resource-save-form";
 import OrderCreateForm from "./order-create-form";
+import RichTextEditor from "./rich-text-editor";
 import CustomerCreateForm from "./customer-create-form";
 import {
   createCustomerAddress,
@@ -729,7 +730,7 @@ function ProductForm({
             </label>
             <label className={styles.full}>
               Description
-              <textarea rows={7} name="description" defaultValue={text(item?.description, "")} />
+              <RichTextEditor name="description" ariaLabel="Description" initialValue={text(item?.description, "")} />
             </label>
             <label>
               Status
@@ -749,7 +750,7 @@ function ProductForm({
             </label>
             <label>
               SEO description
-              <input name="seoDescription" defaultValue={text(item?.seoDescription, "")} />
+              <RichTextEditor name="seoDescription" ariaLabel="SEO description" compact initialValue={text(item?.seoDescription, "")} />
             </label>
           </div>
         </section>

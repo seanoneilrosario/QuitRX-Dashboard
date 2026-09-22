@@ -33,6 +33,7 @@ import {
 import { ActionButton, ActionLink } from "./action-controls";
 import ResourceSaveForm from "./resource-save-form";
 import OrderCreateForm from "./order-create-form";
+import OrderCancelButton from "./order-cancel-button";
 import RichTextEditor from "./rich-text-editor";
 import CustomerCreateForm from "./customer-create-form";
 import {
@@ -1585,6 +1586,13 @@ function Orders({
   if (detail) {
     const customer = nested(detail, "customer");
     const lineItems = orderItems(detail);
+    const orderId = typeof detail.id === "string" ? detail.id : "";
+    const status = text(detail.status, "").toLowerCase();
+    const explicitlyNotCancellable = detail.canCancel === false
+      || detail.cancellable === false
+      || detail.isCancellable === false;
+    const hasTerminalStatus = /cancelled|canceled|refunded|fulfilled|completed|delivered/.test(status);
+    const canCancel = Boolean(orderId) && !explicitlyNotCancellable && !hasTerminalStatus;
     return (
       <>
         <Header
@@ -1643,13 +1651,7 @@ function Orders({
             ))}
           </Table>
         </section>
-        <div className={styles.notice}>
-          <strong>Status updates are read-only</strong>
-          <span>
-            The published UpdateOrderDto has no documented fields. Add status controls once the API
-            contract exposes them.
-          </span>
-        </div>
+        {canCancel ? <OrderCancelButton orderId={orderId} /> : null}
       </>
     );
   }

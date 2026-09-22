@@ -520,6 +520,36 @@ export async function createOrder(
   }
 }
 
+export async function cancelOrder(
+  _previous: OrderActionState,
+  formData: FormData,
+): Promise<OrderActionState> {
+  try {
+    const orderId = String(formData.get("orderId") ?? "").trim();
+    if (!orderId) throw new Error("Order ID is required.");
+
+    const session = await auth();
+    const staffUser = session?.user as { isStaff?: boolean; accessToken?: string } | undefined;
+    if (!staffUser?.isStaff) throw new Error("You must be signed in as staff to cancel orders.");
+    if (!staffUser.accessToken)
+      throw new Error("Your staff session does not include an access token. Please sign in again.");
+
+    await retailRequest(`/orders/${encodeURIComponent(orderId)}/cancel`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${staffUser.accessToken}` },
+    });
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/orders");
+    revalidatePath("/dashboard/inventory");
+    return { message: "Order cancelled.", success: true };
+  } catch (error) {
+    return {
+      message: error instanceof Error ? error.message : "Unable to cancel order.",
+      success: false,
+    };
+  }
+}
+
 export async function saveResourceWithState(
   _previous: ResourceActionState,
   formData: FormData,

@@ -537,7 +537,7 @@ export async function cancelOrder(
     await retailRequest(`/orders/${encodeURIComponent(orderId)}/cancel`, {
       method: "POST",
       headers: { authorization: `Bearer ${staffUser.accessToken}` },
-    });
+    }, { includeApiKeyWithBearer: true });
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/orders");
     revalidatePath("/dashboard/inventory");

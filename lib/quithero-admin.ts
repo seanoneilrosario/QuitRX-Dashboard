@@ -59,7 +59,11 @@ function apiErrorMessage(body: unknown) {
   return "";
 }
 
-export async function retailRequest<T = unknown>(path: string, init: RequestInit = {}) {
+export async function retailRequest<T = unknown>(
+  path: string,
+  init: RequestInit = {},
+  options: { includeApiKeyWithBearer?: boolean } = {},
+) {
   // Cache catalog lists briefly; keep edit records and operational data fresh.
   const cacheCatalog = (init.method ?? "GET").toUpperCase() === "GET"
     && cachedCatalogPaths.has(path.split("?")[0])
@@ -73,7 +77,9 @@ export async function retailRequest<T = unknown>(path: string, init: RequestInit
     ...init,
     headers: {
       ...(usesFormData ? {} : { "content-type": "application/json" }),
-      ...(usesBearerToken && !usesFormData ? {} : { "x-api-key": apiKey() }),
+      ...(usesBearerToken && !usesFormData && !options.includeApiKeyWithBearer
+        ? {}
+        : { "x-api-key": apiKey() }),
       ...init.headers,
     },
     cache: cacheCatalog ? "force-cache" as const : "no-store" as const,

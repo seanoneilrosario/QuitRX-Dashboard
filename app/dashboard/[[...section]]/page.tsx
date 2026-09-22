@@ -1027,12 +1027,21 @@ function ResourcePage({
         {items.map((item, index) => (
           <tr key={text(item.id, String(index))}>
             <td>
-              <strong>{text(item.name ?? item.url)}</strong>
-              <small>
-                {kind === "collections"
-                  ? `${collectionProductCount(item, productOptions)} products`
-                  : text(item.productId)}
-              </small>
+              <div className={kind === "collections" ? styles.collectionCell : undefined}>
+                {kind === "collections" && typeof item.image === "string" && item.image && (
+                  // API-hosted collection images are displayed without Next image transformation.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className={styles.collectionThumbnail} src={item.image} alt="" />
+                )}
+                <div>
+                  <strong>{text(item.name ?? item.url)}</strong>
+                  <small>
+                    {kind === "collections"
+                      ? `${collectionProductCount(item, productOptions)} products`
+                      : text(item.productId)}
+                  </small>
+                </div>
+              </div>
             </td>
             <td>{text(item.sku ?? item.slug ?? item.productId)}</td>
             <td>

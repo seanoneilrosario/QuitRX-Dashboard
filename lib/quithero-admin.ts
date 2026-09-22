@@ -68,10 +68,11 @@ export async function retailRequest<T = unknown>(path: string, init: RequestInit
   const usesBearerToken = Object.keys(suppliedHeaders).some(
     (name) => name.toLowerCase() === "authorization",
   );
+  const usesFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
   const request = {
     ...init,
     headers: {
-      "content-type": "application/json",
+      ...(usesFormData ? {} : { "content-type": "application/json" }),
       ...(usesBearerToken ? {} : { "x-api-key": apiKey() }),
       ...init.headers,
     },

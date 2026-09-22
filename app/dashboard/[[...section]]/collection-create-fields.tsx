@@ -40,7 +40,7 @@ export default function CollectionCreateFields({ initial }: { initial?: Record<s
     <label>Collection name<input required name="name" value={name} onChange={(event) => { const nextName = event.target.value; setName(nextName); if (!slugEdited) setSlug(slugify(nextName)); }}/></label>
     <label>Slug<input required name="slug" value={slug} onChange={(event) => { setSlugEdited(true); setSlug(slugify(event.target.value)); }}/></label>
     <label className={styles.full}>Description<textarea name="description" defaultValue={typeof initial?.description === "string" ? initial.description : ""}/></label>
-    <input type="hidden" name="image" value={typeof initial?.image === "string" ? initial.image : ""}/>
+    <input type="hidden" name="_currentImage" value={initialImage}/>
     <label className={styles.full}>Image<input ref={imageInput} type="file" name="_imageFile" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => {
       if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
       const file = event.target.files?.[0];

@@ -3,7 +3,7 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { availableStock, records, RETAIL_CATALOG_TAG, retailRequest, safeRetailAll } from "@/lib/quithero-admin";
-import { deleteStorefrontCollection, syncStorefrontCollection, uploadCollectionImage } from "@/lib/sanity-storefront";
+import { deleteStorefrontCollection, syncStorefrontCollection } from "@/lib/sanity-storefront";
 import { auth } from "@/auth";
 
 const allowedResources = new Set([
@@ -57,6 +57,14 @@ function payload(formData: FormData) {
 
 export type CollectionActionState = { message: string; success: boolean };
 
+function collectionRecord(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
+  const wrapper = payload as Record<string, unknown>;
+  return wrapper.data && typeof wrapper.data === "object" && !Array.isArray(wrapper.data)
+    ? wrapper.data as Record<string, unknown>
+    : wrapper;
+}
+
 function validateCollection(body: Record<string, unknown>, editing = false) {
   if (typeof body.name !== "string" || !body.name.trim())
     throw new Error("Collection name is required.");
@@ -102,31 +110,48 @@ export async function createCollection(
 ): Promise<CollectionActionState> {
   try {
     const session = await auth();
-    if (!session?.user || !(session.user as typeof session.user & { isStaff?: boolean }).isStaff)
+    const staffUser = session?.user as { isStaff?: boolean; accessToken?: string } | undefined;
+    if (!staffUser?.isStaff)
       throw new Error("You must be signed in as staff to save collections.");
     const id = String(formData.get("_id") ?? "");
     const body = payload(formData);
     if (!body.slug && typeof body.name === "string") body.slug = slugify(body.name);
     validateCollection(body, Boolean(id));
-    const imageFile = formData.get("_imageFile");
-    if (imageFile instanceof File && imageFile.size > 0)
-      body.image = await uploadCollectionImage(imageFile);
     const retailBody = { ...body };
     if (retailBody.type === "DYNAMIC") delete retailBody.productIds;
     const saved = await retailRequest<unknown>(
       `/collections${id ? `/${encodeURIComponent(id)}` : ""}`,
       { method: id ? "PATCH" : "POST", body: JSON.stringify(retailBody) },
     );
-    const wrapper = saved && typeof saved === "object" ? (saved as Record<string, unknown>) : {};
-    const data =
-      wrapper.data && typeof wrapper.data === "object"
-        ? (wrapper.data as Record<string, unknown>)
-        : wrapper;
+    let data = collectionRecord(saved);
     const collectionId = id || (typeof data.id === "string" ? data.id : "");
     if (!collectionId)
       throw new Error(
         "Collection was saved, but the Retail API did not return its ID for storefront sync.",
       );
+    const imageFile = formData.get("_imageFile");
+    if (imageFile instanceof File && imageFile.size > 0) {
+      if (!staffUser.accessToken)
+        throw new Error("Your staff session does not include an access token. Please sign in again.");
+      if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(imageFile.type))
+        throw new Error("Choose a JPEG, PNG, WebP or GIF image.");
+      if (imageFile.size > 4 * 1024 * 1024)
+        throw new Error("Image must be 4 MB or smaller.");
+      const upload = new FormData();
+      upload.set("image", imageFile);
+      await retailRequest(`/collections/${encodeURIComponent(collectionId)}/image`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${staffUser.accessToken}` },
+        body: upload,
+      });
+      data = collectionRecord(await retailRequest(`/collections/${encodeURIComponent(collectionId)}`, {
+        headers: { authorization: `Bearer ${staffUser.accessToken}` },
+        cache: "no-store",
+      }));
+    }
+    const collectionImage = typeof data.image === "string"
+      ? data.image
+      : String(formData.get("_currentImage") ?? "") || undefined;
     updateTag(RETAIL_CATALOG_TAG);
     revalidatePath("/dashboard/collections");
     try {
@@ -136,7 +161,7 @@ export async function createCollection(
         slug: String(body.slug),
         type: body.type as "MANUAL" | "DYNAMIC",
         match: body.match as "ALL" | "ANY",
-        image: typeof body.image === "string" ? body.image : undefined,
+        image: collectionImage,
         productIds: Array.isArray(body.productIds) ? (body.productIds as string[]) : undefined,
         rules: Array.isArray(body.rules)
           ? (body.rules as { field: string; operator: string; value: string }[])

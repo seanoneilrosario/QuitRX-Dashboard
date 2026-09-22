@@ -23,6 +23,7 @@ test("only catalog list reads use the short-lived cache", async () => {
   const calls = [];
   const api = load("lib/quithero-admin.ts", { "server-only": {} }, {
     process: { env: { QUITHERO_API_KEY: "test-key" } },
+    FormData,
     fetch: async (url, options) => {
       calls.push(options);
       return { ok: true, text: async () => "{}" };
@@ -50,6 +51,15 @@ test("only catalog list reads use the short-lived cache", async () => {
   });
   assert.equal(calls.at(-1).headers.authorization, "Bearer staff-token");
   assert.equal(calls.at(-1).headers["x-api-key"], undefined);
+
+  await api.retailRequest("/collections/collection-1/image", {
+    method: "POST",
+    headers: { authorization: "Bearer staff-token" },
+    body: new FormData(),
+  });
+  assert.equal(calls.at(-1).headers.authorization, "Bearer staff-token");
+  assert.equal(calls.at(-1).headers["x-api-key"], "test-key");
+  assert.equal(calls.at(-1).headers["content-type"], undefined);
 });
 
 test("rate-limited reads and idempotent bundle saves are retried", async () => {

@@ -73,7 +73,7 @@ export async function retailRequest<T = unknown>(path: string, init: RequestInit
     ...init,
     headers: {
       ...(usesFormData ? {} : { "content-type": "application/json" }),
-      ...(usesBearerToken ? {} : { "x-api-key": apiKey() }),
+      ...(usesBearerToken && !usesFormData ? {} : { "x-api-key": apiKey() }),
       ...init.headers,
     },
     cache: cacheCatalog ? "force-cache" as const : "no-store" as const,

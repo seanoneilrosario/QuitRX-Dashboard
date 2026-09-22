@@ -145,7 +145,6 @@ export async function createCollection(
         body: upload,
       });
       data = collectionRecord(await retailRequest(`/collections/${encodeURIComponent(collectionId)}`, {
-        headers: { authorization: `Bearer ${staffUser.accessToken}` },
         cache: "no-store",
       }));
     }

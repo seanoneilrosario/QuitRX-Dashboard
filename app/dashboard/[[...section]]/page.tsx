@@ -496,7 +496,8 @@ function Products({
             <td>
               <Status value={item.status} />
             </td>
-            <td className={styles.actions}>
+            <td>
+              <div className={styles.actions}>
               <a href={storefrontUrl("products", item)} target="_blank" rel="noopener noreferrer">
                 View
               </a>
@@ -506,6 +507,7 @@ function Products({
                 <input type="hidden" name="_id" value={text(item.id)} />
                 <ActionButton pendingLabel="Deleting…">Delete</ActionButton>
               </form>
+              </div>
             </td>
             </tr>
           );
@@ -1051,7 +1053,8 @@ function ResourcePage({
                 : text(item.altText ?? item.seoTitle ?? item.id)}
             </td>
             <td>{kind === "variants" ? availableStock(item) : text(item.sortOrder, "")}</td>
-            <td className={styles.actions}>
+            <td>
+              <div className={styles.actions}>
               {kind === "collections" && (
                 <>
                   <a
@@ -1078,6 +1081,7 @@ function ResourcePage({
                   <ActionButton pendingLabel="Deleting…">Delete</ActionButton>
                 </form>
               )}
+              </div>
             </td>
           </tr>
         ))}

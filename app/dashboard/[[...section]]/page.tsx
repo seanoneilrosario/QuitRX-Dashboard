@@ -1663,7 +1663,11 @@ function Orders({
       <Header
         title="Orders"
         description="Review purchases, customers, items and fulfilment state."
-        action={<ActionLink href="/dashboard/orders/create">+ Create order</ActionLink>}
+        action={
+          <ActionLink className={styles.primary} href="/dashboard/orders/create">
+            + Create order
+          </ActionLink>
+        }
       />
       <Notice message={error} />
       <div className={styles.toolbar}>

@@ -537,6 +537,7 @@ export async function cancelOrder(
     });
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/orders");
+    revalidatePath("/dashboard/orders/details");
     revalidatePath("/dashboard/inventory");
     return { message: "Order cancelled.", success: true };
   } catch (error) {

@@ -584,3 +584,75 @@ export async function deleteResource(formData: FormData) {
   updateTag(RETAIL_CATALOG_TAG);
   revalidatePath("/dashboard", "layout");
 }
+
+
+export async function getCustomers(
+  query: string,
+  page: number,
+  limit = 20,
+) {
+  const customerPath = query
+    ? `/customers?search=${encodeURIComponent(query)}`
+    : "/customers";
+
+  const separator = customerPath.includes("?") ? "&" : "?";
+
+  const payload = await retailRequest<unknown>(
+    `${customerPath}${separator}page=${page}&limit=${limit}`,
+    {
+      cache: "no-store",
+    },
+  );
+
+  const wrapper =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>)
+      : {};
+
+  const rawPagination =
+    wrapper.pagination && typeof wrapper.pagination === "object"
+      ? (wrapper.pagination as Record<string, unknown>)
+      : {};
+
+  const data = records(payload);
+
+  return {
+    data,
+    pagination: {
+      page: Number(rawPagination.page) || page,
+      limit: Number(rawPagination.limit) || limit,
+      total: Number(rawPagination.total) || data.length,
+      totalPages: Number(rawPagination.totalPages) || 1,
+    },
+  };
+}
+
+export async function getCustomer(id: string) {
+  const payload = await retailRequest<unknown>(
+    `/customers/${encodeURIComponent(id)}`,
+    {
+      cache: "no-store",
+    },
+  );
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+
+  const wrapper = payload as Record<string, unknown>;
+  const data = wrapper.data;
+
+  return data && typeof data === "object" && !Array.isArray(data)
+    ? (data as Record<string, unknown>)
+    : wrapper;
+}
+
+export async function getOrders() {
+  const payload = await retailRequest<unknown>("/orders", {
+    cache: "no-store",
+  });
+
+  return {
+    data: records(payload),
+  };
+}

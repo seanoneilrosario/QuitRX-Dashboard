@@ -42,6 +42,11 @@ import {
   updateCustomerAddress,
 } from "../customer-actions";
 
+import CustomersClient from "../customers/customers-client";
+import CustomerDetailClient from "../customers/customer-detail-client";
+
+import OrdersClient from "../orders/orders-client";
+
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
 const routes = [
@@ -1130,53 +1135,15 @@ function Customers({
   error?: string;
 }) {
   return (
-    <>
-      <Header
-        title="Customers"
-        description="Search customer accounts, purchase history and prescription status."
-        action={
-          <ActionLink className={styles.primary} href="/dashboard/customers/create">
-            Add customer
-          </ActionLink>
-        }
-      />
-      <Notice message={error} />
-      <div className={styles.toolbar}>
-        <Search placeholder="Search name, email, phone or Shopify ID" query={query} />
-      </div>
-      <Table heads={["Customer", "Contact", "Orders", "Total spent", "Status", ""]}>
-        {items.map((item, index) => (
-          <tr key={text(item.id, String(index))}>
-            <td>
-              <strong>
-                {text(item.firstName)} {text(item.lastName, "")}
-              </strong>
-              <small>{text(item.id)}</small>
-            </td>
-            <td>
-              {text(item.email)}
-              <small>{text(item.phone)}</small>
-            </td>
-            <td>{text(item.numberOfOrders, "0")}</td>
-            <td>{money(item.totalSpent)}</td>
-            <td>
-              <Status value={item.state} />
-            </td>
-            <td>
-              <ActionLink href={`/dashboard/customers/details?id=${text(item.id)}`}>
-                View
-              </ActionLink>
-            </td>
-          </tr>
-        ))}
-      </Table>
-      <Pagination
-        pagination={pagination}
-        path="/dashboard/customers"
-        query={query}
-        scrollTarget="dashboard-top"
-      />
-    </>
+    <CustomersClient
+      query={query}
+      page={pagination.page}
+      initialData={{
+        data: items,
+        pagination,
+      }}
+      initialError={error}
+    />
   );
 }
 
@@ -1392,6 +1359,7 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
       </>
     );
   }
+
   const addresses = customerAddresses(item);
   const customerId = text(item.id, "");
   return (
@@ -1648,58 +1616,15 @@ function Orders({
       </>
     );
   }
-  const filtered = items.filter(
-    (item) => !query || JSON.stringify(item).toLowerCase().includes(query.toLowerCase()),
-  );
+  
   return (
-    <>
-      <Header
-        title="Orders"
-        description="Review purchases, customers, items and fulfilment state."
-        action={
-          <ActionLink className={styles.primary} href="/dashboard/orders/create">
-            + Create order
-          </ActionLink>
-        }
-      />
-      <Notice message={error} />
-      <div className={styles.toolbar}>
-        <Search placeholder="Search order, customer or item" query={query} />
-      </div>
-      <Table heads={["Order", "Customer", "Items", "Date", "Price", "Status", ""]}>
-        {filtered.map((item, index) => {
-          const lines = orderItems(item);
-          const quantity = lines.reduce((sum, line) => sum + Number(line.quantity ?? 1), 0);
-          return (
-            <tr key={text(item.id, String(index))}>
-              <td>
-                <strong>#{text(item.orderNumber ?? item.id)}</strong>
-              </td>
-              <td>
-                <strong>{customerName(item)}</strong>
-                <small>{text(item.customerEmail ?? nested(item, "customer")?.email, "")}</small>
-              </td>
-              <td>
-                <strong>{text(lines[0]?.productName ?? lines[0]?.name, "No items")}</strong>
-                <small>
-                  {lines.length
-                    ? `${quantity} ${quantity === 1 ? "item" : "items"}${lines.length > 1 ? ` across ${lines.length} products` : ""}`
-                    : ""}
-                </small>
-              </td>
-              <td>{orderDate(item.createdAt)}</td>
-              <td>{money(item.total ?? item.totalPrice)}</td>
-              <td>
-                <Status value={item.status} />
-              </td>
-              <td>
-                <ActionLink href={`/dashboard/orders/details?id=${text(item.id)}`}>View</ActionLink>
-              </td>
-            </tr>
-          );
-        })}
-      </Table>
-    </>
+    <OrdersClient
+      query={query}
+      initialData={{
+        data: items,
+      }}
+      initialError={error}
+    />
   );
 }
 
@@ -2209,40 +2134,96 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       );
     }
   } else if (area === "customers" && !sub) {
-    const limit = 20;
-    const customerPath = q ? `/customers?search=${encodeURIComponent(q)}` : "/customers";
+    const limit = 50;
+    const customerPath = q
+      ? `/customers?search=${encodeURIComponent(q)}`
+      : "/customers";
+
     const firstPage = await safeRetailPage(customerPath, 1, limit);
-    const currentPage = Math.min(page, firstPage.pagination.totalPages);
-    const apiPage = firstPage.pagination.totalPages - currentPage + 1;
-    const result = apiPage === 1
-      ? firstPage
-      : await safeRetailPage(customerPath, apiPage, limit);
-    content = (
-      <Customers
-        items={newestCustomersFirst(result.data).filter((customer) =>
-          customerMatchesQuery(customer, q),
-        )}
-        query={q}
-        pagination={{ ...firstPage.pagination, page: currentPage }}
-        error={firstPage.error ?? result.error}
-      />
+
+    const currentPage = Math.min(
+      page,
+      firstPage.pagination.totalPages,
     );
-  } else if (area === "customers" && sub === "create") {
-    content = (
-      <>
-        <Header title="Add customer" description="Create a customer record in QuitHero." />
-        <CustomerCreateForm />
-      </>
-    );
-  } else if (area === "customers") {
-    const result = await safeRetailRecord(`/customers/${encodeURIComponent(id)}`);
-    content = <CustomerDetail item={result.data} editing={sub === "edit"} />;
+
+    const total = firstPage.pagination.total;
+
+    if (!total || firstPage.error) {
+      content = (
+        <Customers
+          items={newestCustomersFirst(firstPage.data).filter((customer) =>
+            customerMatchesQuery(customer, q),
+          )}
+          query={q}
+          pagination={{ ...firstPage.pagination, page: currentPage }}
+          error={firstPage.error}
+        />
+      );
+    } else {
+      /*
+      * The Retail API is paginated in its own order, while the dashboard
+      * displays customers newest-first.
+      *
+      * A dashboard page can span two API pages when the final API page
+      * contains fewer than `limit` records, so fetch the API pages that
+      * contain the requested dashboard slice and combine them.
+      */
+      const startIndex = Math.max(
+        0,
+        total - currentPage * limit,
+      );
+
+      const endIndex = total - (currentPage - 1) * limit;
+
+      const startApiPage = Math.floor(startIndex / limit) + 1;
+      const endApiPage = Math.floor((endIndex - 1) / limit) + 1;
+
+      const apiPages = Array.from(
+        { length: endApiPage - startApiPage + 1 },
+        (_, index) => startApiPage + index,
+      );
+
+      const pageResults = await Promise.all(
+        apiPages.map((apiPage) =>
+          apiPage === 1
+            ? Promise.resolve(firstPage)
+            : safeRetailPage(customerPath, apiPage, limit),
+        ),
+      );
+
+      const pageError = pageResults.find((result) => result.error)?.error;
+
+      const combinedData = pageResults.flatMap((result) => result.data);
+
+      const localStart =
+        startIndex - (startApiPage - 1) * limit;
+
+      const pageData = combinedData.slice(
+        localStart,
+        localStart + limit,
+      );
+
+      content = (
+        <Customers
+          items={newestCustomersFirst(pageData).filter((customer) =>
+            customerMatchesQuery(customer, q),
+          )}
+          query={q}
+          pagination={{
+            ...firstPage.pagination,
+            page: currentPage,
+          }}
+          error={firstPage.error ?? pageError}
+        />
+      );
+    }
   } else if (area === "orders") {
     if (sub === "create") {
-      // Load form reference data only when it is needed. Sequential requests
-      // avoid tripping QuitHero's per-key burst throttle.
+      // Load form reference data only when it is needed.
+      // Sequential requests avoid tripping QuitHero's per-key burst throttle.
       const customers = await safeRetailAll("/customers");
       const variants = await safeRetailAll("/product-variants");
+
       content = (
         <OrderCreate
           customers={customers.data}
@@ -2252,11 +2233,16 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       );
     } else {
       const result = await safeRetailList("/orders");
+
       content = (
         <Orders
           items={result.data}
           query={q}
-          detail={sub === "details" ? result.data.find((item) => item.id === id) : undefined}
+          detail={
+            sub === "details"
+              ? result.data.find((item) => item.id === id)
+              : undefined
+          }
           error={result.error}
         />
       );

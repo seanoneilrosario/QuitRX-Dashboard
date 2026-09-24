@@ -16,7 +16,6 @@ import {
 import styles from "./dashboard.module.css";
 import TagsInput from "./tags-input";
 import { CollectionCreateForm } from "./collection-create-fields";
-import CollectionDeleteButton from "./collection-delete-button";
 import BundlesPage from "./bundles-page";
 import FrequentlyBoughtTogetherEditor from "./frequently-bought-together-editor";
 import { logoutStaff } from "../login/actions";
@@ -502,12 +501,6 @@ function Products({
               <a href={storefrontUrl("products", item)} target="_blank" rel="noopener noreferrer">
                 View
               </a>
-              <ActionLink href={`/dashboard/products/edit?id=${text(item.id)}`}>Edit</ActionLink>
-              <form action={deleteResource}>
-                <input type="hidden" name="_resource" value="products" />
-                <input type="hidden" name="_id" value={text(item.id)} />
-                <ActionButton pendingLabel="Deleting…">Delete</ActionButton>
-              </form>
               </div>
             </td>
             </tr>
@@ -1065,17 +1058,9 @@ function ResourcePage({
                   >
                     View
                   </a>
-                  <ActionLink href={`/dashboard/collections/edit?id=${text(item.id)}`}>
-                    Edit
-                  </ActionLink>
                 </>
               )}
-              {kind === "collections" ? (
-                <CollectionDeleteButton
-                  id={text(item.id, "")}
-                  name={text(item.name, "collection")}
-                />
-              ) : (
+              {kind !== "collections" && (
                 <form action={deleteResource}>
                   <input type="hidden" name="_resource" value={config.resource} />
                   <input type="hidden" name="_id" value={text(item.id)} />

@@ -36,6 +36,7 @@ import OrderCreateForm from "./order-create-form";
 import OrderCancelButton from "./order-cancel-button";
 import RichTextEditor from "./rich-text-editor";
 import CustomerCreateForm from "./customer-create-form";
+import CustomerDeleteButton from "./customer-delete-button";
 import {
   createCustomerAddress,
   setDefaultCustomerAddress,
@@ -1414,12 +1415,15 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
         title={`${text(item.firstName)} ${text(item.lastName, "")}`}
         description={text(item.email)}
         action={
-          <ActionLink
-            className={styles.primary}
-            href={`/dashboard/customers/edit?id=${text(item.id)}`}
-          >
-            Edit customer
-          </ActionLink>
+          <div className={styles.formActions}>
+            <CustomerDeleteButton id={customerId} name={text(item.email, customerId)} />
+            <ActionLink
+              className={styles.primary}
+              href={`/dashboard/customers/edit?id=${text(item.id)}`}
+            >
+              Edit customer
+            </ActionLink>
+          </div>
         }
       />
       <div className={styles.detailGrid}>

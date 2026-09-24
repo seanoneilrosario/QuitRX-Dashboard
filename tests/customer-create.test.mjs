@@ -6,10 +6,11 @@ import ts from "typescript";
 
 function setup({ staff = true, fail = false } = {}) {
   const calls = [];
+  const revalidated = [];
   const exports = {};
   const mocks = {
     "@/auth": { auth: async () => ({ user: { isStaff: staff } }) },
-    "next/cache": { revalidatePath() {} },
+    "next/cache": { revalidatePath: (...args) => revalidated.push(args) },
     "next/navigation": {
       redirect: (path) => {
         throw new Error(`redirect:${path}`);
@@ -17,8 +18,9 @@ function setup({ staff = true, fail = false } = {}) {
     },
     "@/lib/quithero-admin": {
       retailRequest: async (path, init) => {
-        calls.push({ path, ...init, body: JSON.parse(init.body) });
+        calls.push({ path, ...init, body: init.body ? JSON.parse(init.body) : undefined });
         if (fail) throw new Error("QuitHero API returned 500: Internal server error");
+        if (init.method === "DELETE") return undefined;
         return { data: { id: "customer-1" } };
       },
     },
@@ -33,6 +35,8 @@ function setup({ staff = true, fail = false } = {}) {
   vm.runInNewContext(outputText, { exports, require: (name) => mocks[name], Error });
   return {
     calls,
+    revalidated,
+    deleteCustomer: (id) => exports.deleteCustomer({ message: "" }, new Map([["customerId", id]])),
     submit: (values) =>
       exports.createCustomer(
         { message: "" },
@@ -62,6 +66,35 @@ test("creation sends ISO dates and retains tags and typed metafields", async () 
   assert.equal(calls[0].body.scriptActive, true);
   assert.equal(calls[0].body.consultPurchase, false);
   assert.equal(calls[0].body.scriptId, "abc");
+});
+
+test("deletion encodes the ID, accepts an empty response and refreshes before redirecting", async () => {
+  const { calls, revalidated, deleteCustomer } = setup();
+  await assert.rejects(deleteCustomer("customer/1?x"), /^Error: redirect:\/dashboard\/customers$/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, "/customers/customer%2F1%3Fx");
+  assert.equal(calls[0].method, "DELETE");
+  assert.equal(calls[0].body, undefined);
+  assert.equal(revalidated[0][0], "/dashboard");
+  assert.equal(revalidated[0][1], "layout");
+});
+
+test("deletion rejects unauthorized users and missing IDs without calling the API", async () => {
+  const unauthorized = setup({ staff: false });
+  assert.match((await unauthorized.deleteCustomer("customer-1")).message, /signed in as staff/);
+  assert.equal(unauthorized.calls.length, 0);
+  const authorized = setup();
+  for (const id of [undefined, "", "   ", {}]) {
+    assert.match((await authorized.deleteCustomer(id)).message, /Customer ID is required/);
+  }
+  assert.equal(authorized.calls.length, 0);
+});
+
+test("failed deletion shows the API error without redirecting or refreshing", async () => {
+  const { calls, revalidated, deleteCustomer } = setup({ fail: true });
+  assert.match((await deleteCustomer("customer-1")).message, /500/);
+  assert.equal(calls.length, 1);
+  assert.equal(revalidated.length, 0);
 });
 
 test("blank dates are omitted and invalid dates never reach the API", async () => {

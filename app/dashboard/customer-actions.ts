@@ -85,6 +85,26 @@ export async function createCustomer(
   redirect(destination);
 }
 
+export async function deleteCustomer(
+  _previous: { message: string },
+  formData: FormData,
+): Promise<{ message: string }> {
+  try {
+    const session = await auth();
+    if (!session?.user || !(session.user as typeof session.user & { isStaff?: boolean }).isStaff)
+      throw new Error("You must be signed in as staff to delete customers.");
+
+    const id = formData.get("customerId");
+    if (typeof id !== "string" || !id.trim()) throw new Error("Customer ID is required.");
+    await retailRequest(`/customers/${encodeURIComponent(id.trim())}`, { method: "DELETE" });
+  } catch (error) {
+    return { message: error instanceof Error ? error.message : "Unable to delete customer." };
+  }
+
+  revalidatePath("/dashboard", "layout");
+  redirect("/dashboard/customers");
+}
+
 function customerAddressIds(formData: FormData) {
   const customerId = String(formData.get("customerId") ?? "").trim();
   const addressId = String(formData.get("addressId") ?? "").trim();

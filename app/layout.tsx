@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import QueryProvider from "./query-provider";
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
   title: { default: "QuitRX Dashboard", template: "%s | QuitRX Dashboard" },

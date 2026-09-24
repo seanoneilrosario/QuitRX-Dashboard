@@ -106,15 +106,6 @@ export default function OrdersClient({
     const queryClient = useQueryClient();
 
     useEffect(() => {
-    const cachedOrders = queryClient.getQueryData([
-        "orders",
-        { query },
-    ]);
-
-    console.log("ORDERS CACHE:", cachedOrders);
-    }, [query, queryClient]);
-
-    useEffect(() => {
 
         const handleOrderUpdated = (data: unknown) => {
             console.log("Orders cache update:", data);

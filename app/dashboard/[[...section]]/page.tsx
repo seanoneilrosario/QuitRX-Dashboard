@@ -2247,6 +2247,17 @@ export default async function DashboardPage({ params, searchParams }: Props) {
         />
       );
     }
+  } else if (area === "customers") {
+    const result = await safeRetailRecord(
+      `/customers/${encodeURIComponent(id)}`,
+    );
+
+    content = (
+      <CustomerDetail
+        item={result.data}
+        editing={sub === "edit"}
+      />
+    );
   } else if (area === "store-activity") {
     content = (
       <Suspense fallback={<StoreActivityLoading />}>

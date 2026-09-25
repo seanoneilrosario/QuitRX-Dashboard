@@ -1,9 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getOrders } from "@/app/dashboard/actions";
+import { useEffect, useState, useTransition } from "react";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { getOrderBatch } from "@/app/dashboard/actions";
 import { socket } from "@/src/realtime/socket";
 import styles from "../[[...section]]/dashboard.module.css";
 
@@ -90,20 +94,63 @@ function Status({ value }: { value: unknown }) {
 
 export default function OrdersClient({
   query,
+  page,
   initialData,
   initialError,
 }: {
   query: string;
-  initialData: Awaited<ReturnType<typeof getOrders>>;
+  page: number;
+  initialData: Awaited<ReturnType<typeof getOrderBatch>>;
   initialError?: string;
 }) {
-  const ordersQuery = useQuery({
-    queryKey: ["orders", { query }],
-    queryFn: () => getOrders(),
-    initialData,
-    });
+    const PAGE_SIZE = 50;
+    const PAGES_PER_BATCH = 10;
+
+    const [currentPage, setCurrentPage] = useState(page);
+    const [isPending, startTransition] = useTransition();
+
+    const batch = Math.floor(
+      (currentPage - 1) / PAGES_PER_BATCH,
+    );
+
+    const initialBatch = Math.floor(
+      (page - 1) / PAGES_PER_BATCH,
+    );
 
     const queryClient = useQueryClient();
+
+    const ordersQuery = useQuery({
+      queryKey: ["orders", { query, batch }],
+
+      queryFn: async () => {
+        console.log(
+          "🟣 TANSTACK QUERY FN RUNNING: ORDERS",
+          {
+            query,
+            batch,
+          },
+        );
+
+        return getOrderBatch(query, batch);
+      },
+
+      initialData:
+        batch === initialBatch
+          ? initialData
+          : undefined,
+
+      placeholderData: keepPreviousData,
+
+      staleTime: 30_000,
+    });
+
+    const isLoadingBatch =
+      ordersQuery.isFetching &&
+      ordersQuery.isPlaceholderData;
+
+    useEffect(() => {
+      setCurrentPage(1);
+    }, [query]);
 
     useEffect(() => {
 
@@ -124,7 +171,7 @@ export default function OrdersClient({
 
             if (typeof orderId !== "string") return;
 
-            queryClient.setQueriesData<Awaited<ReturnType<typeof getOrders>>>(
+            queryClient.setQueriesData<Awaited<ReturnType<typeof getOrderBatch>>>(
             { queryKey: ["orders"] },
             (current) => {
                 if (!current) return current;
@@ -148,11 +195,14 @@ export default function OrdersClient({
         socket.on("order.updated", handleOrderUpdated);
 
         return () => {
-            socket.off("order.updated", handleOrderUpdated);
+          socket.off("order.updated", handleOrderUpdated);
         };
     }, [queryClient]);
 
-  const filtered = ordersQuery.data.data.filter(
+  const orderData =
+    ordersQuery.data ?? initialData;
+
+  const filtered = orderData.data.filter(
     (item) =>
       !query ||
       JSON.stringify(item)
@@ -160,10 +210,30 @@ export default function OrdersClient({
         .includes(query.toLowerCase()),
   );
 
+  const total = orderData.total;
+  const totalPages = orderData.totalPages;
+
+  const pageWithinBatch =
+    (currentPage - 1) % PAGES_PER_BATCH;
+
+  const startIndex =
+    pageWithinBatch * PAGE_SIZE;
+
+  const visibleOrders = filtered.slice(
+    startIndex,
+    startIndex + PAGE_SIZE,
+  );
+
   const error =
     ordersQuery.error instanceof Error
       ? ordersQuery.error.message
       : initialError;
+
+    const goToPage = (nextPage: number) => {
+    startTransition(() => {
+        setCurrentPage(nextPage);
+    });
+};
 
   return (
     <>
@@ -204,99 +274,161 @@ export default function OrdersClient({
         </form>
       </div>
 
-      <div className={styles.tableWrap}>
-        <table>
-          <thead>
-            <tr>
-              {[
-                "Order",
-                "Customer",
-                "Items",
-                "Date",
-                "Price",
-                "Status",
-                "",
-              ].map((head) => (
-                <th key={head}>{head}</th>
-              ))}
-            </tr>
-          </thead>
+      {isPending || isLoadingBatch ? (
+        <div
+          className={styles.customerLoading}
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className={styles.customerSpinner} />
+          <span>Loading orders…</span>
+        </div>
+      ) : (
+        <div className={styles.tableWrap}>
+          <table>
+            <thead>
+              <tr>
+                {[
+                  "Order",
+                  "Customer",
+                  "Items",
+                  "Date",
+                  "Price",
+                  "Status",
+                  "",
+                ].map((head) => (
+                  <th key={head}>{head}</th>
+                ))}
+              </tr>
+            </thead>
 
-          <tbody>
-            {filtered.map((item, index) => {
-              const lines = orderItems(item);
+            <tbody>
+              {visibleOrders.map((item, index) => {
+                const lines = orderItems(item);
 
-              const quantity = lines.reduce(
-                (sum, line) =>
-                  sum + Number(line.quantity ?? 1),
-                0,
-              );
+                const quantity = lines.reduce(
+                  (sum, line) =>
+                    sum + Number(line.quantity ?? 1),
+                  0,
+                );
 
-              return (
-                <tr key={text(item.id, String(index))}>
-                  <td>
-                    <strong>
-                      #{text(item.orderNumber ?? item.id)}
-                    </strong>
-                  </td>
+                return (
+                  <tr key={text(item.id, String(index))}>
+                    <td>
+                      <strong>
+                        #{text(item.orderNumber ?? item.id)}
+                      </strong>
+                    </td>
 
-                  <td>
-                    <strong>{customerName(item)}</strong>
-                    <small>
-                      {text(
-                        item.customerEmail ??
-                          nested(item, "customer")?.email,
-                        "",
-                      )}
-                    </small>
-                  </td>
+                    <td>
+                      <strong>{customerName(item)}</strong>
+                      <small>
+                        {text(
+                          item.customerEmail ??
+                            nested(item, "customer")?.email,
+                          "",
+                        )}
+                      </small>
+                    </td>
 
-                  <td>
-                    <strong>
-                      {text(
-                        lines[0]?.productName ?? lines[0]?.name,
-                        "No items",
-                      )}
-                    </strong>
+                    <td>
+                      <strong>
+                        {text(
+                          lines[0]?.productName ?? lines[0]?.name,
+                          "No items",
+                        )}
+                      </strong>
 
-                    <small>
-                      {lines.length
-                        ? `${quantity} ${
-                            quantity === 1 ? "item" : "items"
-                          }${
-                            lines.length > 1
-                              ? ` across ${lines.length} products`
-                              : ""
-                          }`
-                        : ""}
-                    </small>
-                  </td>
+                      <small>
+                        {lines.length
+                          ? `${quantity} ${
+                              quantity === 1 ? "item" : "items"
+                            }${
+                              lines.length > 1
+                                ? ` across ${lines.length} products`
+                                : ""
+                            }`
+                          : ""}
+                      </small>
+                    </td>
 
-                  <td>{orderDate(item.createdAt)}</td>
+                    <td>{orderDate(item.createdAt)}</td>
 
-                  <td>
-                    {money(item.total ?? item.totalPrice)}
-                  </td>
+                    <td>
+                      {money(item.total ?? item.totalPrice)}
+                    </td>
 
-                  <td>
-                    <Status value={item.status} />
-                  </td>
+                    <td>
+                      <Status value={item.status} />
+                    </td>
 
-                  <td>
-                    <Link
-                      href={`/dashboard/orders/details?id=${text(
-                        item.id,
-                      )}`}
-                    >
-                      View
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                    <td>
+                      <Link
+                        href={`/dashboard/orders/details?id=${text(
+                          item.id,
+                        )}`}
+                      >
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {totalPages > 1 ? (
+        <nav
+          className={styles.pagination}
+          aria-label="Pagination"
+          aria-busy={isPending || isLoadingBatch}
+        >
+          <span>
+            Showing page {currentPage} of {totalPages} ·{" "}
+            {total.toLocaleString()} records
+          </span>
+
+          <div>
+            {currentPage > 1 ? (
+              <Link
+                href="#"
+                onClick={(event) => {
+                  event.preventDefault();
+
+                  if (!isPending && !isLoadingBatch) {
+                    goToPage(currentPage - 1);
+                  }
+                }}
+                aria-disabled={isPending || isLoadingBatch}
+              >
+                Previous
+              </Link>
+            ) : (
+              <span>Previous</span>
+            )}
+
+            {currentPage < totalPages ? (
+              <Link
+                href="#"
+                onClick={(event) => {
+                  event.preventDefault();
+
+                  if (!isPending && !isLoadingBatch) {
+                    goToPage(currentPage + 1);
+                  }
+                }}
+                aria-disabled={isPending || isLoadingBatch}
+              >
+                Next
+              </Link>
+            ) : (
+              <span>Next</span>
+            )}
+          </div>
+        </nav>
+      ) : null}
     </>
   );
 }

@@ -56,3 +56,28 @@
 .addressSection{grid-column:1/-1}.addressEditorSection{margin-top:20px}.addressHeader{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:18px}.addressHeader h2{margin-bottom:4px}.addressHeader p{margin:0;color:#789092;font-size:13px}.addressList{display:grid;gap:16px}.addressCard{display:grid;gap:16px;padding:18px;border:1px solid #dbe6e4;border-radius:12px;background:#f9fbfa}.addressCardHeader,.addressActions,.defaultAddressForm{display:flex;justify-content:space-between;gap:12px;align-items:center}.addressForm{gap:16px}.addressActions{justify-content:flex-end}.addressActions button:not(.secondary){min-height:44px;padding:0 18px;border:1px solid #9fd9c2;border-radius:9px;background:#e5f5f0;color:#17695b;font:inherit;font-weight:800;cursor:pointer}.addressActions button:not(.secondary):hover{border-color:#55c995;background:#d9f2e9}.addressActions button:not(.secondary):disabled{opacity:.55;cursor:default}.readOnlyAddress{min-width:0;margin:0;padding:0;border:0}.readOnlyAddress+.addressActions{display:none}.defaultAddressForm{justify-content:flex-end;padding-top:14px;border-top:1px solid #dbe6e4}.defaultAddressForm button{padding:0;border:0;background:transparent;color:#168462;font:inherit;font-weight:800;cursor:pointer}.addressEmpty{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:18px;border:1px dashed #cadbd9;border-radius:10px;color:#789092;background:#f9fbfa}@media(max-width:760px){.addressCardHeader,.addressActions,.defaultAddressForm,.addressEmpty{align-items:stretch;flex-direction:column}.addressActions .secondary,.addressEmpty .secondary{width:100%}}
 .collectionCell{display:flex;gap:12px;align-items:center}.collectionThumbnail{width:52px;height:52px;flex:0 0 52px;border-radius:8px;object-fit:cover;background:#f1f5f4}
 .actions{flex-direction:column}
+
+.customerLoading {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #777;
+}
+
+.customerSpinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #ddd;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: customerSpin 0.8s linear infinite;
+}
+
+@keyframes customerSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

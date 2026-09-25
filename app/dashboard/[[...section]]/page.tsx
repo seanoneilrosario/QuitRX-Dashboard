@@ -3,7 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { auth } from "@/auth";
-import { deleteResource, saveResource } from "../actions";
+import {
+  deleteResource,
+  saveResource,
+  getCustomerBatch,
+  getOrderBatch,
+} from "../actions";
 import {
   safeRetailAll,
   safeRetailList,
@@ -34,7 +39,6 @@ import ResourceSaveForm from "./resource-save-form";
 import OrderCreateForm from "./order-create-form";
 import OrderCancelButton from "./order-cancel-button";
 import RichTextEditor from "./rich-text-editor";
-import CustomerCreateForm from "./customer-create-form";
 import CustomerDeleteButton from "./customer-delete-button";
 import {
   createCustomerAddress,
@@ -42,10 +46,10 @@ import {
   updateCustomerAddress,
 } from "../customer-actions";
 
-import CustomersClient from "../customers/customers-client";
-import CustomerDetailClient from "../customers/customer-detail-client";
+import ProductsClient from "../products/products-client";
 
 import OrdersClient from "../orders/orders-client";
+import CustomersClient from "../customers/customers-client";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
@@ -1536,11 +1540,15 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
 function Orders({
   items,
   query,
+  page,
+  initialData,
   detail,
   error,
 }: {
   items: RetailRecord[];
   query: string;
+  page: number;
+  initialData: Awaited<ReturnType<typeof getOrderBatch>>;
   detail?: RetailRecord;
   error?: string;
 }) {
@@ -1620,9 +1628,8 @@ function Orders({
   return (
     <OrdersClient
       query={query}
-      initialData={{
-        data: items,
-      }}
+      page={page}
+      initialData={initialData}
       initialError={error}
     />
   );
@@ -2022,14 +2029,23 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       safeRetailAll("/products"),
       safeRetailAll("/product-variants"),
     ]);
+
+    const initialVariants = {
+      data: variants.data.map((variant) => ({
+        ...variant,
+        __availableStock: availableStock(variant),
+      })),
+    };
+
     content = (
-      <Products
-        items={result.data}
-        variants={variants.data}
+      <ProductsClient
         query={q}
         status={status}
         page={page}
-        error={result.error ?? variants.error}
+        storefrontBaseUrl={storefrontBaseUrl}
+        initialData={result}
+        initialVariants={initialVariants}
+        initialError={result.error ?? variants.error}
       />
     );
   } else if (area === "products" && sub === "create") {
@@ -2139,7 +2155,11 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       ? `/customers?search=${encodeURIComponent(q)}`
       : "/customers";
 
-    const firstPage = await safeRetailPage(customerPath, 1, limit);
+    const firstPage = await safeRetailPage(
+      customerPath,
+      1,
+      limit,
+    );
 
     const currentPage = Math.min(
       page,
@@ -2155,28 +2175,27 @@ export default async function DashboardPage({ params, searchParams }: Props) {
             customerMatchesQuery(customer, q),
           )}
           query={q}
-          pagination={{ ...firstPage.pagination, page: currentPage }}
+          pagination={{
+            ...firstPage.pagination,
+            page: currentPage,
+          }}
           error={firstPage.error}
         />
       );
     } else {
-      /*
-      * The Retail API is paginated in its own order, while the dashboard
-      * displays customers newest-first.
-      *
-      * A dashboard page can span two API pages when the final API page
-      * contains fewer than `limit` records, so fetch the API pages that
-      * contain the requested dashboard slice and combine them.
-      */
       const startIndex = Math.max(
         0,
         total - currentPage * limit,
       );
 
-      const endIndex = total - (currentPage - 1) * limit;
+      const endIndex =
+        total - (currentPage - 1) * limit;
 
-      const startApiPage = Math.floor(startIndex / limit) + 1;
-      const endApiPage = Math.floor((endIndex - 1) / limit) + 1;
+      const startApiPage =
+        Math.floor(startIndex / limit) + 1;
+
+      const endApiPage =
+        Math.floor((endIndex - 1) / limit) + 1;
 
       const apiPages = Array.from(
         { length: endApiPage - startApiPage + 1 },
@@ -2187,16 +2206,25 @@ export default async function DashboardPage({ params, searchParams }: Props) {
         apiPages.map((apiPage) =>
           apiPage === 1
             ? Promise.resolve(firstPage)
-            : safeRetailPage(customerPath, apiPage, limit),
+            : safeRetailPage(
+                customerPath,
+                apiPage,
+                limit,
+              ),
         ),
       );
 
-      const pageError = pageResults.find((result) => result.error)?.error;
+      const pageError = pageResults.find(
+        (result) => result.error,
+      )?.error;
 
-      const combinedData = pageResults.flatMap((result) => result.data);
+      const combinedData = pageResults.flatMap(
+        (result) => result.data,
+      );
 
       const localStart =
-        startIndex - (startApiPage - 1) * limit;
+        startIndex -
+        (startApiPage - 1) * limit;
 
       const pageData = combinedData.slice(
         localStart,
@@ -2205,22 +2233,23 @@ export default async function DashboardPage({ params, searchParams }: Props) {
 
       content = (
         <Customers
-          items={newestCustomersFirst(pageData).filter((customer) =>
-            customerMatchesQuery(customer, q),
+          items={newestCustomersFirst(pageData).filter(
+            (customer) =>
+              customerMatchesQuery(customer, q),
           )}
           query={q}
           pagination={{
             ...firstPage.pagination,
             page: currentPage,
           }}
-          error={firstPage.error ?? pageError}
+          error={
+            firstPage.error ?? pageError
+          }
         />
       );
     }
   } else if (area === "orders") {
     if (sub === "create") {
-      // Load form reference data only when it is needed.
-      // Sequential requests avoid tripping QuitHero's per-key burst throttle.
       const customers = await safeRetailAll("/customers");
       const variants = await safeRetailAll("/product-variants");
 
@@ -2231,22 +2260,43 @@ export default async function DashboardPage({ params, searchParams }: Props) {
           error={customers.error ?? variants.error}
         />
       );
-    } else {
-      const result = await safeRetailList("/orders");
+    } else if (sub === "details") {
+      const result = await safeRetailRecord(
+        `/orders/${encodeURIComponent(id)}`,
+      );
 
       content = (
         <Orders
-          items={result.data}
           query={q}
-          detail={
-            sub === "details"
-              ? result.data.find((item) => item.id === id)
-              : undefined
-          }
+          page={page}
+          items={[]}
+          initialData={{
+            data: [],
+            total: 0,
+            totalPages: 1,
+            error: result.error,
+          }}
+          detail={result.data}
           error={result.error}
         />
       );
-    }
+    } else {
+      const batch = Math.floor(
+        (page - 1) / 10,
+      );
+
+      const result = await getOrderBatch(q, batch);
+
+      content = (
+        <Orders
+          query={q}
+          page={page}
+          items={result.data}
+          initialData={result}
+          error={result.error}
+        />
+      );
+    } 
   } else if (area === "customers") {
     const result = await safeRetailRecord(
       `/customers/${encodeURIComponent(id)}`,

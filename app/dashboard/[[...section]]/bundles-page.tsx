@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
-  getBundleProducts,
+  getBundleProductBatch,
   getBundleProductsCatalog,
   getBundleVariants,
   getBundleConfiguration,
@@ -22,11 +22,28 @@ export default function BundlesPage({
 }) {
   const [selectedVariantId, setSelectedVariantId] =
     useState(variantId);
+
+  const [bundlePage, setBundlePage] = useState(1);
+  const PAGES_PER_BATCH = 10;
+
+  const bundleBatch = Math.floor(
+    (bundlePage - 1) / PAGES_PER_BATCH,
+  );
+
   const bundleProductQuery = useQuery({
-    queryKey: ["bundle-products"],
+    queryKey: [
+      "bundle-products",
+      { batch: bundleBatch },
+    ],
     queryFn: async () => {
-      console.log("🟣 TANSTACK QUERY FN RUNNING: BUNDLE PRODUCTS");
-      return getBundleProducts();
+      console.log(
+        "🟣 TANSTACK QUERY FN RUNNING: BUNDLE PRODUCT BATCH",
+        {
+          batch: bundleBatch,
+        },
+      );
+
+      return getBundleProductBatch(bundleBatch);
     },
     staleTime: 30_000,
   });
@@ -170,8 +187,9 @@ export default function BundlesPage({
     variantQuery.isPending;
 
   const isLoadingConfiguration =
-    configurationQuery.isPending ||
-    configurationQuery.isFetching;
+  Boolean(parent) &&
+  (configurationQuery.isPending ||
+    configurationQuery.isFetching);
 
   const isLoading =
     isLoadingCatalog ||
@@ -206,11 +224,20 @@ export default function BundlesPage({
       ) : (
         <>
           <BundleVariantPicker
+            key={selectedVariantId}
             products={bundleProducts}
             variants={variants}
             variantId={selectedVariantId}
             disabled={Boolean(error)}
             onVariantChange={setSelectedVariantId}
+            page={bundlePage}
+            totalPages={
+              bundleProductQuery.data?.totalPages ?? 1
+            }
+            onPageChange={setBundlePage}
+            isLoadingPage={
+              bundleProductQuery.isFetching
+            }
           />
 
           {error ? (

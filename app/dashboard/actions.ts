@@ -913,46 +913,19 @@ export async function getOrderBatch(query = "", batch = 0) {
 export async function getBundleProducts() {
   console.log("🔵 BACKEND FETCH: getBundleProducts()");
 
-  const payload = await retailRequest<unknown>(
-    "/products?tags=bundle",
-    {
-      cache: "no-store",
-    },
-  );
-
-  return {
-    data: records(payload),
-  };
+  return safeRetailAll("/products?tags=bundle");
 }
 
 export async function getBundleProductsCatalog() {
   console.log("🔵 BACKEND FETCH: getBundleProductsCatalog()");
 
-  const payload = await retailRequest<unknown>(
-    "/products",
-    {
-      cache: "no-store",
-    },
-  );
-
-  return {
-    data: records(payload),
-  };
+  return safeRetailAll("/products");
 }
 
 export async function getBundleVariants() {
   console.log("🔵 BACKEND FETCH: getBundleVariants()");
 
-  const payload = await retailRequest<unknown>(
-    "/product-variants",
-    {
-      cache: "no-store",
-    },
-  );
-
-  return {
-    data: records(payload),
-  };
+  return safeRetailAll("/product-variants");
 }
 
 export async function getBundleConfiguration(
@@ -990,6 +963,198 @@ export async function getBundleConfiguration(
         cause instanceof Error
           ? cause.message
           : "Unable to load bundle group.",
+    };
+  }
+}
+
+export async function getBundleProductBatch(
+  batch = 0,
+) {
+  console.log("🔵 BACKEND FETCH: getBundleProductBatch()", {
+    batch,
+  });
+
+  const API_LIMIT = 100;
+  const BATCH_SIZE = 500;
+
+  const startApiPage =
+    batch * (BATCH_SIZE / API_LIMIT) + 1;
+
+  const bundlePath = "/products?tags=bundle";
+
+  const firstPage = await safeRetailPage(
+    bundlePath,
+    startApiPage,
+    API_LIMIT,
+  );
+
+  const total = firstPage.pagination.total;
+  const totalApiPages =
+    firstPage.pagination.totalPages;
+
+  if (firstPage.error) {
+    return {
+      data: firstPage.data,
+      total,
+      totalPages: Math.max(
+        1,
+        Math.ceil(total / 50),
+      ),
+      error: firstPage.error,
+    };
+  }
+
+  const endApiPage = Math.min(
+    startApiPage +
+      BATCH_SIZE / API_LIMIT -
+      1,
+    totalApiPages,
+  );
+
+  const remainingPages =
+    endApiPage >= startApiPage + 1
+      ? await Promise.all(
+          Array.from(
+            {
+              length:
+                endApiPage -
+                startApiPage,
+            },
+            (_, index) =>
+              safeRetailPage(
+                bundlePath,
+                startApiPage +
+                  index +
+                  1,
+                API_LIMIT,
+              ),
+          ),
+        )
+      : [];
+
+  const pageResults = [
+    firstPage,
+    ...remainingPages,
+  ];
+
+  const error = pageResults.find(
+    (result) => result.error,
+  )?.error;
+
+  const data = pageResults
+    .flatMap((result) => result.data)
+    .slice(0, BATCH_SIZE);
+
+  return {
+    data,
+    total,
+    totalPages: Math.max(
+      1,
+      Math.ceil(total / 50),
+    ),
+    error,
+  };
+}
+
+export async function getStoreActivityBatch(batch = 0) {
+  console.log(
+    "🔵 BACKEND FETCH: getStoreActivityBatch()",
+    { batch },
+  );
+
+  const session = await auth();
+
+  const staffUser = session?.user as
+    | {
+        isStaff?: boolean;
+        accessToken?: string;
+      }
+    | undefined;
+
+  if (!staffUser?.isStaff) {
+    return {
+      data: [],
+      total: 0,
+      totalPages: 1,
+      error:
+        "You must be signed in as staff to view store activity.",
+    };
+  }
+
+  if (!staffUser.accessToken) {
+    return {
+      data: [],
+      total: 0,
+      totalPages: 1,
+      error:
+        "Your staff session does not include an access token. Please sign in again.",
+    };
+  }
+
+  const API_LIMIT = 100;
+  const BATCH_SIZE = 500;
+
+  const startApiPage =
+    batch * (BATCH_SIZE / API_LIMIT) + 1;
+
+  try {
+    const payload = await retailRequest<unknown>(
+      `/audit-logs?page=${startApiPage}&limit=${API_LIMIT}`,
+      {
+        cache: "no-store",
+        headers: {
+          authorization: `Bearer ${staffUser.accessToken}`,
+        },
+      },
+    );
+
+    const data = records(payload);
+
+    const wrapper =
+      payload &&
+      typeof payload === "object" &&
+      !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : {};
+
+    const pagination =
+      wrapper.pagination &&
+      typeof wrapper.pagination === "object" &&
+      !Array.isArray(wrapper.pagination)
+        ? (wrapper.pagination as Record<string, unknown>)
+        : undefined;
+
+    const apiTotal = Number(pagination?.total);
+    const apiTotalPages = Number(
+      pagination?.totalPages,
+    );
+
+    // The audit-log endpoint currently returns the records
+    // without pagination metadata, so use the returned
+    // record count as the total.
+    const total =
+      Number.isFinite(apiTotal) && apiTotal > 0
+        ? apiTotal
+        : data.length;
+
+    return {
+      data: data.slice(0, BATCH_SIZE),
+      total,
+      totalPages: Math.max(
+        1,
+        Math.ceil(total / 50),
+      ),
+      error: undefined,
+    };
+  } catch (cause) {
+    return {
+      data: [],
+      total: 0,
+      totalPages: 1,
+      error:
+        cause instanceof Error
+          ? cause.message
+          : "Unable to load store activity.",
     };
   }
 }

@@ -52,6 +52,8 @@ import ProductsClient from "../products/products-client";
 import OrdersClient from "../orders/orders-client";
 import CustomersClient from "../customers/customers-client";
 
+import StoreActivity from "../store-activity/store-activity-client";
+
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
 const routes = [
@@ -1924,81 +1926,6 @@ function AuditDetails({ item }: { item: RetailRecord }) {
   return auditValue(item, ["action"]) === "CREATE" ? "Record created" : auditValue(item, ["action"]) === "DELETE" ? "Record deleted" : "—";
 }
 
-function StoreActivity({ items, error }: { items: RetailRecord[]; error?: string }) {
-  const activities = [...items].sort((a, b) => {
-    const aTime = Date.parse(auditValue(a, ["createdAt", "timestamp", "date", "occurredAt"]));
-    const bTime = Date.parse(auditValue(b, ["createdAt", "timestamp", "date", "occurredAt"]));
-    return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
-  });
-
-  return (
-    <>
-      <Header
-        title="Store Activity"
-        description="Review recent changes and actions across your store."
-      />
-      <Notice message={error} />
-      {!error && !activities.length ? (
-        <div className={styles.emptyState}>
-          <strong>No store activity yet</strong>
-          <span>New store actions will appear here.</span>
-        </div>
-      ) : activities.length ? (
-        <Table heads={["Activity", "Resource", "Changes", "Source / Staff", "Date"]}>
-          {activities.map((item, index) => {
-            const occurredAt = auditValue(item, ["createdAt", "timestamp", "date", "occurredAt"]);
-            return (
-              <tr key={text(item.id, `${occurredAt}-${index}`)}>
-                <td>
-                  <strong>{auditValue(item, ["action", "event", "type"]) || "Activity"}</strong>
-                </td>
-                <td>
-                  {auditValue(item, ["resource", "entity", "entityType", "model"]) || "—"}
-                  <small>{auditEntityLabel(item)}</small>
-                  <small>{auditValue(item, ["resourceId", "entityId", "targetId"])}</small>
-                </td>
-                <td className={styles.activityDetails}><AuditDetails item={item} /></td>
-                <td>
-                  <Status value={auditValue(item, ["source"]) || "UNKNOWN"} />
-                  <small>{auditActor(item) || "—"}</small>
-                </td>
-                <td className={styles.activityDate}>{orderDate(occurredAt)}</td>
-              </tr>
-            );
-          })}
-        </Table>
-      ) : null}
-    </>
-  );
-}
-
-async function StoreActivitySection() {
-  const session = await auth();
-  const accessToken = (session?.user as { accessToken?: string } | undefined)?.accessToken;
-  if (!accessToken) {
-    return <StoreActivity items={[]} error="Your staff session does not include an access token. Please sign in again." />;
-  }
-  const result = await safeRetailList("/audit-logs", {
-    headers: { authorization: `Bearer ${accessToken}` },
-  });
-  return <StoreActivity items={result.data} error={result.error} />;
-}
-
-function StoreActivityLoading() {
-  return (
-    <>
-      <Header
-        title="Store Activity"
-        description="Review recent changes and actions across your store."
-      />
-      <div className={styles.loadingState} role="status">
-        <span className={styles.loadingSpinner} aria-hidden="true" />
-        <strong>Loading store activity…</strong>
-      </div>
-    </>
-  );
-}
-
 export default async function DashboardPage({ params, searchParams }: Props) {
   const { section = [] } = await params;
   const queryParams = await searchParams;
@@ -2316,11 +2243,7 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       />
     );
   } else if (area === "store-activity") {
-    content = (
-      <Suspense fallback={<StoreActivityLoading />}>
-        <StoreActivitySection />
-      </Suspense>
-    );
+     content = <StoreActivity />;
   } else {
     const result = await safeRetailList(sub === "history" ? "/audit-logs" : "/product-variants");
     content = (

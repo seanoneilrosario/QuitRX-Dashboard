@@ -86,3 +86,66 @@
     transform: rotate(360deg);
   }
 }
+
+
+.bundlePagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #eee;
+}
+
+.bundlePaginationInfo {
+  font-size: 13px;
+  color: #777;
+}
+
+.bundlePaginationInfo strong {
+  color: #222;
+  font-weight: 600;
+}
+
+.bundlePaginationActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bundlePaginationButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 104px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  color: #222;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.bundlePaginationButton:hover:not(:disabled) {
+  background: #f7f7f7;
+  border-color: #ccc;
+}
+
+.bundlePaginationButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bundlePaginationButton span {
+  font-size: 16px;
+  line-height: 1;
+}

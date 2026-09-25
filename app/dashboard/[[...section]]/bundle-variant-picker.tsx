@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { BundleProduct, BundleVariant } from "./bundle-editor";
+import type {
+  BundleProduct,
+  BundleVariant,
+} from "./bundle-editor";
 import styles from "./dashboard.module.css";
 import { ActionButton } from "./action-controls";
 import { getBundleConfiguration } from "@/app/dashboard/actions";
@@ -13,19 +16,29 @@ export default function BundleVariantPicker({
   variantId,
   disabled,
   onVariantChange,
+  page,
+  totalPages,
+  onPageChange,
+  isLoadingPage,
 }: {
   products: BundleProduct[];
   variants: BundleVariant[];
   variantId: string;
   disabled: boolean;
   onVariantChange: (variantId: string) => void;
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  isLoadingPage: boolean;
 }) {
   const queryClient = useQueryClient();
 
+  const [isPending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [activeVariantId, setActiveVariantId] =
     useState(variantId);
 
+  const PAGE_SIZE = 50;
   const search = query.trim().toLowerCase();
 
   const filteredProducts = products.flatMap((product) => {
@@ -46,9 +59,19 @@ export default function BundleVariantPicker({
       );
 
     return matches
-      ? [{ ...product, variants: productVariants }]
+      ? [
+          {
+            ...product,
+            variants: productVariants,
+          },
+        ]
       : [];
   });
+
+  const visibleProducts = filteredProducts.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE,
+  );
 
   useEffect(() => {
     setActiveVariantId(variantId);
@@ -81,27 +104,34 @@ export default function BundleVariantPicker({
     if (!window.dispatchEvent(change)) return;
 
     setActiveVariantId(nextId);
-    onVariantChange(nextId);
 
-    window.dispatchEvent(
-      new CustomEvent("bundle-editor-select", {
-        detail: nextId,
-      }),
-    );
+    startTransition(() => {
+      onVariantChange(nextId);
 
-    const url = new URL(window.location.href);
-    url.searchParams.set("variantId", nextId);
+      window.dispatchEvent(
+        new CustomEvent("bundle-editor-select", {
+          detail: nextId,
+        }),
+      );
 
-    window.history.replaceState(
-      window.history.state,
-      "",
-      url.toString(),
-    );
+      const url = new URL(window.location.href);
+      url.searchParams.set(
+        "variantId",
+        nextId,
+      );
+
+      window.history.replaceState(
+        window.history.state,
+        "",
+        url.toString(),
+      );
+    });
   }
 
   function prefetchVariant(nextId: string) {
     const nextVariant = variants.find(
-      (variant) => variant.id === nextId,
+      (variant) =>
+        variant.id === nextId,
     );
 
     if (!nextVariant) return;
@@ -127,9 +157,14 @@ export default function BundleVariantPicker({
     <>
       <div className={styles.form}>
         <section className={styles.formCard}>
-          <div className={styles.bundleListHeader}>
+          <div
+            className={
+              styles.bundleListHeader
+            }
+          >
             <div>
               <h2>Bundle products</h2>
+
               <p>
                 {products.length}{" "}
                 {products.length === 1
@@ -139,9 +174,12 @@ export default function BundleVariantPicker({
             </div>
 
             <label
-              className={styles.bundleListSearch}
+              className={
+                styles.bundleListSearch
+              }
             >
               Search bundles
+
               <input
                 type="search"
                 placeholder="Search bundle, group or SKU"
@@ -154,92 +192,124 @@ export default function BundleVariantPicker({
             </label>
           </div>
 
-          <div className={styles.bundleProductList}>
-            {filteredProducts.map((product) => (
-              <article
-                key={product.id}
-                className={styles.bundleListItem}
-              >
-                <div>
-                  <strong>{product.label}</strong>
+          <div
+            className={
+              styles.bundleProductList
+            }
+          >
+            {visibleProducts.map(
+              (product) => (
+                <article
+                  key={product.id}
+                  className={
+                    styles.bundleListItem
+                  }
+                >
+                  <div>
+                    <strong>
+                      {product.label}
+                    </strong>
 
-                  <small>
-                    {product.variants.length}{" "}
-                    {product.variants.length === 1
-                      ? "group"
-                      : "groups"}
-                  </small>
-                </div>
+                    <small>
+                      {
+                        product.variants
+                          .length
+                      }{" "}
+                      {product.variants.length ===
+                      1
+                        ? "group"
+                        : "groups"}
+                    </small>
+                  </div>
 
-                <div className={styles.bundleGroupList}>
-                  {product.variants.map(
-                    (variant) => (
-                      <div
-                        key={variant.id}
-                        className={
-                          variant.id ===
-                          activeVariantId
-                            ? styles.bundleGroupActive
-                            : undefined
-                        }
-                      >
-                        <span>
-                          <strong>
-                            {variant.label}
-                          </strong>
-
-                          {variant.sku && (
-                            <small>
-                              SKU: {variant.sku}
-                            </small>
-                          )}
-                        </span>
-
-                        <ActionButton
-                          type="button"
-                          className={styles.secondary}
-                          disabled={disabled}
-                          pending={false}
-                          pendingLabel="Loading…"
-                          onPointerEnter={() =>
-                            prefetchVariant(
-                              variant.id,
-                            )
-                          }
-                          onFocus={() =>
-                            prefetchVariant(
-                              variant.id,
-                            )
-                          }
-                          onClick={() =>
-                            openVariant(
-                              variant.id,
-                            )
+                  <div
+                    className={
+                      styles.bundleGroupList
+                    }
+                  >
+                    {product.variants.map(
+                      (variant) => (
+                        <div
+                          key={variant.id}
+                          className={
+                            variant.id ===
+                            activeVariantId
+                              ? styles.bundleGroupActive
+                              : undefined
                           }
                         >
-                          {variant.id ===
-                          activeVariantId
-                            ? "Editing"
-                            : "Edit"}
-                        </ActionButton>
-                      </div>
-                    ),
-                  )}
+                          <span>
+                            <strong>
+                              {
+                                variant.label
+                              }
+                            </strong>
 
-                  {!product.variants.length && (
-                    <p
-                      className={
-                        styles.bundleEmpty
-                      }
-                    >
-                      No bundle groups are
-                      available for this
-                      product.
-                    </p>
-                  )}
-                </div>
-              </article>
-            ))}
+                            {variant.sku && (
+                              <small>
+                                SKU:{" "}
+                                {
+                                  variant.sku
+                                }
+                              </small>
+                            )}
+                          </span>
+
+                          <ActionButton
+                            type="button"
+                            className={
+                              styles.secondary
+                            }
+                            disabled={
+                              disabled
+                            }
+                            pending={
+                              variant.id ===
+                                activeVariantId &&
+                              isPending
+                            }
+                            pendingLabel="Loading…"
+                            onPointerEnter={() =>
+                              prefetchVariant(
+                                variant.id,
+                              )
+                            }
+                            onFocus={() =>
+                              prefetchVariant(
+                                variant.id,
+                              )
+                            }
+                            onClick={() =>
+                              openVariant(
+                                variant.id,
+                              )
+                            }
+                          >
+                            {variant.id ===
+                            activeVariantId
+                              ? "Editing"
+                              : "Edit"}
+                          </ActionButton>
+                        </div>
+                      ),
+                    )}
+
+                    {!product.variants
+                      .length && (
+                      <p
+                        className={
+                          styles.bundleEmpty
+                        }
+                      >
+                        No bundle groups are
+                        available for this
+                        product.
+                      </p>
+                    )}
+                  </div>
+                </article>
+              ),
+            )}
 
             {!disabled &&
               !filteredProducts.length && (
@@ -254,8 +324,98 @@ export default function BundleVariantPicker({
                 </p>
               )}
           </div>
+
+          {totalPages > 1 && (
+            <nav
+              className={
+                styles.bundlePagination
+              }
+              aria-label="Bundle pagination"
+            >
+              <div
+                className={
+                  styles.bundlePaginationInfo
+                }
+              >
+                Showing page{" "}
+                <strong>{page}</strong> of{" "}
+                <strong>{totalPages}</strong>
+              </div>
+
+              <div
+                className={
+                  styles.bundlePaginationActions
+                }
+              >
+                <button
+                  type="button"
+                  className={
+                    styles.bundlePaginationButton
+                  }
+                  disabled={
+                    page <= 1 ||
+                    isLoadingPage
+                  }
+                  onClick={() =>
+                    onPageChange(page - 1)
+                  }
+                >
+                  <span aria-hidden="true">
+                    ←
+                  </span>
+                  Previous
+                </button>
+
+                <button
+                  type="button"
+                  className={
+                    styles.bundlePaginationButton
+                  }
+                  disabled={
+                    page >= totalPages ||
+                    isLoadingPage
+                  }
+                  onClick={() =>
+                    onPageChange(page + 1)
+                  }
+                >
+                  Next
+                  <span aria-hidden="true">
+                    →
+                  </span>
+                </button>
+              </div>
+            </nav>
+          )}
         </section>
       </div>
+
+      {isPending && (
+        <div
+          className={
+            styles.bundleLoadingModal
+          }
+          role="status"
+          aria-live="polite"
+          aria-label="Loading bundle editor"
+        >
+          <div>
+            <span
+              className={
+                styles.bundleLoadingSpinner
+              }
+            />
+
+            <strong>
+              Loading bundle…
+            </strong>
+
+            <small>
+              Preparing the bundle editor
+            </small>
+          </div>
+        </div>
+      )}
     </>
   );
 }

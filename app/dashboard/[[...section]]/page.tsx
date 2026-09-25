@@ -21,6 +21,7 @@ import {
 import styles from "./dashboard.module.css";
 import TagsInput from "./tags-input";
 import { CollectionCreateForm } from "./collection-create-fields";
+import CollectionDeleteButton from "./collection-delete-button";
 import BundlesPage from "./bundles-page";
 import FrequentlyBoughtTogetherEditor from "./frequently-bought-together-editor";
 import { logoutStaff } from "../login/actions";
@@ -1060,6 +1061,9 @@ function ResourcePage({
               <div className={styles.actions}>
               {kind === "collections" && (
                 <>
+                  <Link href={`/dashboard/collections/edit?id=${encodeURIComponent(text(item.id))}`}>
+                    Edit
+                  </Link>
                   <a
                     href={storefrontUrl("collections", item)}
                     target="_blank"
@@ -1113,9 +1117,12 @@ function CollectionEdit({
         title={`Edit ${text(item.name, "collection")}`}
         description="Update collection details and product membership."
         action={
+          <div className={styles.collectionDeleteActions}>
           <Link className={styles.secondary} href="/dashboard/collections">
             Back to collections
           </Link>
+          <CollectionDeleteButton id={text(item.id)} name={text(item.name)} />
+          </div>
         }
       />
       <Notice message={error} />

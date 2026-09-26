@@ -25,6 +25,7 @@ export default function BundlesPage({
     useState(variantId);
   const [deletedProductIds, setDeletedProductIds] = useState<Set<string>>(() => new Set());
   const [deletingVariantId, setDeletingVariantId] = useState("");
+  const [deleteError, setDeleteError] = useState("");
 
   const [bundlePage, setBundlePage] = useState(1);
   const PAGES_PER_BATCH = 10;
@@ -255,7 +256,9 @@ export default function BundlesPage({
             deletingVariantId={deletingVariantId}
           />
 
-          {error ? (
+          {deleteError ? (
+            <p role="alert" className={styles.notice}>{deleteError}</p>
+          ) : error ? (
             <p
               role="alert"
               className={styles.notice}
@@ -281,10 +284,19 @@ export default function BundlesPage({
           ) : parent && configurationQuery.data ? (
             <BundleEditor
               key={parent.id}
-              onDeleted={(productId) => {
+              onDeleteStarted={(productId) => {
+                setDeleteError("");
                 setDeletedProductIds((current) => new Set(current).add(productId));
                 setSelectedVariantId("");
                 setBundlePage(1);
+              }}
+              onDeleteFailed={(productId, message) => {
+                setDeletedProductIds((current) => {
+                  const next = new Set(current);
+                  next.delete(productId);
+                  return next;
+                });
+                setDeleteError(message);
               }}
               onDeletingChange={setDeletingVariantId}
               parent={parent}

@@ -24,7 +24,7 @@ function signature(selections: EditorSelection[]) {
   return JSON.stringify(componentsFromSelections(selections));
 }
 
-export default function BundleEditor({ parent, groupNumber, products, variants, bundleProductIds, initial, onDeleted, onDeletingChange }: { parent: BundleVariant; groupNumber: number; products: BundleProduct[]; variants: BundleVariant[]; bundleProductIds: string[]; initial: BundleSelection[]; onDeleted: (productId: string) => void; onDeletingChange: (variantId: string) => void }) {
+export default function BundleEditor({ parent, groupNumber, products, variants, bundleProductIds, initial, onDeleteStarted, onDeleteFailed, onDeletingChange }: { parent: BundleVariant; groupNumber: number; products: BundleProduct[]; variants: BundleVariant[]; bundleProductIds: string[]; initial: BundleSelection[]; onDeleteStarted: (productId: string) => void; onDeleteFailed: (productId: string, message: string) => void; onDeletingChange: (variantId: string) => void }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const initialSelections = useMemo(() => selectionsFromComponents(initial), [initial]);
@@ -134,19 +134,20 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
     if (!window.confirm(`Delete bundle "${parent.productLabel}" and remove it from the storefront?`)) return;
     setDeleting(true);
     onDeletingChange(parent.id);
+    closeModal();
+    onDeleteStarted(parent.productId);
     try {
       const result = await deleteBundle(
         parent.productId,
         products.find((product) => product.id === parent.productId)?.bundleTagRelationshipIds ?? [],
       );
-      setState(result);
-      if (!result.success) return;
-      setSavedSelections(selections);
-      onDeleted(parent.productId);
-      closeModal();
+      if (!result.success) {
+        onDeleteFailed(parent.productId, result.message);
+        return;
+      }
       void Promise.all(["bundle-products", "bundle-product-catalog", "bundle-variants", "bundle-configuration"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
     } catch (error) {
-      setState({ message: error instanceof Error ? error.message : "Unable to delete bundle. Please try again.", success: false });
+      onDeleteFailed(parent.productId, error instanceof Error ? error.message : "Unable to delete bundle. Please try again.");
     } finally {
       setDeleting(false);
       onDeletingChange("");

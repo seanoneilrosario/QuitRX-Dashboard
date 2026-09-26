@@ -89,6 +89,46 @@ function payload(formData: FormData) {
   return result;
 }
 
+const customerTextMetafields = [
+  "scriptId",
+  "scriptValidity",
+  "renewalForm",
+  "gender",
+  "vapeTag",
+  "pouchTag",
+  "document",
+  "socLogin",
+  "scriptUploaded",
+];
+
+function normalizeCustomerUpdate(formData: FormData, body: Record<string, unknown>) {
+  for (const [field, label] of [
+    ["scriptExpiry", "Script expiry"],
+    ["birthday", "Birthday"],
+  ] as const) {
+    if (!formData.has(field)) continue;
+    const value = String(formData.get(field) ?? "").trim();
+    if (!value) {
+      body[field] = null;
+      continue;
+    }
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+      !Number.isFinite(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== value
+    )
+      throw new Error(`${label} must be a valid date.`);
+    body[field] = date.toISOString();
+  }
+
+  // The generic payload omits empty strings. Customer metafields need an
+  // explicit value so an existing value can also be cleared through PATCH.
+  for (const field of customerTextMetafields) {
+    if (formData.has(field) && !Object.prototype.hasOwnProperty.call(body, field)) body[field] = "";
+  }
+}
+
 export type CollectionActionState = { message: string; success: boolean };
 
 function collectionRecord(payload: unknown) {
@@ -402,6 +442,7 @@ async function persistResource(formData: FormData) {
   }
   let customerAddress: Record<string, string> | undefined;
   if (resource === "customers") {
+    if (id) normalizeCustomerUpdate(formData, body);
     const address = {
       address1: String(formData.get("_address1") ?? "").trim(),
       address2: String(formData.get("_address2") ?? "").trim(),
@@ -1012,6 +1053,9 @@ export async function getBundleConfiguration(
 
 export async function getBundleProductBatch(batch = 0) {
   const result = await safeRetailAll("/products?tags=bundle");
+  const storefrontBaseUrl = (
+    process.env.STOREFRONT_BASE_URL ?? "https://quitrx-website-front-ecru.vercel.app"
+  ).replace(/\/$/, "");
   // Sort the complete collection before slicing so new bundles reach page one.
   const products = result.data.map((product, index) => ({
     product,
@@ -1021,7 +1065,18 @@ export async function getBundleProductBatch(batch = 0) {
     const aTime = Number.isNaN(a.createdAt) ? Number.NEGATIVE_INFINITY : a.createdAt;
     const bTime = Number.isNaN(b.createdAt) ? Number.NEGATIVE_INFINITY : b.createdAt;
     return bTime - aTime || a.index - b.index;
-  }).map(({ product }) => product);
+  }).map(({ product }) => {
+    const productUrl = typeof product.url === "string" ? product.url : "";
+    const slug = typeof product.slug === "string" ? product.slug : "";
+    return {
+      ...product,
+      bundleLabel:
+        typeof product.name === "string" && product.name ? product.name : product.id,
+      storefrontUrl: productUrl
+        ? new URL(productUrl, `${storefrontBaseUrl}/`).toString()
+        : `${storefrontBaseUrl}/product/${encodeURIComponent(slug)}`,
+    };
+  });
   const start = Math.max(0, Math.floor(batch)) * 500;
   return {
     data: products.slice(start, start + 500),

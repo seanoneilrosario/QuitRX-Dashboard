@@ -281,6 +281,38 @@ test("unsupported product-tag assignments do not turn a successful product save 
   ]);
 });
 
+test("customer updates PATCH typed metafields and preserve explicit clears", async () => {
+  const requests = [];
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
+    "next/navigation": { redirect: () => {} },
+    "@/lib/quithero-admin": {
+      RETAIL_CATALOG_TAG: "retail-catalog",
+      retailRequest: async (path, options) => requests.push({ path, options }),
+    },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
+    "@/auth": { auth: async () => ({ user: { isStaff: true } }) },
+  });
+  const form = new FormData();
+  form.set("_resource", "customers");
+  form.set("_id", "customer/1");
+  form.set("scriptExpiry", "2026-08-16");
+  form.set("birthday", "2000-06-02");
+  form.set("scriptId", "");
+  form.set("scriptActive", "false");
+
+  await actions.saveResource(form);
+
+  assert.equal(requests[0].path, "/customers/customer%2F1");
+  assert.equal(requests[0].options.method, "PATCH");
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    scriptActive: false,
+    scriptExpiry: "2026-08-16T00:00:00.000Z",
+    birthday: "2000-06-02T00:00:00.000Z",
+    scriptId: "",
+  });
+});
+
 test("product saves remove deselected tag relationships", async () => {
   const requests = [];
   const actions = load("app/dashboard/actions.ts", {

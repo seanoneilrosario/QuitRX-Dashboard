@@ -220,6 +220,7 @@ export default function BundleVariantPicker({
                         ? "group"
                         : "groups"}
                     </small>
+
                   </div>
 
                   <div
@@ -255,6 +256,12 @@ export default function BundleVariantPicker({
                             )}
                           </span>
 
+                          <div className={styles.bundleRowActions}>
+                          {product.storefrontUrl && (
+                            <a href={product.storefrontUrl} target="_blank" rel="noopener noreferrer">
+                              View
+                            </a>
+                          )}
                           <ActionButton
                             type="button"
                             className={
@@ -290,6 +297,7 @@ export default function BundleVariantPicker({
                               ? "Editing"
                               : "Edit"}
                           </ActionButton>
+                          </div>
                         </div>
                       ),
                     )}
@@ -304,6 +312,11 @@ export default function BundleVariantPicker({
                         No bundle groups are
                         available for this
                         product.
+                        {product.storefrontUrl && (
+                          <a href={product.storefrontUrl} target="_blank" rel="noopener noreferrer">
+                            View
+                          </a>
+                        )}
                         <ActionLink href={`/dashboard/bundles/create?id=${encodeURIComponent(product.id)}`} className={styles.secondary}>
                           Complete bundle
                         </ActionLink>

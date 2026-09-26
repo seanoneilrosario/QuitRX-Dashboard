@@ -98,7 +98,11 @@ export default function BundlesPage({
   const bundleProducts: BundleProduct[] =
     bundleProductQuery.data?.data.flatMap((product) =>
       typeof product.id === "string"
-        ? [{ id: product.id, label: typeof product.name === "string" && product.name ? product.name : product.id }]
+        ? [{
+            id: product.id,
+            label: product.bundleLabel ?? product.id,
+            storefrontUrl: typeof product.storefrontUrl === "string" ? product.storefrontUrl : undefined,
+          }]
         : [],
     ) ?? [];
 

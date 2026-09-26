@@ -8,7 +8,7 @@ import type { BundleSelection } from "@/lib/product-bundles";
 import styles from "./dashboard.module.css";
 import { ActionButton } from "./action-controls";
 
-export type BundleProduct = { id: string; label: string };
+export type BundleProduct = { id: string; label: string; storefrontUrl?: string };
 export type BundleVariant = { id: string; productId: string; productLabel: string; label: string; sku: string };
 type EditorSelection = BundleSelection & { key: number };
 

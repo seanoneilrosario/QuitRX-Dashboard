@@ -160,6 +160,10 @@ function metafieldValue(item: RetailRecord, key: string) {
   return metafields.find((field) => field.key === key)?.value;
 }
 
+function customerField(item: RetailRecord, field: string, metafieldKey: string) {
+  return item[field] ?? metafieldValue(item, metafieldKey);
+}
+
 function customerAddresses(item: RetailRecord) {
   if (Array.isArray(item.addresses)) {
     const addresses = item.addresses.filter(
@@ -1173,7 +1177,7 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
       </>
     );
   if (editing) {
-    const meta = (field: string, key: string) => metafieldValue(item, key) ?? item[field];
+    const meta = (field: string, key: string) => customerField(item, field, key);
     const tags = Array.isArray(item.tags) ? item.tags.map(String) : [];
     const addresses = customerAddresses(item);
     const customerId = text(item.id, "");
@@ -1397,7 +1401,7 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
           {[
             ["Email", item.email],
             ["Phone", item.phone],
-            ["Birthday", item.birthday],
+            ["Birthday", customerField(item, "birthday", "birthday")],
             ["Account state", item.state],
             ["Verified email", item.verifiedEmail ? "Yes" : "No"],
           ].map(([label, value]) => (
@@ -1412,9 +1416,9 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
           {[
             ["Total orders", item.numberOfOrders],
             ["Total spent", money(item.totalSpent)],
-            ["Script ID", item.scriptId],
-            ["Script expiry", item.scriptExpiry],
-            ["Script active", item.scriptActive ? "Yes" : "No"],
+            ["Script ID", customerField(item, "scriptId", "script_id")],
+            ["Script expiry", customerField(item, "scriptExpiry", "script_expiry")],
+            ["Script active", customerField(item, "scriptActive", "script_active") ? "Yes" : "No"],
           ].map(([label, value]) => (
             <div className={styles.detailRow} key={String(label)}>
               <span>{text(label)}</span>

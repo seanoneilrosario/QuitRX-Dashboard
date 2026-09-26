@@ -1062,6 +1062,8 @@ export async function getBundleProductBatch(batch = 0) {
     const slug = typeof product.slug === "string" ? product.slug : "";
     return {
       ...product,
+      bundleLabel:
+        typeof product.name === "string" && product.name ? product.name : product.id,
       storefrontUrl: productUrl
         ? new URL(productUrl, `${storefrontBaseUrl}/`).toString()
         : `${storefrontBaseUrl}/product/${encodeURIComponent(slug)}`,

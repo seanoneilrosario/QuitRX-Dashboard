@@ -24,7 +24,7 @@ function signature(selections: EditorSelection[]) {
   return JSON.stringify(componentsFromSelections(selections));
 }
 
-export default function BundleEditor({ parent, groupNumber, products, variants, bundleProductIds, initial, onDeleted }: { parent: BundleVariant; groupNumber: number; products: BundleProduct[]; variants: BundleVariant[]; bundleProductIds: string[]; initial: BundleSelection[]; onDeleted: (productId: string) => void }) {
+export default function BundleEditor({ parent, groupNumber, products, variants, bundleProductIds, initial, onDeleted, onDeletingChange }: { parent: BundleVariant; groupNumber: number; products: BundleProduct[]; variants: BundleVariant[]; bundleProductIds: string[]; initial: BundleSelection[]; onDeleted: (productId: string) => void; onDeletingChange: (variantId: string) => void }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const initialSelections = useMemo(() => selectionsFromComponents(initial), [initial]);
@@ -133,6 +133,7 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
     if (pending || deleting) return;
     if (!window.confirm(`Delete bundle "${parent.productLabel}" and remove it from the storefront?`)) return;
     setDeleting(true);
+    onDeletingChange(parent.id);
     try {
       const result = await deleteBundle(
         parent.productId,
@@ -141,13 +142,14 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
       setState(result);
       if (!result.success) return;
       setSavedSelections(selections);
-      closeModal();
       onDeleted(parent.productId);
-      await Promise.all(["bundle-products", "bundle-product-catalog", "bundle-variants", "bundle-configuration"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
+      closeModal();
+      void Promise.all(["bundle-products", "bundle-product-catalog", "bundle-variants", "bundle-configuration"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
     } catch (error) {
       setState({ message: error instanceof Error ? error.message : "Unable to delete bundle. Please try again.", success: false });
     } finally {
       setDeleting(false);
+      onDeletingChange("");
     }
   }
 

@@ -19,15 +19,15 @@ export async function deleteBundle(productId: string, tagRelationshipIds: string
     if (!relationshipIds.length) {
       throw new Error("Unable to find this product's bundle tag. Refresh the page and try again.");
     }
-    await retailRequest(`/products/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: "ARCHIVED" }),
-    });
-    await Promise.all(
-      relationshipIds.map((relationshipId) =>
+    await Promise.all([
+      retailRequest(`/products/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "ARCHIVED" }),
+      }),
+      ...relationshipIds.map((relationshipId) =>
         retailRequest(`/product-tags/${encodeURIComponent(relationshipId)}`, { method: "DELETE" }),
       ),
-    );
+    ]);
     updateTag(RETAIL_CATALOG_TAG);
     revalidatePath("/dashboard", "layout");
     return { message: "Bundle removed and product archived.", success: true };

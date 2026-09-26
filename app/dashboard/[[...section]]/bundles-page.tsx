@@ -24,6 +24,7 @@ export default function BundlesPage({
   const [selectedVariantId, setSelectedVariantId] =
     useState(variantId);
   const [deletedProductIds, setDeletedProductIds] = useState<Set<string>>(() => new Set());
+  const [deletingVariantId, setDeletingVariantId] = useState("");
 
   const [bundlePage, setBundlePage] = useState(1);
   const PAGES_PER_BATCH = 10;
@@ -251,6 +252,7 @@ export default function BundlesPage({
             isLoadingPage={
               bundleProductQuery.isFetching
             }
+            deletingVariantId={deletingVariantId}
           />
 
           {error ? (
@@ -284,6 +286,7 @@ export default function BundlesPage({
                 setSelectedVariantId("");
                 setBundlePage(1);
               }}
+              onDeletingChange={setDeletingVariantId}
               parent={parent}
               groupNumber={
                 variants

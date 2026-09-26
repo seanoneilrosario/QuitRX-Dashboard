@@ -20,6 +20,7 @@ export default function BundleVariantPicker({
   totalPages,
   onPageChange,
   isLoadingPage,
+  deletingVariantId,
 }: {
   products: BundleProduct[];
   variants: BundleVariant[];
@@ -30,6 +31,7 @@ export default function BundleVariantPicker({
   totalPages: number;
   onPageChange: (page: number) => void;
   isLoadingPage: boolean;
+  deletingVariantId: string;
 }) {
   const queryClient = useQueryClient();
 
@@ -72,10 +74,6 @@ export default function BundleVariantPicker({
     ((page - 1) % 10) * PAGE_SIZE,
     (((page - 1) % 10) + 1) * PAGE_SIZE,
   );
-
-  useEffect(() => {
-    setActiveVariantId(variantId);
-  }, [variantId]);
 
   useEffect(() => {
     const clearActiveBundle = () =>
@@ -270,12 +268,8 @@ export default function BundleVariantPicker({
                             disabled={
                               disabled
                             }
-                            pending={
-                              variant.id ===
-                                activeVariantId &&
-                              isPending
-                            }
-                            pendingLabel="Loading…"
+                            pending={variant.id === deletingVariantId || (variant.id === activeVariantId && isPending)}
+                            pendingLabel={variant.id === deletingVariantId ? "Deleting…" : "Loading…"}
                             onPointerEnter={() =>
                               prefetchVariant(
                                 variant.id,

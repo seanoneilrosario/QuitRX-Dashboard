@@ -2,7 +2,15 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
-import { availableStock, records, RETAIL_CATALOG_TAG, type RetailRecord, retailRequest, safeRetailAll, safeRetailPage } from "@/lib/quithero-admin";
+import {
+  availableStock,
+  records,
+  RETAIL_CATALOG_TAG,
+  retailRequest,
+  safeRetailAll,
+  safeRetailPage,
+  type RetailRecord,
+} from "@/lib/quithero-admin";
 import { deleteStorefrontCollection, syncStorefrontCollection } from "@/lib/sanity-storefront";
 import { auth } from "@/auth";
 import { bundleComponentResponse, BundleSelection } from "@/lib/product-bundles";
@@ -1123,4 +1131,98 @@ export async function getStoreActivityBatch(batch = 0) {
           : "Unable to load store activity.",
     };
   }
+}
+
+export async function getInventoryBatch(batch = 0) {
+  console.log(
+    "🔵 BACKEND FETCH: getInventoryBatch()",
+    { batch },
+  );
+
+  const API_LIMIT = 100;
+  const BATCH_SIZE = 500;
+
+  const startApiPage =
+    batch * (BATCH_SIZE / API_LIMIT) + 1;
+
+  const inventoryPath = "/product-variants";
+
+  const firstPage = await safeRetailPage(
+    inventoryPath,
+    startApiPage,
+    API_LIMIT,
+  );
+
+  const total = firstPage.pagination.total;
+  const totalApiPages =
+    firstPage.pagination.totalPages;
+
+  if (firstPage.error) {
+    return {
+      data: firstPage.data.map((item) => {
+        const record = item as RetailRecord;
+
+        return {
+          ...record,
+          _availableStock: availableStock(record),
+        };
+      }),
+      total,
+      totalPages: Math.max(
+        1,
+        Math.ceil(total / 50),
+      ),
+      error: firstPage.error,
+    };
+  }
+
+  const endApiPage = Math.min(
+    startApiPage + BATCH_SIZE / API_LIMIT - 1,
+    totalApiPages,
+  );
+
+  const remainingPages =
+    endApiPage >= startApiPage + 1
+      ? await Promise.all(
+          Array.from(
+            {
+              length:
+                endApiPage - startApiPage,
+            },
+            (_, index) =>
+              safeRetailPage(
+                inventoryPath,
+                startApiPage + index + 1,
+                API_LIMIT,
+              ),
+          ),
+        )
+      : [];
+
+  const pageResults = [
+    firstPage,
+    ...remainingPages,
+  ];
+
+  const error = pageResults.find(
+    (result) => result.error,
+  )?.error;
+
+  const data = pageResults
+    .flatMap((result) => result.data)
+    .slice(0, BATCH_SIZE)
+    .map((item) => ({
+      ...item,
+      _availableStock: availableStock(item),
+    }));
+
+  return {
+    data,
+    total,
+    totalPages: Math.max(
+      1,
+      Math.ceil(total / 50),
+    ),
+    error,
+  };
 }

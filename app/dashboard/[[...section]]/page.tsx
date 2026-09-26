@@ -8,7 +8,9 @@ import {
   saveResource,
   getCustomerBatch,
   getOrderBatch,
+  getInventoryBatch,
 } from "../actions";
+import InventoryClient from "./inventory-client";
 import {
   safeRetailAll,
   safeRetailList,
@@ -23,8 +25,6 @@ import TagsInput from "./tags-input";
 import { CollectionCreateForm } from "./collection-create-fields";
 import CollectionDeleteButton from "./collection-delete-button";
 import BundlesPage from "./bundles-page";
-import BundleCreateFields from "./bundle-create-fields";
-import type { BundleVariant } from "./bundle-editor";
 import FrequentlyBoughtTogetherEditor from "./frequently-bought-together-editor";
 import { logoutStaff } from "../login/actions";
 import {
@@ -55,6 +55,10 @@ import OrdersClient from "../orders/orders-client";
 import CustomersClient from "../customers/customers-client";
 
 import StoreActivity from "../store-activity/store-activity-client";
+
+import InventoryHistory from "../store-activity/inventory-history-client";
+
+import Table from "./table";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
@@ -247,23 +251,6 @@ function Status({ value }: { value: unknown }) {
     <span className={`${styles.status} ${/draft|pending|low/i.test(label) ? styles.warning : ""}`}>
       {label.replaceAll("_", " ")}
     </span>
-  );
-}
-
-function Table({ heads, children }: { heads: string[]; children: React.ReactNode }) {
-  return (
-    <div className={styles.tableWrap}>
-      <table>
-        <thead>
-          <tr>
-            {heads.map((head) => (
-              <th key={head}>{head}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
-    </div>
   );
 }
 
@@ -625,9 +612,6 @@ function FrequentlyBoughtList({
 function ProductForm({
   item,
   bundle = false,
-  bundleVariants = [],
-  bundleProductIds = [],
-  bundleError,
   brands,
   productTypes,
   collections,
@@ -638,9 +622,6 @@ function ProductForm({
 }: {
   item?: RetailRecord;
   bundle?: boolean;
-  bundleVariants?: BundleVariant[];
-  bundleProductIds?: string[];
-  bundleError?: string;
   brands: RetailRecord[];
   productTypes: RetailRecord[];
   collections: RetailRecord[];
@@ -714,8 +695,8 @@ function ProductForm({
   return (
     <>
       <Header
-        title={bundle ? item ? "Complete bundle" : "Add bundle" : item ? "Edit product" : "Create product"}
-        description={bundle ? "Configure a bundle group and its allowed product selections." : "Product information is saved directly to the QuitHero Retail API."}
+        title={bundle ? "Add bundle" : item ? "Edit product" : "Create product"}
+        description="Product information is saved directly to the QuitHero Retail API."
         action={
           <Link className={styles.secondary} href={backPath}>
             {bundle ? "Back to bundles" : "Back to products"}
@@ -735,7 +716,6 @@ function ProductForm({
           name="_returnTo"
           value={item?.id ? `/dashboard/products/edit?id=${encodeURIComponent(item.id)}` : backPath}
         />
-        {!bundle && <>
         <section className={styles.formCard}>
           <h2>Product details</h2>
           <div className={styles.formGrid}>
@@ -843,39 +823,28 @@ function ProductForm({
                   +
                 </Link>
               </div>
-              <TagsInput
+              {bundle ? <>
+                <input type="hidden" name="tags" value={bundleTag?.value ?? ""} />
+                {!bundleTag && <input type="hidden" name="_newTags" value={JSON.stringify(["bundle"])} />}
+                <span className={styles.tagChip}>bundle</span>
+                <small>The bundle tag is applied automatically.</small>
+              </> : <TagsInput
                 initialTags={productTags}
                 options={tagOptions}
                 ariaLabel="Select product tags"
                 allowCreate={false}
-              />
+              />}
             </div>
           </div>
         </section>
-        </>}
-        {bundle && <>
-        <input type="hidden" name="tags" value={[...new Set([...productTags.map((tag) => tag.value), ...(bundleTag ? [bundleTag.value] : [])])].join(",")} />
-        {!bundleTag && <input type="hidden" name="_newTags" value={JSON.stringify(["bundle"])} />}
-        <BundleCreateFields
-          initialName={text(item?.name, "")}
-          initialBrandId={text(item?.brandId ?? nested(item ?? {}, "brand")?.id, "")}
-          initialProductTypeId={text(item?.productTypeId ?? nested(item ?? {}, "productType")?.id, "")}
-          brands={brands.flatMap((brand) => typeof brand.id === "string" ? [{ id: brand.id, label: text(brand.name, brand.id) }] : [])}
-          productTypes={productTypes.flatMap((type) => typeof type.id === "string" ? [{ id: type.id, label: text(type.name, type.id) }] : [])}
-          products={products.flatMap((product) => typeof product.id === "string" ? [{ id: product.id, label: text(product.name, product.id) }] : [])}
-          variants={bundleVariants}
-          bundleProductIds={bundleProductIds}
-        />
-        </>}
-        {bundleError && <p role="alert" className={styles.notice}>{bundleError}</p>}
         <div className={styles.formActions}>
           <Link href={backPath}>Cancel</Link>
-          <ActionButton className={styles.primary} disabled={bundle && Boolean(bundleError)} pendingLabel={item ? "Saving…" : "Creating…"}>
-            {bundle ? item ? "Complete bundle" : "Create bundle" : item ? "Save changes" : "Create product"}
+          <ActionButton className={styles.primary} pendingLabel={item ? "Saving…" : "Creating…"}>
+            {bundle ? "Create bundle" : item ? "Save changes" : "Create product"}
           </ActionButton>
         </div>
       </ResourceSaveForm>
-      {!bundle && typeof item?.id === "string" && (
+      {typeof item?.id === "string" && (
         <>
           <Notice message={recommendationError} />
           <FrequentlyBoughtTogetherEditor
@@ -2019,29 +1988,9 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       safeRetailList("/collections"),
       safeRetailAll("/tags"),
     ]);
-    const [bundleProducts, bundleVariants, taggedBundles] = area === "bundles" ? await Promise.all([
-      safeRetailAll("/products"),
-      safeRetailAll("/product-variants"),
-      safeRetailAll("/products?tags=bundle"),
-    ]) : [{ data: [], error: undefined }, { data: [], error: undefined }, { data: [], error: undefined }];
-    const existingBundle = area === "bundles" && id
-      ? await safeRetailRecord(`/products/${encodeURIComponent(id)}`)
-      : { data: undefined, error: undefined };
-    if (area === "bundles" && id && !existingBundle.error && (!existingBundle.data || !taggedBundles.data.some((product) => product.id === id))) notFound();
     content = (
       <ProductForm
-        item={existingBundle.data}
         bundle={area === "bundles"}
-        products={bundleProducts.data}
-        bundleProductIds={taggedBundles.data.flatMap((product) => typeof product.id === "string" ? [product.id] : [])}
-        bundleVariants={bundleVariants.data.flatMap((variant) => typeof variant.id === "string" && typeof variant.productId === "string" ? [{
-          id: variant.id,
-          productId: variant.productId,
-          label: text(variant.name, variant.id),
-          sku: text(variant.sku, ""),
-          productLabel: text(bundleProducts.data.find((product) => product.id === variant.productId)?.name, variant.productId),
-        }] : [])}
-        bundleError={existingBundle.error ?? brands.error ?? productTypes.error ?? tags.error ?? bundleProducts.error ?? bundleVariants.error ?? taggedBundles.error}
         brands={brands.data}
         productTypes={productTypes.data}
         collections={collections.data}
@@ -2296,17 +2245,25 @@ export default async function DashboardPage({ params, searchParams }: Props) {
   } else if (area === "store-activity") {
      content = <StoreActivity />;
   } else {
-    const result = await safeRetailList(sub === "history" ? "/audit-logs" : "/product-variants");
-    content = (
-      <Inventory
-        variants={sub ? [] : result.data}
-        history={sub === "history" ? result.data : undefined}
-        query={q}
-        stockFilter={stockFilter}
-        sort={sort}
-        error={result.error}
-      />
-    );
+    if (sub === "history") {
+      content = <InventoryHistory />;
+    } else {
+      const batch = Math.floor(
+        (page - 1) / 10,
+      );
+
+      const result = await getInventoryBatch(batch);
+
+      content = (
+        <InventoryClient
+          initialData={result}
+          initialPage={page}
+          initialQuery={q}
+          initialStockFilter={stockFilter}
+          initialSort={sort}
+        />
+      );
+    }
   }
   return (
     <div className={styles.shell}>

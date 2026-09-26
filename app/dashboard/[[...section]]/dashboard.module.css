@@ -203,3 +203,7 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.bundleSelectionHeader {
+  margin-top: 28px;
+}

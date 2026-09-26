@@ -729,7 +729,10 @@ function ProductForm({
           </Link>
         }
       />
-      <ResourceSaveForm className={styles.form}>
+      <ResourceSaveForm
+        className={styles.form}
+        processingLabel={bundle ? (item ? "Completing bundle…" : "Creating bundle…") : undefined}
+      >
         <input type="hidden" name="_resource" value="products" />
         <input type="hidden" name="_id" value={text(item?.id, "")} />
         <input

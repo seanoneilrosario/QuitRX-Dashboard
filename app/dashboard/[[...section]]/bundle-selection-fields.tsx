@@ -24,7 +24,7 @@ export default function BundleSelectionFields({ products, variants, selections, 
   const allowed = selections.reduce((count, selection) => count + selection.options.length, 0);
 
   return <>
-    <div className={styles.bundleEditorHeader}>
+    <div className={`${styles.bundleEditorHeader} ${styles.bundleSelectionHeader}`}>
       <h2>Bundle selections</h2>
       <strong>{selections.length} selections · {allowed} allowed</strong>
     </div>

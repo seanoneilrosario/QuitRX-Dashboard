@@ -156,6 +156,9 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
   if (!open) return null;
 
   return <div className={styles.bundleModal} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !pending && !deleting) closeModal(); }}>
+    {(pending || deleting) && <div className={styles.bundleLoadingModal} role="status" aria-live="polite">
+      <div><span className={styles.bundleLoadingSpinner} aria-hidden="true"/><strong>{deleting ? "Deleting bundle…" : "Updating bundle…"}</strong><small>Please wait while your changes are saved.</small></div>
+    </div>}
     <form id="bundle-editor" action={submit} className={`${styles.form} ${styles.bundleModalPanel}`} role="dialog" aria-modal="true" aria-labelledby="bundle-editor-title">
     <input type="hidden" name="productId" value={parent.productId}/>
     <input type="hidden" name="variantId" value={parent.id}/>

@@ -42,6 +42,7 @@ import ResourceSaveForm from "./resource-save-form";
 import OrderCreateForm from "./order-create-form";
 import OrderCancelButton from "./order-cancel-button";
 import RichTextEditor from "./rich-text-editor";
+import ProductNameSlugFields from "./product-name-slug-fields";
 import CustomerDeleteButton from "./customer-delete-button";
 import {
   createCustomerAddress,
@@ -723,14 +724,11 @@ function ProductForm({
         <section className={styles.formCard}>
           <h2>Product details</h2>
           <div className={styles.formGrid}>
-            <label>
-              Name
-              <input required name="name" defaultValue={text(item?.name, "")} />
-            </label>
-            <label>
-              Slug
-              <input required name="slug" defaultValue={text(item?.slug, "")} />
-            </label>
+            <ProductNameSlugFields
+              initialName={text(item?.name, "")}
+              initialSlug={text(item?.slug, "")}
+              autoGenerateSlug={bundle}
+            />
             <label className={styles.full}>
               Short description
               <textarea name="shortDescription" defaultValue={text(item?.shortDescription, "")} />

@@ -94,13 +94,35 @@ export async function retailRequest<T = unknown>(path: string, init: RequestInit
   try { body = text ? JSON.parse(text) : undefined; } catch { body = text; }
   if (!response.ok) {
     const detail = apiErrorMessage(body);
-    throw new Error(detail ? `QuitHero API returned ${response.status}: ${detail}` : `QuitHero API returned ${response.status}.`);
+    const requestPath = path.split("?")[0];
+    // Keep credentials, query strings and request/response bodies out of logs.
+    console.error("[QuitHero dashboard] API request failed", {
+      method,
+      path: requestPath,
+      status: response.status,
+      environment: process.env.VERCEL_ENV ?? "local",
+      deployment: process.env.VERCEL_URL,
+      requestId: response.headers?.get("x-request-id") ?? undefined,
+    });
+    const message = detail ? `QuitHero API returned ${response.status}: ${detail}` : `QuitHero API returned ${response.status}.`;
+    throw new Error(`${message} (${method} ${requestPath})`);
   }
   return body as T;
 }
 
+function uniqueRecords(items: RetailRecord[]): RetailRecord[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    // ID-less records must not all collapse into a single entry.
+    if (typeof item.id !== "string" || !item.id) return true;
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
 export function records(payload: unknown): RetailRecord[] {
-  if (Array.isArray(payload)) return payload.filter((item): item is RetailRecord => Boolean(item && typeof item === "object"));
+  if (Array.isArray(payload)) return uniqueRecords(payload.filter((item): item is RetailRecord => Boolean(item && typeof item === "object")));
   if (!payload || typeof payload !== "object") return [];
   const wrapper = payload as Record<string, unknown>;
   for (const key of ["data", "items", "results", "products", "customers", "orders", "collections", "auditLogs", "logs"]) {
@@ -153,10 +175,10 @@ export async function safeRetailAll(path: string, limit = 100) {
       ),
     );
     const failed = batch.find((result) => result.error);
-    if (failed) return { ...first, data, error: failed.error };
+    if (failed) return { ...first, data: uniqueRecords(data), error: failed.error };
     data.push(...batch.flatMap((result) => result.data));
   }
-  return { ...first, data, error: undefined };
+  return { ...first, data: uniqueRecords(data), error: undefined };
 }
 
 export async function safeRetailRecord(path: string) {

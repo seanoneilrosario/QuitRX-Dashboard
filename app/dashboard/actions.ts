@@ -2,9 +2,11 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
-import { availableStock, records, RETAIL_CATALOG_TAG, retailRequest, safeRetailAll } from "@/lib/quithero-admin";
+import { availableStock, records, RETAIL_CATALOG_TAG, type RetailRecord, retailRequest, safeRetailAll, safeRetailPage } from "@/lib/quithero-admin";
 import { deleteStorefrontCollection, syncStorefrontCollection } from "@/lib/sanity-storefront";
 import { auth } from "@/auth";
+import { bundleComponentResponse, BundleSelection } from "@/lib/product-bundles";
+import { assertBundleSkuAvailable, bundleCreationFields, persistBundleGroup } from "@/lib/create-bundle";
 
 const allowedResources = new Set([
   "products",
@@ -16,6 +18,30 @@ const allowedResources = new Set([
   "collections",
   "customers",
 ]);
+
+
+function newestCustomersFirst(items: RetailRecord[]) {
+  return items
+    .map((item, index) => ({
+      item,
+      index,
+      createdAt: Date.parse(
+        typeof item.createdAt === "string" ? item.createdAt : "",
+      ),
+    }))
+    .sort((a, b) => {
+      const aTime = Number.isNaN(a.createdAt)
+        ? Number.NEGATIVE_INFINITY
+        : a.createdAt;
+
+      const bTime = Number.isNaN(b.createdAt)
+        ? Number.NEGATIVE_INFINITY
+        : b.createdAt;
+
+      return bTime - aTime || a.index - b.index;
+    })
+    .map(({ item }) => item);
+}
 
 function payload(formData: FormData) {
   const result: Record<string, unknown> = {};
@@ -390,7 +416,22 @@ async function persistResource(formData: FormData) {
   const id = String(formData.get("_id") ?? "");
   const returnTo = String(formData.get("_returnTo") ?? "/dashboard");
   if (!allowedResources.has(resource)) throw new Error("Unsupported resource.");
+  const creatingBundle = resource === "products" && formData.has("_bundleSelections");
+  if (creatingBundle) {
+    const session = await auth();
+    if (!(session?.user as { isStaff?: boolean } | undefined)?.isStaff) throw new Error("Please sign in as staff to create bundles.");
+  }
+  const bundleFields = creatingBundle ? bundleCreationFields(formData) : undefined;
+  if (bundleFields) await assertBundleSkuAvailable(retailRequest, bundleFields.sku, String(formData.get("_bundleVariantId") ?? ""));
   const body = payload(formData);
+  if (bundleFields) {
+    if (!id) {
+      body.name = bundleFields.name;
+      body.slug = slugify(`${bundleFields.name}-${bundleFields.sku}`);
+      body.status = "DRAFT";
+    }
+    if (!body.brandId || !body.productTypeId) throw new Error("Select a vendor and type for the bundle.");
+  }
   let customerAddress: Record<string, string> | undefined;
   if (resource === "customers") {
     if (id) normalizeCustomerUpdate(formData, body);
@@ -473,15 +514,17 @@ async function persistResource(formData: FormData) {
     const productId = id || (typeof data.id === "string" ? data.id : "");
     if (!productId)
       throw new Error("Product was saved, but the Retail API did not return its ID for tag sync.");
+    if (bundleFields) formData.set("_bundleProductId", productId);
     try {
-      await syncProductTags(
+      if (!bundleFields || formData.get("_bundleTagsSaved") !== "true") await syncProductTags(
         productId,
         productTags.selected,
         productTags.existing,
         productTags.newTags,
       );
+      if (bundleFields) formData.set("_bundleTagsSaved", "true");
     } catch (error) {
-      if (productTagAssignmentUnsupported(error)) {
+      if (!bundleFields && productTagAssignmentUnsupported(error)) {
         console.warn("[QuitHero dashboard] Product saved without tag assignments", {
           stage: "product-tag-sync-unsupported",
           productId,
@@ -498,6 +541,12 @@ async function persistResource(formData: FormData) {
         throw error;
       }
     }
+    if (bundleFields) {
+      await persistBundleGroup(retailRequest, productId, bundleFields, String(formData.get("_bundleVariantId") ?? ""), (savedId) => formData.set("_bundleVariantId", savedId));
+      updateTag(RETAIL_CATALOG_TAG);
+      revalidatePath("/dashboard", "layout");
+      return "/dashboard/bundles";
+    }
   }
   updateTag(RETAIL_CATALOG_TAG);
   revalidatePath("/dashboard", "layout");
@@ -508,7 +557,7 @@ export async function saveResource(formData: FormData) {
   redirect(await persistResource(formData));
 }
 
-export type ResourceActionState = { message: string; success: boolean };
+export type ResourceActionState = { message: string; success: boolean; bundleProductId?: string; bundleVariantId?: string; bundleTagsSaved?: boolean };
 
 export type OrderActionState = { message: string; success: boolean };
 
@@ -594,12 +643,23 @@ export async function saveResourceWithState(
   formData: FormData,
 ): Promise<ResourceActionState> {
   let returnTo: string;
+  const creatingBundle = formData.get("_resource") === "products" && formData.has("_bundleSelections");
+  if (creatingBundle) {
+    if (_previous.bundleProductId) formData.set("_id", _previous.bundleProductId);
+    if (_previous.bundleVariantId) formData.set("_bundleVariantId", _previous.bundleVariantId);
+    if (_previous.bundleTagsSaved) formData.set("_bundleTagsSaved", "true");
+  }
   try {
     returnTo = await persistResource(formData);
   } catch (error) {
     return {
       message: error instanceof Error ? error.message : "Unable to save this resource.",
       success: false,
+      ...(creatingBundle ? {
+        bundleProductId: String(formData.get("_bundleProductId") ?? _previous.bundleProductId ?? ""),
+        bundleVariantId: String(formData.get("_bundleVariantId") ?? ""),
+        bundleTagsSaved: formData.get("_bundleTagsSaved") === "true",
+      } : {}),
     };
   }
   redirect(returnTo);
@@ -624,4 +684,496 @@ export async function deleteResource(formData: FormData) {
   }
   updateTag(RETAIL_CATALOG_TAG);
   revalidatePath("/dashboard", "layout");
+}
+
+
+export async function getCustomers(
+  query: string,
+  page: number,
+  limit = 20,
+) {
+
+  console.log("🔵 BACKEND FETCH: getCustomers()", {
+    query,
+    page,
+    limit,
+  });
+  const customerPath = query
+    ? `/customers?search=${encodeURIComponent(query)}`
+    : "/customers";
+
+  const separator = customerPath.includes("?") ? "&" : "?";
+
+  const payload = await retailRequest<unknown>(
+    `${customerPath}${separator}page=${page}&limit=${limit}`,
+    {
+      cache: "no-store",
+    },
+  );
+
+  const wrapper =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>)
+      : {};
+
+  const rawPagination =
+    wrapper.pagination && typeof wrapper.pagination === "object"
+      ? (wrapper.pagination as Record<string, unknown>)
+      : {};
+
+  const data = records(payload);
+
+  return {
+    data,
+    pagination: {
+      page: Number(rawPagination.page) || page,
+      limit: Number(rawPagination.limit) || limit,
+      total: Number(rawPagination.total) || data.length,
+      totalPages: Number(rawPagination.totalPages) || 1,
+    },
+  };
+}
+
+export async function getCustomerBatch(
+  query = "",
+  batch = 0,
+) {
+  console.log("🔵 BACKEND FETCH: getCustomerBatch()", {
+    query,
+    batch,
+  });
+
+  const apiLimit = 100;
+  const batchSize = 500;
+
+  const customerPath = query
+    ? `/customers?search=${encodeURIComponent(query)}`
+    : "/customers";
+
+  // Get the total and total API pages.
+  const firstPage = await safeRetailPage(
+    customerPath,
+    1,
+    apiLimit,
+  );
+
+  if (firstPage.error) {
+    return {
+      data: [],
+      total: firstPage.pagination.total ?? 0,
+      totalPages: firstPage.pagination.totalPages ?? 0,
+      error: firstPage.error,
+    };
+  }
+
+  const total = firstPage.pagination.total;
+  const totalApiPages = firstPage.pagination.totalPages;
+
+  const batchStart = Math.max(
+    0,
+    total - (batch + 1) * batchSize,
+  );
+
+  const batchEnd = Math.max(
+    0,
+    total - batch * batchSize,
+  );
+
+  if (batchStart >= batchEnd) {
+    return {
+      data: [],
+      total,
+      totalPages: totalApiPages,
+      error: undefined,
+    };
+  }
+
+  // Find which API pages contain this 500-record batch.
+  const startApiPage =
+    Math.floor(batchStart / apiLimit) + 1;
+
+  const endApiPage =
+    Math.floor((batchEnd - 1) / apiLimit) + 1;
+
+  const pageResults = [];
+
+  for (
+    let apiPage = startApiPage;
+    apiPage <= endApiPage;
+    apiPage++
+  ) {
+    if (apiPage === 1) {
+      pageResults.push(firstPage);
+    } else {
+      pageResults.push(
+        await safeRetailPage(
+          customerPath,
+          apiPage,
+          apiLimit,
+        ),
+      );
+    }
+  }
+
+  const error = pageResults.find(
+    (result) => result.error,
+  )?.error;
+
+  const combinedData = pageResults.flatMap(
+    (result) => result.data,
+  );
+
+  // Select the exact 500-record batch while the API
+  // data is still in its original pagination order.
+  const localStart =
+    batchStart - (startApiPage - 1) * apiLimit;
+
+  const batchCount = batchEnd - batchStart;
+
+  const batchData = combinedData.slice(
+    localStart,
+    localStart + batchCount,
+  );
+
+  // The dashboard displays newest customers first.
+  const data = newestCustomersFirst(batchData);
+
+  return {
+    data,
+    total,
+    totalPages: totalApiPages,
+    error,
+  };
+}
+
+export async function getProducts() {
+  console.log("🔵 BACKEND FETCH: getProducts()");
+
+  const payload = await retailRequest<unknown>("/products", {
+    cache: "no-store",
+  });
+
+  return {
+    data: records(payload),
+  };
+}
+
+export async function getProductVariants() {
+  console.log("🔵 BACKEND FETCH: getProductVariants()");
+
+  const payload = await retailRequest<unknown>("/product-variants", {
+    cache: "no-store",
+  });
+
+  const data = records(payload);
+
+  return {
+    data: data.map((variant) => ({
+      ...variant,
+      __availableStock: availableStock(variant),
+    })),
+  };
+}
+
+export async function getCustomer(id: string) {
+  const payload = await retailRequest<unknown>(
+    `/customers/${encodeURIComponent(id)}`,
+    {
+      cache: "no-store",
+    },
+  );
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+
+  const wrapper = payload as Record<string, unknown>;
+  const data = wrapper.data;
+
+  return data && typeof data === "object" && !Array.isArray(data)
+    ? (data as Record<string, unknown>)
+    : wrapper;
+}
+
+export async function getOrders() {
+  const payload = await retailRequest<unknown>("/orders", {
+    cache: "no-store",
+  });
+
+  return {
+    data: records(payload),
+  };
+}
+
+export async function getOrderBatch(query = "", batch = 0) {
+  console.log("🔵 BACKEND FETCH: getOrderBatch()", {
+    query,
+    batch,
+  });
+
+  const API_LIMIT = 100;
+  const BATCH_SIZE = 500;
+
+  const startApiPage =
+    batch * (BATCH_SIZE / API_LIMIT) + 1;
+
+  const orderPath = query
+    ? `/orders?search=${encodeURIComponent(query)}`
+    : "/orders";
+
+  const firstPage = await safeRetailPage(
+    orderPath,
+    startApiPage,
+    API_LIMIT,
+  );
+
+  const total = firstPage.pagination.total;
+  const totalApiPages = firstPage.pagination.totalPages;
+
+  if (firstPage.error) {
+    return {
+      data: firstPage.data,
+      total,
+      totalPages: Math.ceil(total / 50),
+      error: firstPage.error,
+    };
+  }
+
+  const endApiPage = Math.min(
+    startApiPage + BATCH_SIZE / API_LIMIT - 1,
+    totalApiPages,
+  );
+
+  const remainingPages =
+    endApiPage >= startApiPage + 1
+      ? await Promise.all(
+          Array.from(
+            {
+              length:
+                endApiPage - startApiPage,
+            },
+            (_, index) =>
+              safeRetailPage(
+                orderPath,
+                startApiPage + index + 1,
+                API_LIMIT,
+              ),
+          ),
+        )
+      : [];
+
+  const pageResults = [
+    firstPage,
+    ...remainingPages,
+  ];
+
+  const error = pageResults.find(
+    (result) => result.error,
+  )?.error;
+
+  const data = pageResults
+    .flatMap((result) => result.data)
+    .slice(0, BATCH_SIZE);
+
+  return {
+    data,
+    total,
+    totalPages: Math.max(
+      1,
+      Math.ceil(total / 50),
+    ),
+    error,
+  };
+}
+
+export async function getBundleProducts() {
+  console.log("🔵 BACKEND FETCH: getBundleProducts()");
+
+  return safeRetailAll("/products?tags=bundle");
+}
+
+export async function getBundleProductsCatalog() {
+  console.log("🔵 BACKEND FETCH: getBundleProductsCatalog()");
+
+  return safeRetailAll("/products");
+}
+
+export async function getBundleVariants() {
+  console.log("🔵 BACKEND FETCH: getBundleVariants()");
+
+  return safeRetailAll("/product-variants");
+}
+
+export async function getBundleConfiguration(
+  productId: string,
+  variantId: string,
+) {
+  console.log("🔵 BACKEND FETCH: getBundleConfiguration()", {
+    productId,
+    variantId,
+  });
+
+  try {
+    const payload = await retailRequest<unknown>(
+      `/products/${encodeURIComponent(
+        productId,
+      )}/variants/${encodeURIComponent(
+        variantId,
+      )}/bundle`,
+      {
+        cache: "no-store",
+      },
+    );
+
+    return {
+      data: bundleComponentResponse(
+        payload,
+        variantId,
+      ),
+      error: undefined,
+    };
+  } catch (cause) {
+    return {
+      data: [] as BundleSelection[],
+      error:
+        cause instanceof Error
+          ? cause.message
+          : "Unable to load bundle group.",
+    };
+  }
+}
+
+export async function getBundleProductBatch(batch = 0) {
+  const result = await safeRetailAll("/products?tags=bundle");
+  const storefrontBaseUrl = (
+    process.env.STOREFRONT_BASE_URL ?? "https://quitrx-website-front-ecru.vercel.app"
+  ).replace(/\/$/, "");
+  // Sort the complete collection before slicing so new bundles reach page one.
+  const products = result.data.map((product, index) => ({
+    product,
+    index,
+    createdAt: Date.parse(typeof product.createdAt === "string" ? product.createdAt : ""),
+  })).sort((a, b) => {
+    const aTime = Number.isNaN(a.createdAt) ? Number.NEGATIVE_INFINITY : a.createdAt;
+    const bTime = Number.isNaN(b.createdAt) ? Number.NEGATIVE_INFINITY : b.createdAt;
+    return bTime - aTime || a.index - b.index;
+  }).map(({ product }) => {
+    const productUrl = typeof product.url === "string" ? product.url : "";
+    const slug = typeof product.slug === "string" ? product.slug : "";
+    return {
+      ...product,
+      storefrontUrl: productUrl
+        ? new URL(productUrl, `${storefrontBaseUrl}/`).toString()
+        : `${storefrontBaseUrl}/product/${encodeURIComponent(slug)}`,
+    };
+  });
+  const start = Math.max(0, Math.floor(batch)) * 500;
+  return {
+    data: products.slice(start, start + 500),
+    total: products.length,
+    totalPages: Math.max(1, Math.ceil(products.length / 50)),
+    error: result.error,
+  };
+}
+export async function getStoreActivityBatch(batch = 0) {
+  console.log(
+    "🔵 BACKEND FETCH: getStoreActivityBatch()",
+    { batch },
+  );
+
+  const session = await auth();
+
+  const staffUser = session?.user as
+    | {
+        isStaff?: boolean;
+        accessToken?: string;
+      }
+    | undefined;
+
+  if (!staffUser?.isStaff) {
+    return {
+      data: [],
+      total: 0,
+      totalPages: 1,
+      error:
+        "You must be signed in as staff to view store activity.",
+    };
+  }
+
+  if (!staffUser.accessToken) {
+    return {
+      data: [],
+      total: 0,
+      totalPages: 1,
+      error:
+        "Your staff session does not include an access token. Please sign in again.",
+    };
+  }
+
+  const API_LIMIT = 100;
+  const BATCH_SIZE = 500;
+
+  const startApiPage =
+    batch * (BATCH_SIZE / API_LIMIT) + 1;
+
+  try {
+    const payload = await retailRequest<unknown>(
+      `/audit-logs?page=${startApiPage}&limit=${API_LIMIT}`,
+      {
+        cache: "no-store",
+        headers: {
+          authorization: `Bearer ${staffUser.accessToken}`,
+        },
+      },
+    );
+
+    const data = records(payload);
+
+    const wrapper =
+      payload &&
+      typeof payload === "object" &&
+      !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : {};
+
+    const pagination =
+      wrapper.pagination &&
+      typeof wrapper.pagination === "object" &&
+      !Array.isArray(wrapper.pagination)
+        ? (wrapper.pagination as Record<string, unknown>)
+        : undefined;
+
+    const apiTotal = Number(pagination?.total);
+    const apiTotalPages = Number(
+      pagination?.totalPages,
+    );
+
+    // The audit-log endpoint currently returns the records
+    // without pagination metadata, so use the returned
+    // record count as the total.
+    const total =
+      Number.isFinite(apiTotal) && apiTotal > 0
+        ? apiTotal
+        : data.length;
+
+    return {
+      data: data.slice(0, BATCH_SIZE),
+      total,
+      totalPages: Math.max(
+        1,
+        Math.ceil(total / 50),
+      ),
+      error: undefined,
+    };
+  } catch (cause) {
+    return {
+      data: [],
+      total: 0,
+      totalPages: 1,
+      error:
+        cause instanceof Error
+          ? cause.message
+          : "Unable to load store activity.",
+    };
+  }
 }

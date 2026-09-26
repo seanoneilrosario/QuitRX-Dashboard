@@ -3,7 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { auth } from "@/auth";
-import { deleteResource, saveResource } from "../actions";
+import {
+  deleteResource,
+  saveResource,
+  getCustomerBatch,
+  getOrderBatch,
+} from "../actions";
 import {
   safeRetailAll,
   safeRetailList,
@@ -16,7 +21,10 @@ import {
 import styles from "./dashboard.module.css";
 import TagsInput from "./tags-input";
 import { CollectionCreateForm } from "./collection-create-fields";
+import CollectionDeleteButton from "./collection-delete-button";
 import BundlesPage from "./bundles-page";
+import BundleCreateFields from "./bundle-create-fields";
+import type { BundleVariant } from "./bundle-editor";
 import FrequentlyBoughtTogetherEditor from "./frequently-bought-together-editor";
 import { logoutStaff } from "../login/actions";
 import {
@@ -34,13 +42,19 @@ import ResourceSaveForm from "./resource-save-form";
 import OrderCreateForm from "./order-create-form";
 import OrderCancelButton from "./order-cancel-button";
 import RichTextEditor from "./rich-text-editor";
-import CustomerCreateForm from "./customer-create-form";
 import CustomerDeleteButton from "./customer-delete-button";
 import {
   createCustomerAddress,
   setDefaultCustomerAddress,
   updateCustomerAddress,
 } from "../customer-actions";
+
+import ProductsClient from "../products/products-client";
+
+import OrdersClient from "../orders/orders-client";
+import CustomersClient from "../customers/customers-client";
+
+import StoreActivity from "../store-activity/store-activity-client";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
@@ -58,6 +72,7 @@ const routes = [
   ["collections"],
   ["collections", "edit"],
   ["bundles"],
+  ["bundles", "create"],
   ["customers"],
   ["customers", "create"],
   ["customers", "details"],
@@ -613,6 +628,10 @@ function FrequentlyBoughtList({
 
 function ProductForm({
   item,
+  bundle = false,
+  bundleVariants = [],
+  bundleProductIds = [],
+  bundleError,
   brands,
   productTypes,
   collections,
@@ -622,6 +641,10 @@ function ProductForm({
   recommendationError,
 }: {
   item?: RetailRecord;
+  bundle?: boolean;
+  bundleVariants?: BundleVariant[];
+  bundleProductIds?: string[];
+  bundleError?: string;
   brands: RetailRecord[];
   productTypes: RetailRecord[];
   collections: RetailRecord[];
@@ -635,6 +658,8 @@ function ProductForm({
       ? [{ value: tag.id, label: tag.name }]
       : [],
   );
+  const bundleTag = tagOptions.find((tag) => tag.label.toLowerCase() === "bundle");
+  const backPath = bundle ? "/dashboard/bundles" : "/dashboard/products";
   const productTags = Array.isArray(item?.tags)
     ? item.tags.flatMap((tag) => {
         if (typeof tag === "string")
@@ -693,11 +718,11 @@ function ProductForm({
   return (
     <>
       <Header
-        title={item ? "Edit product" : "Create product"}
-        description="Product information is saved directly to the QuitHero Retail API."
+        title={bundle ? item ? "Complete bundle" : "Add bundle" : item ? "Edit product" : "Create product"}
+        description={bundle ? "Configure a bundle group and its allowed product selections." : "Product information is saved directly to the QuitHero Retail API."}
         action={
-          <Link className={styles.secondary} href="/dashboard/products">
-            Back to products
+          <Link className={styles.secondary} href={backPath}>
+            {bundle ? "Back to bundles" : "Back to products"}
           </Link>
         }
       />
@@ -712,8 +737,9 @@ function ProductForm({
         <input
           type="hidden"
           name="_returnTo"
-          value={item?.id ? `/dashboard/products/edit?id=${encodeURIComponent(item.id)}` : "/dashboard/products"}
+          value={item?.id ? `/dashboard/products/edit?id=${encodeURIComponent(item.id)}` : backPath}
         />
+        {!bundle && <>
         <section className={styles.formCard}>
           <h2>Product details</h2>
           <div className={styles.formGrid}>
@@ -830,14 +856,30 @@ function ProductForm({
             </div>
           </div>
         </section>
+        </>}
+        {bundle && <>
+        <input type="hidden" name="tags" value={[...new Set([...productTags.map((tag) => tag.value), ...(bundleTag ? [bundleTag.value] : [])])].join(",")} />
+        {!bundleTag && <input type="hidden" name="_newTags" value={JSON.stringify(["bundle"])} />}
+        <BundleCreateFields
+          initialName={text(item?.name, "")}
+          initialBrandId={text(item?.brandId ?? nested(item ?? {}, "brand")?.id, "")}
+          initialProductTypeId={text(item?.productTypeId ?? nested(item ?? {}, "productType")?.id, "")}
+          brands={brands.flatMap((brand) => typeof brand.id === "string" ? [{ id: brand.id, label: text(brand.name, brand.id) }] : [])}
+          productTypes={productTypes.flatMap((type) => typeof type.id === "string" ? [{ id: type.id, label: text(type.name, type.id) }] : [])}
+          products={products.flatMap((product) => typeof product.id === "string" ? [{ id: product.id, label: text(product.name, product.id) }] : [])}
+          variants={bundleVariants}
+          bundleProductIds={bundleProductIds}
+        />
+        </>}
+        {bundleError && <p role="alert" className={styles.notice}>{bundleError}</p>}
         <div className={styles.formActions}>
-          <Link href="/dashboard/products">Cancel</Link>
-          <ActionButton className={styles.primary} pendingLabel={item ? "Saving…" : "Creating…"}>
-            {item ? "Save changes" : "Create product"}
+          <Link href={backPath}>Cancel</Link>
+          <ActionButton className={styles.primary} disabled={bundle && Boolean(bundleError)} pendingLabel={item ? "Saving…" : "Creating…"}>
+            {bundle ? item ? "Complete bundle" : "Create bundle" : item ? "Save changes" : "Create product"}
           </ActionButton>
         </div>
       </ResourceSaveForm>
-      {typeof item?.id === "string" && (
+      {!bundle && typeof item?.id === "string" && (
         <>
           <Notice message={recommendationError} />
           <FrequentlyBoughtTogetherEditor
@@ -1055,6 +1097,9 @@ function ResourcePage({
               <div className={styles.actions}>
               {kind === "collections" && (
                 <>
+                  <Link href={`/dashboard/collections/edit?id=${encodeURIComponent(text(item.id))}`}>
+                    Edit
+                  </Link>
                   <a
                     href={storefrontUrl("collections", item)}
                     target="_blank"
@@ -1108,9 +1153,12 @@ function CollectionEdit({
         title={`Edit ${text(item.name, "collection")}`}
         description="Update collection details and product membership."
         action={
+          <div className={styles.collectionDeleteActions}>
           <Link className={styles.secondary} href="/dashboard/collections">
             Back to collections
           </Link>
+          <CollectionDeleteButton id={text(item.id)} name={text(item.name)} />
+          </div>
         }
       />
       <Notice message={error} />
@@ -1134,53 +1182,15 @@ function Customers({
   error?: string;
 }) {
   return (
-    <>
-      <Header
-        title="Customers"
-        description="Search customer accounts, purchase history and prescription status."
-        action={
-          <ActionLink className={styles.primary} href="/dashboard/customers/create">
-            Add customer
-          </ActionLink>
-        }
-      />
-      <Notice message={error} />
-      <div className={styles.toolbar}>
-        <Search placeholder="Search name, email, phone or Shopify ID" query={query} />
-      </div>
-      <Table heads={["Customer", "Contact", "Orders", "Total spent", "Status", ""]}>
-        {items.map((item, index) => (
-          <tr key={text(item.id, String(index))}>
-            <td>
-              <strong>
-                {text(item.firstName)} {text(item.lastName, "")}
-              </strong>
-              <small>{text(item.id)}</small>
-            </td>
-            <td>
-              {text(item.email)}
-              <small>{text(item.phone)}</small>
-            </td>
-            <td>{text(item.numberOfOrders, "0")}</td>
-            <td>{money(item.totalSpent)}</td>
-            <td>
-              <Status value={item.state} />
-            </td>
-            <td>
-              <ActionLink href={`/dashboard/customers/details?id=${text(item.id)}`}>
-                View
-              </ActionLink>
-            </td>
-          </tr>
-        ))}
-      </Table>
-      <Pagination
-        pagination={pagination}
-        path="/dashboard/customers"
-        query={query}
-        scrollTarget="dashboard-top"
-      />
-    </>
+    <CustomersClient
+      query={query}
+      page={pagination.page}
+      initialData={{
+        data: items,
+        pagination,
+      }}
+      initialError={error}
+    />
   );
 }
 
@@ -1396,6 +1406,7 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
       </>
     );
   }
+
   const addresses = customerAddresses(item);
   const customerId = text(item.id, "");
   return (
@@ -1572,11 +1583,15 @@ function CustomerDetail({ item, editing }: { item?: RetailRecord; editing?: bool
 function Orders({
   items,
   query,
+  page,
+  initialData,
   detail,
   error,
 }: {
   items: RetailRecord[];
   query: string;
+  page: number;
+  initialData: Awaited<ReturnType<typeof getOrderBatch>>;
   detail?: RetailRecord;
   error?: string;
 }) {
@@ -1652,58 +1667,14 @@ function Orders({
       </>
     );
   }
-  const filtered = items.filter(
-    (item) => !query || JSON.stringify(item).toLowerCase().includes(query.toLowerCase()),
-  );
+  
   return (
-    <>
-      <Header
-        title="Orders"
-        description="Review purchases, customers, items and fulfilment state."
-        action={
-          <ActionLink className={styles.primary} href="/dashboard/orders/create">
-            + Create order
-          </ActionLink>
-        }
-      />
-      <Notice message={error} />
-      <div className={styles.toolbar}>
-        <Search placeholder="Search order, customer or item" query={query} />
-      </div>
-      <Table heads={["Order", "Customer", "Items", "Date", "Price", "Status", ""]}>
-        {filtered.map((item, index) => {
-          const lines = orderItems(item);
-          const quantity = lines.reduce((sum, line) => sum + Number(line.quantity ?? 1), 0);
-          return (
-            <tr key={text(item.id, String(index))}>
-              <td>
-                <strong>#{text(item.orderNumber ?? item.id)}</strong>
-              </td>
-              <td>
-                <strong>{customerName(item)}</strong>
-                <small>{text(item.customerEmail ?? nested(item, "customer")?.email, "")}</small>
-              </td>
-              <td>
-                <strong>{text(lines[0]?.productName ?? lines[0]?.name, "No items")}</strong>
-                <small>
-                  {lines.length
-                    ? `${quantity} ${quantity === 1 ? "item" : "items"}${lines.length > 1 ? ` across ${lines.length} products` : ""}`
-                    : ""}
-                </small>
-              </td>
-              <td>{orderDate(item.createdAt)}</td>
-              <td>{money(item.total ?? item.totalPrice)}</td>
-              <td>
-                <Status value={item.status} />
-              </td>
-              <td>
-                <ActionLink href={`/dashboard/orders/details?id=${text(item.id)}`}>View</ActionLink>
-              </td>
-            </tr>
-          );
-        })}
-      </Table>
-    </>
+    <OrdersClient
+      query={query}
+      page={page}
+      initialData={initialData}
+      initialError={error}
+    />
   );
 }
 
@@ -1989,81 +1960,6 @@ function AuditDetails({ item }: { item: RetailRecord }) {
   return auditValue(item, ["action"]) === "CREATE" ? "Record created" : auditValue(item, ["action"]) === "DELETE" ? "Record deleted" : "—";
 }
 
-function StoreActivity({ items, error }: { items: RetailRecord[]; error?: string }) {
-  const activities = [...items].sort((a, b) => {
-    const aTime = Date.parse(auditValue(a, ["createdAt", "timestamp", "date", "occurredAt"]));
-    const bTime = Date.parse(auditValue(b, ["createdAt", "timestamp", "date", "occurredAt"]));
-    return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
-  });
-
-  return (
-    <>
-      <Header
-        title="Store Activity"
-        description="Review recent changes and actions across your store."
-      />
-      <Notice message={error} />
-      {!error && !activities.length ? (
-        <div className={styles.emptyState}>
-          <strong>No store activity yet</strong>
-          <span>New store actions will appear here.</span>
-        </div>
-      ) : activities.length ? (
-        <Table heads={["Activity", "Resource", "Changes", "Source / Staff", "Date"]}>
-          {activities.map((item, index) => {
-            const occurredAt = auditValue(item, ["createdAt", "timestamp", "date", "occurredAt"]);
-            return (
-              <tr key={text(item.id, `${occurredAt}-${index}`)}>
-                <td>
-                  <strong>{auditValue(item, ["action", "event", "type"]) || "Activity"}</strong>
-                </td>
-                <td>
-                  {auditValue(item, ["resource", "entity", "entityType", "model"]) || "—"}
-                  <small>{auditEntityLabel(item)}</small>
-                  <small>{auditValue(item, ["resourceId", "entityId", "targetId"])}</small>
-                </td>
-                <td className={styles.activityDetails}><AuditDetails item={item} /></td>
-                <td>
-                  <Status value={auditValue(item, ["source"]) || "UNKNOWN"} />
-                  <small>{auditActor(item) || "—"}</small>
-                </td>
-                <td className={styles.activityDate}>{orderDate(occurredAt)}</td>
-              </tr>
-            );
-          })}
-        </Table>
-      ) : null}
-    </>
-  );
-}
-
-async function StoreActivitySection() {
-  const session = await auth();
-  const accessToken = (session?.user as { accessToken?: string } | undefined)?.accessToken;
-  if (!accessToken) {
-    return <StoreActivity items={[]} error="Your staff session does not include an access token. Please sign in again." />;
-  }
-  const result = await safeRetailList("/audit-logs", {
-    headers: { authorization: `Bearer ${accessToken}` },
-  });
-  return <StoreActivity items={result.data} error={result.error} />;
-}
-
-function StoreActivityLoading() {
-  return (
-    <>
-      <Header
-        title="Store Activity"
-        description="Review recent changes and actions across your store."
-      />
-      <div className={styles.loadingState} role="status">
-        <span className={styles.loadingSpinner} aria-hidden="true" />
-        <strong>Loading store activity…</strong>
-      </div>
-    </>
-  );
-}
-
 export default async function DashboardPage({ params, searchParams }: Props) {
   const { section = [] } = await params;
   const queryParams = await searchParams;
@@ -2101,25 +1997,55 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       safeRetailAll("/products"),
       safeRetailAll("/product-variants"),
     ]);
+
+    const initialVariants = {
+      data: variants.data.map((variant) => ({
+        ...variant,
+        __availableStock: availableStock(variant),
+      })),
+    };
+
     content = (
-      <Products
-        items={result.data}
-        variants={variants.data}
+      <ProductsClient
         query={q}
         status={status}
         page={page}
-        error={result.error ?? variants.error}
+        storefrontBaseUrl={storefrontBaseUrl}
+        initialData={result}
+        initialVariants={initialVariants}
+        initialError={result.error ?? variants.error}
       />
     );
-  } else if (area === "products" && sub === "create") {
+  } else if ((area === "products" || area === "bundles") && sub === "create") {
     const [brands, productTypes, collections, tags] = await Promise.all([
       safeRetailList("/brands"),
       safeRetailList("/product-type"),
       safeRetailList("/collections"),
       safeRetailAll("/tags"),
     ]);
+    const [bundleProducts, bundleVariants, taggedBundles] = area === "bundles" ? await Promise.all([
+      safeRetailAll("/products"),
+      safeRetailAll("/product-variants"),
+      safeRetailAll("/products?tags=bundle"),
+    ]) : [{ data: [], error: undefined }, { data: [], error: undefined }, { data: [], error: undefined }];
+    const existingBundle = area === "bundles" && id
+      ? await safeRetailRecord(`/products/${encodeURIComponent(id)}`)
+      : { data: undefined, error: undefined };
+    if (area === "bundles" && id && !existingBundle.error && (!existingBundle.data || !taggedBundles.data.some((product) => product.id === id))) notFound();
     content = (
       <ProductForm
+        item={existingBundle.data}
+        bundle={area === "bundles"}
+        products={bundleProducts.data}
+        bundleProductIds={taggedBundles.data.flatMap((product) => typeof product.id === "string" ? [product.id] : [])}
+        bundleVariants={bundleVariants.data.flatMap((variant) => typeof variant.id === "string" && typeof variant.productId === "string" ? [{
+          id: variant.id,
+          productId: variant.productId,
+          label: text(variant.name, variant.id),
+          sku: text(variant.sku, ""),
+          productLabel: text(bundleProducts.data.find((product) => product.id === variant.productId)?.name, variant.productId),
+        }] : [])}
+        bundleError={existingBundle.error ?? brands.error ?? productTypes.error ?? tags.error ?? bundleProducts.error ?? bundleVariants.error ?? taggedBundles.error}
         brands={brands.data}
         productTypes={productTypes.data}
         collections={collections.data}
@@ -2213,40 +2139,109 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       );
     }
   } else if (area === "customers" && !sub) {
-    const limit = 20;
-    const customerPath = q ? `/customers?search=${encodeURIComponent(q)}` : "/customers";
-    const firstPage = await safeRetailPage(customerPath, 1, limit);
-    const currentPage = Math.min(page, firstPage.pagination.totalPages);
-    const apiPage = firstPage.pagination.totalPages - currentPage + 1;
-    const result = apiPage === 1
-      ? firstPage
-      : await safeRetailPage(customerPath, apiPage, limit);
-    content = (
-      <Customers
-        items={newestCustomersFirst(result.data).filter((customer) =>
-          customerMatchesQuery(customer, q),
-        )}
-        query={q}
-        pagination={{ ...firstPage.pagination, page: currentPage }}
-        error={firstPage.error ?? result.error}
-      />
+    const limit = 50;
+    const customerPath = q
+      ? `/customers?search=${encodeURIComponent(q)}`
+      : "/customers";
+
+    const firstPage = await safeRetailPage(
+      customerPath,
+      1,
+      limit,
     );
-  } else if (area === "customers" && sub === "create") {
-    content = (
-      <>
-        <Header title="Add customer" description="Create a customer record in QuitHero." />
-        <CustomerCreateForm />
-      </>
+
+    const currentPage = Math.min(
+      page,
+      firstPage.pagination.totalPages,
     );
-  } else if (area === "customers") {
-    const result = await safeRetailRecord(`/customers/${encodeURIComponent(id)}`);
-    content = <CustomerDetail item={result.data} editing={sub === "edit"} />;
+
+    const total = firstPage.pagination.total;
+
+    if (!total || firstPage.error) {
+      content = (
+        <Customers
+          items={newestCustomersFirst(firstPage.data).filter((customer) =>
+            customerMatchesQuery(customer, q),
+          )}
+          query={q}
+          pagination={{
+            ...firstPage.pagination,
+            page: currentPage,
+          }}
+          error={firstPage.error}
+        />
+      );
+    } else {
+      const startIndex = Math.max(
+        0,
+        total - currentPage * limit,
+      );
+
+      const endIndex =
+        total - (currentPage - 1) * limit;
+
+      const startApiPage =
+        Math.floor(startIndex / limit) + 1;
+
+      const endApiPage =
+        Math.floor((endIndex - 1) / limit) + 1;
+
+      const apiPages = Array.from(
+        { length: endApiPage - startApiPage + 1 },
+        (_, index) => startApiPage + index,
+      );
+
+      const pageResults = await Promise.all(
+        apiPages.map((apiPage) =>
+          apiPage === 1
+            ? Promise.resolve(firstPage)
+            : safeRetailPage(
+                customerPath,
+                apiPage,
+                limit,
+              ),
+        ),
+      );
+
+      const pageError = pageResults.find(
+        (result) => result.error,
+      )?.error;
+
+      const combinedData = pageResults.flatMap(
+        (result) => result.data,
+      );
+
+      const localStart =
+        startIndex -
+        (startApiPage - 1) * limit;
+
+      const pageData = combinedData.slice(
+        localStart,
+        localStart + limit,
+      );
+
+      content = (
+        <Customers
+          items={newestCustomersFirst(pageData).filter(
+            (customer) =>
+              customerMatchesQuery(customer, q),
+          )}
+          query={q}
+          pagination={{
+            ...firstPage.pagination,
+            page: currentPage,
+          }}
+          error={
+            firstPage.error ?? pageError
+          }
+        />
+      );
+    }
   } else if (area === "orders") {
     if (sub === "create") {
-      // Load form reference data only when it is needed. Sequential requests
-      // avoid tripping QuitHero's per-key burst throttle.
       const customers = await safeRetailAll("/customers");
       const variants = await safeRetailAll("/product-variants");
+
       content = (
         <OrderCreate
           customers={customers.data}
@@ -2254,23 +2249,56 @@ export default async function DashboardPage({ params, searchParams }: Props) {
           error={customers.error ?? variants.error}
         />
       );
-    } else {
-      const result = await safeRetailList("/orders");
+    } else if (sub === "details") {
+      const result = await safeRetailRecord(
+        `/orders/${encodeURIComponent(id)}`,
+      );
+
       content = (
         <Orders
-          items={result.data}
           query={q}
-          detail={sub === "details" ? result.data.find((item) => item.id === id) : undefined}
+          page={page}
+          items={[]}
+          initialData={{
+            data: [],
+            total: 0,
+            totalPages: 1,
+            error: result.error,
+          }}
+          detail={result.data}
           error={result.error}
         />
       );
-    }
-  } else if (area === "store-activity") {
-    content = (
-      <Suspense fallback={<StoreActivityLoading />}>
-        <StoreActivitySection />
-      </Suspense>
+    } else {
+      const batch = Math.floor(
+        (page - 1) / 10,
+      );
+
+      const result = await getOrderBatch(q, batch);
+
+      content = (
+        <Orders
+          query={q}
+          page={page}
+          items={result.data}
+          initialData={result}
+          error={result.error}
+        />
+      );
+    } 
+  } else if (area === "customers") {
+    const result = await safeRetailRecord(
+      `/customers/${encodeURIComponent(id)}`,
     );
+
+    content = (
+      <CustomerDetail
+        item={result.data}
+        editing={sub === "edit"}
+      />
+    );
+  } else if (area === "store-activity") {
+     content = <StoreActivity />;
   } else {
     const result = await safeRetailList(sub === "history" ? "/audit-logs" : "/product-variants");
     content = (

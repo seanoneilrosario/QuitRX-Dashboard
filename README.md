@@ -30,3 +30,36 @@ catalog reads are sent sequentially and rate-limited reads honor QuitHero's
 `Retry-After` response before retrying.
 
 Run cache behavior checks with `node --test tests/retail-cache.test.mjs`.
+
+## Bundle creation and API fields
+
+The Bundles tab's Add bundle form creates a product with the `bundle` tag and a
+group (product variant) with a name, SKU and price. Each selection has a name,
+zero-based position and one or more allowed variant IDs. The same variant can
+be allowed in multiple selections.
+
+Selections are sent to
+`PATCH /products/{productId}/variants/{variantId}/bundle` as a JSON array:
+
+```json
+[
+  {
+    "position": 0,
+    "name": "Bottle 1",
+    "options": [{ "componentVariantId": "allowed-variant-id" }]
+  }
+]
+```
+
+The dashboard reads the same endpoint after saving and verifies the returned
+configuration (including the API's `bundleDropdowns` response shape) before
+reporting success. API credentials stay on the server. If saving selections
+fails after the product and group were created, retrying the form reuses their
+returned IDs. Run bundle validation and save-flow checks with
+`node --test tests/product-bundles.test.mjs`.
+
+Bundle creation checks SKU availability before creating the product. Products
+left without groups after a failed request offer **Complete bundle**, which
+reuses the existing product. If variant creation returns a 500, the dashboard
+checks for the matching saved group before continuing; it does not blindly
+repeat the create request.

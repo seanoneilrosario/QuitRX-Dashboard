@@ -1,40 +1,316 @@
-import { retailRequest, safeRetailAll } from "@/lib/quithero-admin";
-import { bundleComponentResponse, type BundleSelection } from "@/lib/product-bundles";
-import BundleEditor, { type BundleProduct, type BundleVariant } from "./bundle-editor";
-import BundleVariantPicker from "./bundle-variant-picker";
-import styles from "./dashboard.module.css";
+"use client";
 
-export default async function BundlesPage({ variantId }: { variantId: string }) {
-  // Keep these reads sequential so opening this page does not burst through the
-  // QuitHero API's per-client rate limit.
-  const bundleProductResult = await safeRetailAll("/products?tags=bundle");
-  const productResult = await safeRetailAll("/products");
-  const variantResult = await safeRetailAll("/product-variants");
-  const products: BundleProduct[] = productResult.data.flatMap((product) => typeof product.id === "string" ? [{
-    id: product.id,
-    label: typeof product.name === "string" && product.name ? product.name : product.id,
-  }] : []);
-  const bundleProductIds = new Set(bundleProductResult.data.flatMap((product) => typeof product.id === "string" ? [product.id] : []));
-  const bundleProducts = products.filter((product) => bundleProductIds.has(product.id));
-  const productNames = new Map(products.map((product) => [product.id, product.label]));
-  const variants: BundleVariant[] = variantResult.data.flatMap((v) => typeof v.id === "string" && typeof v.productId === "string" ? [{
-    id: v.id, productId: v.productId,
-    label: typeof v.name === "string" && v.name ? v.name : typeof v.sku === "string" && v.sku ? v.sku : v.id,
-    sku: typeof v.sku === "string" ? v.sku : "",
-    productLabel: productNames.get(v.productId) ?? v.productId,
-  }] : []);
-  const parent = variants.find((variant) => variant.id === variantId && bundleProductIds.has(variant.productId));
-  let error = bundleProductResult.error ?? productResult.error ?? variantResult.error;
-  let components: BundleSelection[] = [];
-  if (!error && parent) {
-    try {
-      const response = await retailRequest<unknown>(`/products/${encodeURIComponent(parent.productId)}/variants/${encodeURIComponent(parent.id)}/bundle`);
-      components = bundleComponentResponse(response, parent.id);
-    } catch (cause) { error = cause instanceof Error ? cause.message : "Unable to load bundle group."; }
-  }
-  return <>
-    <header className={styles.pageHeader}><div><p className={styles.eyebrow}>QuitRX operations</p><h1>Bundles</h1><p>Configure the fixed products and quantities included in each bundle group.</p></div></header>
-    <BundleVariantPicker key={variantId} products={bundleProducts} variants={variants} variantId={variantId} disabled={Boolean(bundleProductResult.error ?? productResult.error ?? variantResult.error)}/>
-    {error ? <p role="alert" className={styles.notice}>{error} Reload this page to try again.</p> : parent ? <BundleEditor key={parent.id} parent={parent} groupNumber={variants.filter((variant) => variant.productId === parent.productId).findIndex((variant) => variant.id === parent.id) + 1} products={products} variants={variants} bundleProductIds={[...bundleProductIds]} initial={components}/> : <p className={styles.notice}>{variantId ? "The selected bundle group was not found. Choose another bundle product and group." : bundleProducts.length ? "Select a bundle product and group to configure its choices." : "No products tagged bundle are available."}</p>}
-  </>;
+import { useQuery } from "@tanstack/react-query";
+import {
+  getBundleProductBatch,
+  getBundleProductsCatalog,
+  getBundleVariants,
+  getBundleConfiguration,
+} from "@/app/dashboard/actions";
+import BundleEditor, {
+  type BundleProduct,
+  type BundleVariant,
+} from "./bundle-editor";
+import BundleVariantPicker from "./bundle-variant-picker";
+import { ActionLink } from "./action-controls";
+import styles from "./dashboard.module.css";
+import { useState } from "react";
+
+export default function BundlesPage({
+  variantId,
+}: {
+  variantId: string;
+}) {
+  const [selectedVariantId, setSelectedVariantId] =
+    useState(variantId);
+
+  const [bundlePage, setBundlePage] = useState(1);
+  const PAGES_PER_BATCH = 10;
+
+  const bundleBatch = Math.floor(
+    (bundlePage - 1) / PAGES_PER_BATCH,
+  );
+
+  const bundleProductQuery = useQuery({
+    queryKey: [
+      "bundle-products",
+      { batch: bundleBatch },
+    ],
+    queryFn: async () => {
+      console.log(
+        "🟣 TANSTACK QUERY FN RUNNING: BUNDLE PRODUCT BATCH",
+        {
+          batch: bundleBatch,
+        },
+      );
+
+      return getBundleProductBatch(bundleBatch);
+    },
+    staleTime: 0,
+  });
+
+  const productQuery = useQuery({
+    queryKey: ["bundle-product-catalog"],
+    queryFn: async () => {
+      console.log(
+        "🟣 TANSTACK QUERY FN RUNNING: BUNDLE PRODUCT CATALOG",
+      );
+      return getBundleProductsCatalog();
+    },
+    enabled: !bundleProductQuery.isPending,
+    staleTime: 0,
+  });
+
+  const variantQuery = useQuery({
+    queryKey: ["bundle-variants"],
+    queryFn: async () => {
+      console.log("🟣 TANSTACK QUERY FN RUNNING: BUNDLE VARIANTS");
+      return getBundleVariants();
+    },
+    enabled: !productQuery.isPending,
+    staleTime: 0,
+  });
+
+  const products: BundleProduct[] =
+    productQuery.data?.data.flatMap((product) =>
+      typeof product.id === "string"
+        ? [
+            {
+              id: product.id,
+              label:
+                typeof product.name === "string" &&
+                product.name
+                  ? product.name
+                  : product.id,
+            },
+          ]
+        : [],
+    ) ?? [];
+
+  const bundleProductIds = new Set(
+    bundleProductQuery.data?.data.flatMap((product) =>
+      typeof product.id === "string"
+        ? [product.id]
+        : [],
+    ) ?? [],
+  );
+
+  const bundleProducts: BundleProduct[] =
+    bundleProductQuery.data?.data.flatMap((product) =>
+      typeof product.id === "string"
+        ? [{
+            id: product.id,
+            label: typeof product.name === "string" && product.name ? product.name : product.id,
+            storefrontUrl: typeof product.storefrontUrl === "string" ? product.storefrontUrl : undefined,
+          }]
+        : [],
+    ) ?? [];
+
+  const productNames = new Map(
+    products.map((product) => [
+      product.id,
+      product.label,
+    ]),
+  );
+
+  const variants: BundleVariant[] =
+    variantQuery.data?.data.flatMap((variant) =>
+      typeof variant.id === "string" &&
+      typeof variant.productId === "string"
+        ? [
+            {
+              id: variant.id,
+              productId: variant.productId,
+              label:
+                typeof variant.name === "string" &&
+                variant.name
+                  ? variant.name
+                  : typeof variant.sku === "string" &&
+                      variant.sku
+                    ? variant.sku
+                    : variant.id,
+              sku:
+                typeof variant.sku === "string"
+                  ? variant.sku
+                  : "",
+              productLabel:
+                productNames.get(variant.productId) ??
+                variant.productId,
+            },
+          ]
+        : [],
+    ) ?? [];
+
+  const parent = variants.find(
+    (variant) =>
+      variant.id === selectedVariantId &&
+      bundleProductIds.has(variant.productId),
+  );
+
+  const bundleProductError =
+    bundleProductQuery.error instanceof Error
+      ? bundleProductQuery.error.message
+      : undefined;
+
+  const productError =
+    productQuery.error instanceof Error
+      ? productQuery.error.message
+      : undefined;
+
+  const variantError =
+    variantQuery.error instanceof Error
+      ? variantQuery.error.message
+      : undefined;
+
+  const error =
+    bundleProductError ??
+    productError ??
+    variantError;
+
+  const configurationQuery = useQuery({
+    queryKey: [
+      "bundle-configuration",
+      {
+        productId: parent?.productId ?? "",
+        variantId: parent?.id ?? "",
+      },
+    ],
+    queryFn: async () =>
+      getBundleConfiguration(
+        parent!.productId,
+        parent!.id,
+      ),
+    enabled: Boolean(parent),
+    staleTime: 30_000,
+  });
+
+  const configurationError =
+    configurationQuery.error instanceof Error
+      ? configurationQuery.error.message
+      : configurationQuery.data?.error;
+
+  const isLoadingCatalog =
+    bundleProductQuery.isPending ||
+    productQuery.isPending ||
+    variantQuery.isPending;
+
+  const isLoadingConfiguration =
+  Boolean(parent) &&
+  (configurationQuery.isPending ||
+    configurationQuery.isFetching);
+
+  const isLoading =
+    isLoadingCatalog ||
+    isLoadingConfiguration;
+
+  return (
+    <>
+      <header className={styles.pageHeader}>
+        <div>
+          <p className={styles.eyebrow}>
+            QuitRX operations
+          </p>
+
+          <h1>Bundles</h1>
+
+          <p>
+            Configure the fixed products and quantities
+            included in each bundle group.
+          </p>
+        </div>
+        <ActionLink href="/dashboard/bundles/create" className={styles.primary}>
+          + Add bundle
+        </ActionLink>
+      </header>
+
+      {isLoadingCatalog ? (
+        <div
+          className={styles.customerLoading}
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className={styles.customerSpinner} />
+          <span>Loading bundles…</span>
+        </div>
+      ) : (
+        <>
+          <BundleVariantPicker
+            key={selectedVariantId}
+            products={bundleProducts}
+            variants={variants}
+            variantId={selectedVariantId}
+            disabled={Boolean(error)}
+            onVariantChange={setSelectedVariantId}
+            page={bundlePage}
+            totalPages={
+              bundleProductQuery.data?.totalPages ?? 1
+            }
+            onPageChange={setBundlePage}
+            isLoadingPage={
+              bundleProductQuery.isFetching
+            }
+          />
+
+          {error ? (
+            <p
+              role="alert"
+              className={styles.notice}
+            >
+              {error}
+            </p>
+          ) : configurationError ? (
+            <p
+              role="alert"
+              className={styles.notice}
+            >
+              {configurationError}
+            </p>
+          ) : isLoadingConfiguration ? (
+            <div
+              className={styles.customerLoading}
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <div className={styles.customerSpinner} />
+              <span>Loading bundle group…</span>
+            </div>
+          ) : parent && configurationQuery.data ? (
+            <BundleEditor
+              key={parent.id}
+              onDeleted={() => { setSelectedVariantId(""); setBundlePage(1); }}
+              parent={parent}
+              groupNumber={
+                variants
+                  .filter(
+                    (variant) =>
+                      variant.productId ===
+                      parent.productId,
+                  )
+                  .findIndex(
+                    (variant) =>
+                      variant.id === parent.id,
+                  ) + 1
+              }
+              products={products}
+              variants={variants}
+              bundleProductIds={[
+                ...bundleProductIds,
+              ]}
+              initial={
+                configurationQuery.data.data
+              }
+            />
+          ) : (
+            <p className={styles.notice}>
+              {variantId
+                ? "The selected bundle group was not found. Choose another bundle product and group."
+                : bundleProducts.length
+                  ? "Select a bundle product and group to configure its choices."
+                  : "No products tagged bundle are available."}
+            </p>
+          )}
+        </>
+      )}
+    </>
+  );
 }

@@ -12,6 +12,7 @@ import BundleEditor, {
   type BundleVariant,
 } from "./bundle-editor";
 import BundleVariantPicker from "./bundle-variant-picker";
+import { ActionLink } from "./action-controls";
 import styles from "./dashboard.module.css";
 import { useState } from "react";
 
@@ -210,6 +211,9 @@ export default function BundlesPage({
             included in each bundle group.
           </p>
         </div>
+        <ActionLink href="/dashboard/bundles/create" className={styles.primary}>
+          + Add bundle
+        </ActionLink>
       </header>
 
       {isLoadingCatalog ? (

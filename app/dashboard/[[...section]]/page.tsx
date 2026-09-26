@@ -70,6 +70,7 @@ const routes = [
   ["collections"],
   ["collections", "edit"],
   ["bundles"],
+  ["bundles", "create"],
   ["customers"],
   ["customers", "create"],
   ["customers", "details"],
@@ -621,6 +622,7 @@ function FrequentlyBoughtList({
 
 function ProductForm({
   item,
+  bundle = false,
   brands,
   productTypes,
   collections,
@@ -630,6 +632,7 @@ function ProductForm({
   recommendationError,
 }: {
   item?: RetailRecord;
+  bundle?: boolean;
   brands: RetailRecord[];
   productTypes: RetailRecord[];
   collections: RetailRecord[];
@@ -643,6 +646,8 @@ function ProductForm({
       ? [{ value: tag.id, label: tag.name }]
       : [],
   );
+  const bundleTag = tagOptions.find((tag) => tag.label.toLowerCase() === "bundle");
+  const backPath = bundle ? "/dashboard/bundles" : "/dashboard/products";
   const productTags = Array.isArray(item?.tags)
     ? item.tags.flatMap((tag) => {
         if (typeof tag === "string")
@@ -701,11 +706,11 @@ function ProductForm({
   return (
     <>
       <Header
-        title={item ? "Edit product" : "Create product"}
+        title={bundle ? "Add bundle" : item ? "Edit product" : "Create product"}
         description="Product information is saved directly to the QuitHero Retail API."
         action={
-          <Link className={styles.secondary} href="/dashboard/products">
-            Back to products
+          <Link className={styles.secondary} href={backPath}>
+            {bundle ? "Back to bundles" : "Back to products"}
           </Link>
         }
       />
@@ -720,7 +725,7 @@ function ProductForm({
         <input
           type="hidden"
           name="_returnTo"
-          value={item?.id ? `/dashboard/products/edit?id=${encodeURIComponent(item.id)}` : "/dashboard/products"}
+          value={item?.id ? `/dashboard/products/edit?id=${encodeURIComponent(item.id)}` : backPath}
         />
         <section className={styles.formCard}>
           <h2>Product details</h2>
@@ -829,19 +834,24 @@ function ProductForm({
                   +
                 </Link>
               </div>
-              <TagsInput
+              {bundle ? <>
+                <input type="hidden" name="tags" value={bundleTag?.value ?? ""} />
+                {!bundleTag && <input type="hidden" name="_newTags" value={JSON.stringify(["bundle"])} />}
+                <span className={styles.tagChip}>bundle</span>
+                <small>The bundle tag is applied automatically.</small>
+              </> : <TagsInput
                 initialTags={productTags}
                 options={tagOptions}
                 ariaLabel="Select product tags"
                 allowCreate={false}
-              />
+              />}
             </div>
           </div>
         </section>
         <div className={styles.formActions}>
-          <Link href="/dashboard/products">Cancel</Link>
+          <Link href={backPath}>Cancel</Link>
           <ActionButton className={styles.primary} pendingLabel={item ? "Saving…" : "Creating…"}>
-            {item ? "Save changes" : "Create product"}
+            {bundle ? "Create bundle" : item ? "Save changes" : "Create product"}
           </ActionButton>
         </div>
       </ResourceSaveForm>
@@ -1982,7 +1992,7 @@ export default async function DashboardPage({ params, searchParams }: Props) {
         initialError={result.error ?? variants.error}
       />
     );
-  } else if (area === "products" && sub === "create") {
+  } else if ((area === "products" || area === "bundles") && sub === "create") {
     const [brands, productTypes, collections, tags] = await Promise.all([
       safeRetailList("/brands"),
       safeRetailList("/product-type"),
@@ -1991,6 +2001,7 @@ export default async function DashboardPage({ params, searchParams }: Props) {
     ]);
     content = (
       <ProductForm
+        bundle={area === "bundles"}
         brands={brands.data}
         productTypes={productTypes.data}
         collections={collections.data}

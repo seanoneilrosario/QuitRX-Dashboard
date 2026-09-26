@@ -7,7 +7,7 @@ import { bundleComponentResponse, bundleComponents, type BundleSelection } from 
 
 export type BundleActionState = { message: string; success: boolean; selections?: BundleSelection[] };
 
-export async function deleteBundle(productId: string, variantIds: string[]): Promise<BundleActionState> {
+export async function deleteBundle(productId: string, tagRelationshipIds: string[]): Promise<BundleActionState> {
   const session = await auth();
   if (!(session?.user as { isStaff?: boolean } | undefined)?.isStaff) {
     return { message: "Please sign in as staff to delete bundles.", success: false };
@@ -15,28 +15,22 @@ export async function deleteBundle(productId: string, variantIds: string[]): Pro
   try {
     const id = productId.trim();
     if (!id) throw new Error("Select a bundle to delete.");
-    const bundleVariantIds = [...new Set(variantIds.map((variantId) => variantId.trim()).filter(Boolean))];
-    await Promise.all(
-      bundleVariantIds.map(async (variantId) => {
-        try {
-          await retailRequest(`/product-variants/${encodeURIComponent(variantId)}`, {
-            method: "DELETE",
-          });
-        } catch (error) {
-          if (!(error instanceof Error) || !/^QuitHero API returned 404\b/.test(error.message)) {
-            throw error;
-          }
-        }
-      }),
-    );
-    try {
-      await retailRequest(`/products/${encodeURIComponent(id)}`, { method: "DELETE" });
-    } catch (error) {
-      if (!(error instanceof Error) || !/^QuitHero API returned 404\b/.test(error.message)) throw error;
+    const relationshipIds = [...new Set(tagRelationshipIds.map((relationshipId) => relationshipId.trim()).filter(Boolean))];
+    if (!relationshipIds.length) {
+      throw new Error("Unable to find this product's bundle tag. Refresh the page and try again.");
     }
+    await retailRequest(`/products/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "ARCHIVED" }),
+    });
+    await Promise.all(
+      relationshipIds.map((relationshipId) =>
+        retailRequest(`/product-tags/${encodeURIComponent(relationshipId)}`, { method: "DELETE" }),
+      ),
+    );
     updateTag(RETAIL_CATALOG_TAG);
     revalidatePath("/dashboard", "layout");
-    return { message: "Bundle deleted.", success: true };
+    return { message: "Bundle removed and product archived.", success: true };
   } catch (error) {
     return { message: error instanceof Error ? error.message : "Unable to delete bundle.", success: false };
   }

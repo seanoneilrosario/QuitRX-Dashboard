@@ -294,7 +294,7 @@ test("bundle saves multiple variant options per uniquely positioned selection", 
   assert.equal(calls.length, 0);
 });
 
-test("bundle deletion requires staff, targets the bundle product and refreshes caches only after success", async () => {
+test("bundle deletion requires staff, archives the product, removes its bundle tag and refreshes caches", async () => {
   let staff = false;
   let failure;
   const calls = [];
@@ -311,24 +311,23 @@ test("bundle deletion requires staff, targets the bundle product and refreshes c
       retailRequest: async (path, options) => { calls.push({ path, ...options }); if (failure) throw new Error(failure); },
     },
   });
-  assert.equal((await actions.deleteBundle("product/1", ["variant-1"])).success, false);
+  assert.equal((await actions.deleteBundle("product/1", ["relationship-1"])).success, false);
   assert.equal(calls.length, 0);
   staff = true;
-  assert.equal((await actions.deleteBundle(" ", ["variant-1"])).success, false);
+  assert.equal((await actions.deleteBundle(" ", ["relationship-1"])).success, false);
+  assert.equal(calls.length, 0);
+  assert.equal((await actions.deleteBundle("product/1", [])).success, false);
   assert.equal(calls.length, 0);
   failure = "QuitHero API returned 500: Internal server error";
-  assert.equal((await actions.deleteBundle("product/1", ["variant-1"])).success, false);
+  assert.equal((await actions.deleteBundle("product/1", ["relationship-1"])).success, false);
   assert.equal(cacheEvents.length, 0);
   failure = undefined;
-  assert.equal((await actions.deleteBundle("product/1", ["variant-1"])).success, true);
+  assert.equal((await actions.deleteBundle("product/1", ["relationship-1"])).success, true);
   assert.deepEqual(calls.at(-2), {
-    path: "/product-variants/variant-1",
-    method: "DELETE",
+    path: "/products/product%2F1",
+    method: "PATCH",
+    body: JSON.stringify({ status: "ARCHIVED" }),
   });
-  assert.deepEqual(calls.at(-1), { path: "/products/product%2F1", method: "DELETE" });
-  assert.deepEqual(cacheEvents, ["retail-catalog", "/dashboard"]);
-  cacheEvents.length = 0;
-  failure = "QuitHero API returned 404: Not found";
-  assert.equal((await actions.deleteBundle("product/1", ["variant-1"])).success, true);
+  assert.deepEqual(calls.at(-1), { path: "/product-tags/relationship-1", method: "DELETE" });
   assert.deepEqual(cacheEvents, ["retail-catalog", "/dashboard"]);
 });

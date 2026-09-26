@@ -8,7 +8,7 @@ import type { BundleSelection } from "@/lib/product-bundles";
 import styles from "./dashboard.module.css";
 import { ActionButton } from "./action-controls";
 
-export type BundleProduct = { id: string; label: string; storefrontUrl?: string };
+export type BundleProduct = { id: string; label: string; storefrontUrl?: string; bundleTagRelationshipIds?: string[] };
 export type BundleVariant = { id: string; productId: string; productLabel: string; label: string; sku: string };
 type EditorSelection = BundleSelection & { key: number };
 
@@ -131,14 +131,12 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
 
   async function removeBundle() {
     if (pending || deleting) return;
-    if (!window.confirm(`Delete bundle "${parent.productLabel}" and all of its groups? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete bundle "${parent.productLabel}" and remove it from the storefront?`)) return;
     setDeleting(true);
     try {
       const result = await deleteBundle(
         parent.productId,
-        variants
-          .filter((variant) => variant.productId === parent.productId)
-          .map((variant) => variant.id),
+        products.find((product) => product.id === parent.productId)?.bundleTagRelationshipIds ?? [],
       );
       setState(result);
       if (!result.success) return;

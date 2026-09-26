@@ -102,6 +102,7 @@ export default function BundlesPage({
             id: product.id,
             label: product.bundleLabel ?? product.id,
             storefrontUrl: typeof product.storefrontUrl === "string" ? product.storefrontUrl : undefined,
+            bundleTagRelationshipIds: product.bundleTagRelationshipIds,
           }]
         : [],
     ) ?? [];
@@ -291,7 +292,16 @@ export default function BundlesPage({
                       variant.id === parent.id,
                   ) + 1
               }
-              products={products}
+              products={products.map((product) =>
+                product.id === parent.productId
+                  ? {
+                      ...product,
+                      bundleTagRelationshipIds: bundleProducts.find(
+                        (bundleProduct) => bundleProduct.id === parent.productId,
+                      )?.bundleTagRelationshipIds,
+                    }
+                  : product,
+              )}
               variants={variants}
               bundleProductIds={[
                 ...bundleProductIds,

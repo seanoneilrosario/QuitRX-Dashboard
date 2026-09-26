@@ -1068,6 +1068,21 @@ export async function getBundleProductBatch(batch = 0) {
   }).map(({ product }) => {
     const productUrl = typeof product.url === "string" ? product.url : "";
     const slug = typeof product.slug === "string" ? product.slug : "";
+    const bundleTagRelationshipIds = Array.isArray(product.tags)
+      ? product.tags.flatMap((tag) => {
+          if (!tag || typeof tag !== "object") return [];
+          const record = tag as RetailRecord;
+          const linkedTag = record.tag && typeof record.tag === "object"
+            ? record.tag as RetailRecord
+            : undefined;
+          const name = linkedTag?.name ?? linkedTag?.slug ?? record.name ?? record.slug;
+          return typeof record.id === "string"
+            && typeof name === "string"
+            && name.toLowerCase() === "bundle"
+            ? [record.id]
+            : [];
+        })
+      : [];
     return {
       ...product,
       bundleLabel:
@@ -1075,6 +1090,7 @@ export async function getBundleProductBatch(batch = 0) {
       storefrontUrl: productUrl
         ? new URL(productUrl, `${storefrontBaseUrl}/`).toString()
         : `${storefrontBaseUrl}/product/${encodeURIComponent(slug)}`,
+      bundleTagRelationshipIds,
     };
   });
   const start = Math.max(0, Math.floor(batch)) * 500;

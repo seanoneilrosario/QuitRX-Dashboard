@@ -46,7 +46,7 @@ export default function BundlesPage({
 
       return getBundleProductBatch(bundleBatch);
     },
-    staleTime: 30_000,
+    staleTime: 0,
   });
 
   const productQuery = useQuery({
@@ -58,7 +58,7 @@ export default function BundlesPage({
       return getBundleProductsCatalog();
     },
     enabled: !bundleProductQuery.isPending,
-    staleTime: 30_000,
+    staleTime: 0,
   });
 
   const variantQuery = useQuery({
@@ -68,7 +68,7 @@ export default function BundlesPage({
       return getBundleVariants();
     },
     enabled: !productQuery.isPending,
-    staleTime: 30_000,
+    staleTime: 0,
   });
 
   const products: BundleProduct[] =
@@ -95,9 +95,12 @@ export default function BundlesPage({
     ) ?? [],
   );
 
-  const bundleProducts = products.filter((product) =>
-    bundleProductIds.has(product.id),
-  );
+  const bundleProducts: BundleProduct[] =
+    bundleProductQuery.data?.data.flatMap((product) =>
+      typeof product.id === "string"
+        ? [{ id: product.id, label: typeof product.name === "string" && product.name ? product.name : product.id }]
+        : [],
+    ) ?? [];
 
   const productNames = new Map(
     products.map((product) => [

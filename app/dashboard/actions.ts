@@ -6,6 +6,7 @@ import { availableStock, records, RETAIL_CATALOG_TAG, type RetailRecord, retailR
 import { deleteStorefrontCollection, syncStorefrontCollection } from "@/lib/sanity-storefront";
 import { auth } from "@/auth";
 import { bundleComponentResponse, BundleSelection } from "@/lib/product-bundles";
+import { bundleCreationFields, persistBundleGroup } from "@/lib/create-bundle";
 
 const allowedResources = new Set([
   "products",
@@ -375,7 +376,19 @@ async function persistResource(formData: FormData) {
   const id = String(formData.get("_id") ?? "");
   const returnTo = String(formData.get("_returnTo") ?? "/dashboard");
   if (!allowedResources.has(resource)) throw new Error("Unsupported resource.");
+  const creatingBundle = resource === "products" && formData.has("_bundleSelections");
+  if (creatingBundle) {
+    const session = await auth();
+    if (!(session?.user as { isStaff?: boolean } | undefined)?.isStaff) throw new Error("Please sign in as staff to create bundles.");
+  }
+  const bundleFields = creatingBundle ? bundleCreationFields(formData) : undefined;
   const body = payload(formData);
+  if (bundleFields) {
+    body.name = bundleFields.name;
+    body.slug = slugify(`${bundleFields.name}-${bundleFields.sku}`);
+    if (!id) body.status = "DRAFT";
+    if (!body.brandId || !body.productTypeId) throw new Error("Select a vendor and type for the bundle.");
+  }
   let customerAddress: Record<string, string> | undefined;
   if (resource === "customers") {
     const address = {
@@ -457,15 +470,17 @@ async function persistResource(formData: FormData) {
     const productId = id || (typeof data.id === "string" ? data.id : "");
     if (!productId)
       throw new Error("Product was saved, but the Retail API did not return its ID for tag sync.");
+    if (bundleFields) formData.set("_bundleProductId", productId);
     try {
-      await syncProductTags(
+      if (!bundleFields || formData.get("_bundleTagsSaved") !== "true") await syncProductTags(
         productId,
         productTags.selected,
         productTags.existing,
         productTags.newTags,
       );
+      if (bundleFields) formData.set("_bundleTagsSaved", "true");
     } catch (error) {
-      if (productTagAssignmentUnsupported(error)) {
+      if (!bundleFields && productTagAssignmentUnsupported(error)) {
         console.warn("[QuitHero dashboard] Product saved without tag assignments", {
           stage: "product-tag-sync-unsupported",
           productId,
@@ -482,6 +497,12 @@ async function persistResource(formData: FormData) {
         throw error;
       }
     }
+    if (bundleFields) {
+      await persistBundleGroup(retailRequest, productId, bundleFields, String(formData.get("_bundleVariantId") ?? ""), (savedId) => formData.set("_bundleVariantId", savedId));
+      updateTag(RETAIL_CATALOG_TAG);
+      revalidatePath("/dashboard", "layout");
+      return "/dashboard/bundles";
+    }
   }
   updateTag(RETAIL_CATALOG_TAG);
   revalidatePath("/dashboard", "layout");
@@ -492,7 +513,7 @@ export async function saveResource(formData: FormData) {
   redirect(await persistResource(formData));
 }
 
-export type ResourceActionState = { message: string; success: boolean };
+export type ResourceActionState = { message: string; success: boolean; bundleProductId?: string; bundleVariantId?: string; bundleTagsSaved?: boolean };
 
 export type OrderActionState = { message: string; success: boolean };
 
@@ -578,12 +599,23 @@ export async function saveResourceWithState(
   formData: FormData,
 ): Promise<ResourceActionState> {
   let returnTo: string;
+  const creatingBundle = formData.get("_resource") === "products" && formData.has("_bundleSelections");
+  if (creatingBundle) {
+    if (_previous.bundleProductId) formData.set("_id", _previous.bundleProductId);
+    if (_previous.bundleVariantId) formData.set("_bundleVariantId", _previous.bundleVariantId);
+    if (_previous.bundleTagsSaved) formData.set("_bundleTagsSaved", "true");
+  }
   try {
     returnTo = await persistResource(formData);
   } catch (error) {
     return {
       message: error instanceof Error ? error.message : "Unable to save this resource.",
       success: false,
+      ...(creatingBundle ? {
+        bundleProductId: String(formData.get("_bundleProductId") ?? _previous.bundleProductId ?? ""),
+        bundleVariantId: String(formData.get("_bundleVariantId") ?? ""),
+        bundleTagsSaved: formData.get("_bundleTagsSaved") === "true",
+      } : {}),
     };
   }
   redirect(returnTo);
@@ -967,95 +999,26 @@ export async function getBundleConfiguration(
   }
 }
 
-export async function getBundleProductBatch(
-  batch = 0,
-) {
-  console.log("🔵 BACKEND FETCH: getBundleProductBatch()", {
-    batch,
-  });
-
-  const API_LIMIT = 100;
-  const BATCH_SIZE = 500;
-
-  const startApiPage =
-    batch * (BATCH_SIZE / API_LIMIT) + 1;
-
-  const bundlePath = "/products?tags=bundle";
-
-  const firstPage = await safeRetailPage(
-    bundlePath,
-    startApiPage,
-    API_LIMIT,
-  );
-
-  const total = firstPage.pagination.total;
-  const totalApiPages =
-    firstPage.pagination.totalPages;
-
-  if (firstPage.error) {
-    return {
-      data: firstPage.data,
-      total,
-      totalPages: Math.max(
-        1,
-        Math.ceil(total / 50),
-      ),
-      error: firstPage.error,
-    };
-  }
-
-  const endApiPage = Math.min(
-    startApiPage +
-      BATCH_SIZE / API_LIMIT -
-      1,
-    totalApiPages,
-  );
-
-  const remainingPages =
-    endApiPage >= startApiPage + 1
-      ? await Promise.all(
-          Array.from(
-            {
-              length:
-                endApiPage -
-                startApiPage,
-            },
-            (_, index) =>
-              safeRetailPage(
-                bundlePath,
-                startApiPage +
-                  index +
-                  1,
-                API_LIMIT,
-              ),
-          ),
-        )
-      : [];
-
-  const pageResults = [
-    firstPage,
-    ...remainingPages,
-  ];
-
-  const error = pageResults.find(
-    (result) => result.error,
-  )?.error;
-
-  const data = pageResults
-    .flatMap((result) => result.data)
-    .slice(0, BATCH_SIZE);
-
+export async function getBundleProductBatch(batch = 0) {
+  const result = await safeRetailAll("/products?tags=bundle");
+  // Sort the complete collection before slicing so new bundles reach page one.
+  const products = result.data.map((product, index) => ({
+    product,
+    index,
+    createdAt: Date.parse(typeof product.createdAt === "string" ? product.createdAt : ""),
+  })).sort((a, b) => {
+    const aTime = Number.isNaN(a.createdAt) ? Number.NEGATIVE_INFINITY : a.createdAt;
+    const bTime = Number.isNaN(b.createdAt) ? Number.NEGATIVE_INFINITY : b.createdAt;
+    return bTime - aTime || a.index - b.index;
+  }).map(({ product }) => product);
+  const start = Math.max(0, Math.floor(batch)) * 500;
   return {
-    data,
-    total,
-    totalPages: Math.max(
-      1,
-      Math.ceil(total / 50),
-    ),
-    error,
+    data: products.slice(start, start + 500),
+    total: products.length,
+    totalPages: Math.max(1, Math.ceil(products.length / 50)),
+    error: result.error,
   };
 }
-
 export async function getStoreActivityBatch(batch = 0) {
   console.log(
     "🔵 BACKEND FETCH: getStoreActivityBatch()",

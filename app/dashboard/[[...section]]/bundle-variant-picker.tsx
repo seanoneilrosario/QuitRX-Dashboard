@@ -69,8 +69,8 @@ export default function BundleVariantPicker({
   });
 
   const visibleProducts = filteredProducts.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE,
+    ((page - 1) % 10) * PAGE_SIZE,
+    (((page - 1) % 10) + 1) * PAGE_SIZE,
   );
 
   useEffect(() => {

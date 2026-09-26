@@ -23,6 +23,7 @@ export default function BundlesPage({
 }) {
   const [selectedVariantId, setSelectedVariantId] =
     useState(variantId);
+  const [deletedProductIds, setDeletedProductIds] = useState<Set<string>>(() => new Set());
 
   const [bundlePage, setBundlePage] = useState(1);
   const PAGES_PER_BATCH = 10;
@@ -97,7 +98,7 @@ export default function BundlesPage({
 
   const bundleProducts: BundleProduct[] =
     bundleProductQuery.data?.data.flatMap((product) =>
-      typeof product.id === "string"
+      typeof product.id === "string" && !deletedProductIds.has(product.id)
         ? [{
             id: product.id,
             label: product.bundleLabel ?? product.id,
@@ -278,7 +279,11 @@ export default function BundlesPage({
           ) : parent && configurationQuery.data ? (
             <BundleEditor
               key={parent.id}
-              onDeleted={() => { setSelectedVariantId(""); setBundlePage(1); }}
+              onDeleted={(productId) => {
+                setDeletedProductIds((current) => new Set(current).add(productId));
+                setSelectedVariantId("");
+                setBundlePage(1);
+              }}
               parent={parent}
               groupNumber={
                 variants

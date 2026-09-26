@@ -24,7 +24,7 @@ function signature(selections: EditorSelection[]) {
   return JSON.stringify(componentsFromSelections(selections));
 }
 
-export default function BundleEditor({ parent, groupNumber, products, variants, bundleProductIds, initial, onDeleted }: { parent: BundleVariant; groupNumber: number; products: BundleProduct[]; variants: BundleVariant[]; bundleProductIds: string[]; initial: BundleSelection[]; onDeleted: () => void }) {
+export default function BundleEditor({ parent, groupNumber, products, variants, bundleProductIds, initial, onDeleted }: { parent: BundleVariant; groupNumber: number; products: BundleProduct[]; variants: BundleVariant[]; bundleProductIds: string[]; initial: BundleSelection[]; onDeleted: (productId: string) => void }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const initialSelections = useMemo(() => selectionsFromComponents(initial), [initial]);
@@ -142,7 +142,7 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
       if (!result.success) return;
       setSavedSelections(selections);
       closeModal();
-      onDeleted();
+      onDeleted(parent.productId);
       await Promise.all(["bundle-products", "bundle-product-catalog", "bundle-variants", "bundle-configuration"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
     } catch (error) {
       setState({ message: error instanceof Error ? error.message : "Unable to delete bundle. Please try again.", success: false });

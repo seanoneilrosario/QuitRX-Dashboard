@@ -75,7 +75,10 @@ test("bundle creation writes selection names and options and verifies the API re
   assert.equal(await creation.persistBundleGroup(request, "product/1", fields, "", (id) => { recordedId = id; }), "parent");
   assert.equal(recordedId, "parent");
   assert.equal(calls[0].method, "POST");
-  assert.deepEqual(JSON.parse(calls[0].body), { productId: "product/1", name: "Group 1", sku: "BUNDLE-1", price: 15.5 });
+  assert.deepEqual(JSON.parse(calls[0].body), {
+    productId: "product/1", name: "Group 1", sku: "BUNDLE-1", price: 15.5,
+    cost: 0, inventory: 0, allocatedInventory: 0, incomingInventory: 0, weight: 0, requiresShipping: true,
+  });
   assert.equal(calls[1].path, "/products/product%2F1/variants/parent/bundle");
   assert.deepEqual(JSON.parse(calls[1].body), [selection]);
   assert.equal(calls[2].cache, "no-store");
@@ -90,6 +93,7 @@ test("bundle retries update the saved group and reject incomplete API readback",
   }, "product", fields, "parent", () => {}), /did not return all saved/);
   assert.equal(calls[0].path, "/product-variants/parent");
   assert.equal(calls[0].method, "PATCH");
+  assert.deepEqual(JSON.parse(calls[0].body), { productId: "product", name: "Group 1", sku: "BUNDLE-1", price: 15.5 });
   assert.equal(calls.some((call) => call.method === "POST"), false);
 });
 
@@ -252,6 +256,7 @@ test("bundle saves multiple variant options per uniquely positioned selection", 
   let fail = false;
   const calls = [];
   const actions = load("app/dashboard/bundle-actions.ts", {
+    "next/cache": { updateTag() {}, revalidatePath() {} },
     "@/auth": { auth: async () => ({ user: { isStaff: staff } }) },
     "@/lib/product-bundles": validation,
     "@/lib/quithero-admin": {
@@ -287,4 +292,39 @@ test("bundle saves multiple variant options per uniquely positioned selection", 
   staff = false;
   assert.equal((await actions.saveBundle(previous, form)).success, false);
   assert.equal(calls.length, 0);
+});
+
+test("bundle deletion requires staff, targets the bundle product and refreshes caches only after success", async () => {
+  let staff = false;
+  let failure;
+  const calls = [];
+  const cacheEvents = [];
+  const actions = load("app/dashboard/bundle-actions.ts", {
+    "@/auth": { auth: async () => ({ user: { isStaff: staff } }) },
+    "@/lib/product-bundles": validation,
+    "next/cache": {
+      updateTag: (tag) => cacheEvents.push(tag),
+      revalidatePath: (path) => cacheEvents.push(path),
+    },
+    "@/lib/quithero-admin": {
+      RETAIL_CATALOG_TAG: "retail-catalog",
+      retailRequest: async (path, options) => { calls.push({ path, ...options }); if (failure) throw new Error(failure); },
+    },
+  });
+  assert.equal((await actions.deleteBundle("product/1")).success, false);
+  assert.equal(calls.length, 0);
+  staff = true;
+  assert.equal((await actions.deleteBundle(" ")).success, false);
+  assert.equal(calls.length, 0);
+  failure = "QuitHero API returned 500: Internal server error";
+  assert.equal((await actions.deleteBundle("product/1")).success, false);
+  assert.equal(cacheEvents.length, 0);
+  failure = undefined;
+  assert.equal((await actions.deleteBundle("product/1")).success, true);
+  assert.deepEqual(calls.at(-1), { path: "/products/product%2F1", method: "DELETE" });
+  assert.deepEqual(cacheEvents, ["retail-catalog", "/dashboard"]);
+  cacheEvents.length = 0;
+  failure = "QuitHero API returned 404: Not found";
+  assert.equal((await actions.deleteBundle("product/1")).success, true);
+  assert.deepEqual(cacheEvents, ["retail-catalog", "/dashboard"]);
 });

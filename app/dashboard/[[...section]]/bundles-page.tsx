@@ -273,6 +273,7 @@ export default function BundlesPage({
           ) : parent && configurationQuery.data ? (
             <BundleEditor
               key={parent.id}
+              onDeleted={() => { setSelectedVariantId(""); setBundlePage(1); }}
               parent={parent}
               groupNumber={
                 variants

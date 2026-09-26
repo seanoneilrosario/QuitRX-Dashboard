@@ -38,7 +38,18 @@ export async function assertBundleSkuAvailable(request: Request, sku: string, ex
 }
 
 export async function persistBundleGroup(request: Request, productId: string, fields: { name: string; sku: string; price: number; selections: BundleSelection[] }, existingVariantId: string, onVariantSaved: (id: string) => void) {
-  const body = { productId, name: fields.name, sku: fields.sku, price: fields.price };
+  const body = {
+    productId, name: fields.name, sku: fields.sku, price: fields.price,
+    // Initialize new groups explicitly; retries must preserve existing stock.
+    ...(!existingVariantId ? {
+      cost: 0,
+      inventory: 0,
+      allocatedInventory: 0,
+      incomingInventory: 0,
+      weight: 0,
+      requiresShipping: true,
+    } : {}),
+  };
   let variantId = existingVariantId;
   let saved: unknown;
   try {

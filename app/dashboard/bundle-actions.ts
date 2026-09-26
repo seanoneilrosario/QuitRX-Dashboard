@@ -1,10 +1,32 @@
 "use server";
 
 import { auth } from "@/auth";
-import { retailRequest } from "@/lib/quithero-admin";
+import { revalidatePath, updateTag } from "next/cache";
+import { RETAIL_CATALOG_TAG, retailRequest } from "@/lib/quithero-admin";
 import { bundleComponentResponse, bundleComponents, type BundleSelection } from "@/lib/product-bundles";
 
 export type BundleActionState = { message: string; success: boolean; selections?: BundleSelection[] };
+
+export async function deleteBundle(productId: string): Promise<BundleActionState> {
+  const session = await auth();
+  if (!(session?.user as { isStaff?: boolean } | undefined)?.isStaff) {
+    return { message: "Please sign in as staff to delete bundles.", success: false };
+  }
+  try {
+    const id = productId.trim();
+    if (!id) throw new Error("Select a bundle to delete.");
+    try {
+      await retailRequest(`/products/${encodeURIComponent(id)}`, { method: "DELETE" });
+    } catch (error) {
+      if (!(error instanceof Error) || !/^QuitHero API returned 404\b/.test(error.message)) throw error;
+    }
+    updateTag(RETAIL_CATALOG_TAG);
+    revalidatePath("/dashboard", "layout");
+    return { message: "Bundle deleted.", success: true };
+  } catch (error) {
+    return { message: error instanceof Error ? error.message : "Unable to delete bundle.", success: false };
+  }
+}
 
 export async function saveBundle(_previous: BundleActionState, form: FormData): Promise<BundleActionState> {
   const session = await auth();

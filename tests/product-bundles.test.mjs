@@ -122,7 +122,7 @@ test("bundle creation requires staff and retries a partial save without duplicat
     },
   });
   const form = new FormData();
-  for (const [key, value] of Object.entries({ _resource: "products", brandId: "brand", productTypeId: "type", tags: "bundle-tag", _bundleName: "Group 1", _bundleSku: "BUNDLE-1", _bundlePrice: "10", _bundleSelections: JSON.stringify([selection]) })) form.set(key, value);
+  for (const [key, value] of Object.entries({ _resource: "products", name: "Bundle product", slug: "bundle-product", brandId: "brand", productTypeId: "type", tags: "bundle-tag", _bundleName: "Group 1", _bundleSku: "BUNDLE-1", _bundlePrice: "10", _bundleSelections: JSON.stringify([selection]) })) form.set(key, value);
   const initial = { message: "", success: false };
   assert.match((await actions.saveResourceWithState(initial, form)).message, /sign in as staff/);
   assert.equal(calls.length, 0);
@@ -133,8 +133,8 @@ test("bundle creation requires staff and retries a partial save without duplicat
   assert.equal(state.bundleVariantId, "parent");
   assert.equal(state.bundleTagsSaved, true);
   const productBody = JSON.parse(calls.find((call) => call.path === "/products").body);
-  assert.equal(productBody.name, "Group 1");
-  assert.equal(productBody.slug, "group-1-bundle-1");
+  assert.equal(productBody.name, "Bundle product");
+  assert.equal(productBody.slug, "bundle-product");
   assert.equal(productBody.status, "DRAFT");
   assert.equal(productBody.brandId, "brand");
   assert.equal(productBody.productTypeId, "type");

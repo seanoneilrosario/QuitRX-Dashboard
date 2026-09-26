@@ -434,9 +434,7 @@ async function persistResource(formData: FormData) {
   const body = payload(formData);
   if (bundleFields) {
     if (!id) {
-      body.name = bundleFields.name;
-      body.slug = slugify(`${bundleFields.name}-${bundleFields.sku}`);
-      body.status = "DRAFT";
+      body.status = body.status || "DRAFT";
     }
     if (!body.brandId || !body.productTypeId) throw new Error("Select a vendor and type for the bundle.");
   }

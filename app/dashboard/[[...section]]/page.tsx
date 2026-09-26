@@ -43,6 +43,7 @@ import OrderCreateForm from "./order-create-form";
 import OrderCancelButton from "./order-cancel-button";
 import RichTextEditor from "./rich-text-editor";
 import ProductNameSlugFields from "./product-name-slug-fields";
+import BundleCreateFields from "./bundle-create-fields";
 import CustomerDeleteButton from "./customer-delete-button";
 import {
   createCustomerAddress,
@@ -622,6 +623,8 @@ function ProductForm({
   collections,
   availableTags,
   products = [],
+  variants = [],
+  bundleProductIds = [],
   recommendationIds = [],
   recommendationError,
 }: {
@@ -632,6 +635,8 @@ function ProductForm({
   collections: RetailRecord[];
   availableTags: RetailRecord[];
   products?: RetailRecord[];
+  variants?: RetailRecord[];
+  bundleProductIds?: string[];
   recommendationIds?: string[];
   recommendationError?: string;
 }) {
@@ -697,10 +702,26 @@ function ProductForm({
         ]
       : [],
   );
+  const bundleProducts = products.flatMap((product) =>
+    typeof product.id === "string"
+      ? [{ id: product.id, label: text(product.name, product.id) }]
+      : [],
+  );
+  const bundleVariants = variants.flatMap((variant) =>
+    typeof variant.id === "string" && typeof variant.productId === "string"
+      ? [{
+          id: variant.id,
+          productId: variant.productId,
+          productLabel: bundleProducts.find((product) => product.id === variant.productId)?.label ?? variant.productId,
+          label: text(variant.name ?? variant.sku, variant.id),
+          sku: text(variant.sku, ""),
+        }]
+      : [],
+  );
   return (
     <>
       <Header
-        title={bundle ? "Add bundle" : item ? "Edit product" : "Create product"}
+        title={bundle ? (item ? "Complete bundle" : "Add bundle") : item ? "Edit product" : "Create product"}
         description="Product information is saved directly to the QuitHero Retail API."
         action={
           <Link className={styles.secondary} href={backPath}>
@@ -759,6 +780,14 @@ function ProductForm({
             </label>
           </div>
         </section>
+        {bundle && (
+          <BundleCreateFields
+            products={bundleProducts}
+            variants={bundleVariants}
+            bundleProductIds={bundleProductIds}
+            initialName={text(item?.name, "")}
+          />
+        )}
         <section className={styles.formCard}>
           <h2>Product organization</h2>
           <div className={styles.organizationGrid}>
@@ -842,11 +871,11 @@ function ProductForm({
         <div className={styles.formActions}>
           <Link href={backPath}>Cancel</Link>
           <ActionButton className={styles.primary} pendingLabel={item ? "Saving…" : "Creating…"}>
-            {bundle ? "Create bundle" : item ? "Save changes" : "Create product"}
+            {bundle ? (item ? "Complete bundle" : "Create bundle") : item ? "Save changes" : "Create product"}
           </ActionButton>
         </div>
       </ResourceSaveForm>
-      {typeof item?.id === "string" && (
+      {!bundle && typeof item?.id === "string" && (
         <>
           <Notice message={recommendationError} />
           <FrequentlyBoughtTogetherEditor
@@ -1984,19 +2013,30 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       />
     );
   } else if ((area === "products" || area === "bundles") && sub === "create") {
-    const [brands, productTypes, collections, tags] = await Promise.all([
+    const isBundle = area === "bundles";
+    const [item, brands, productTypes, collections, tags, products, variants, bundleProducts] = await Promise.all([
+      isBundle && id
+        ? safeRetailRecord(`/products/${encodeURIComponent(id)}`)
+        : Promise.resolve({ data: undefined, error: undefined }),
       safeRetailList("/brands"),
       safeRetailList("/product-type"),
       safeRetailList("/collections"),
       safeRetailAll("/tags"),
+      isBundle ? safeRetailAll("/products") : Promise.resolve({ data: [], error: undefined }),
+      isBundle ? safeRetailAll("/product-variants") : Promise.resolve({ data: [], error: undefined }),
+      isBundle ? safeRetailAll("/products?tags=bundle") : Promise.resolve({ data: [], error: undefined }),
     ]);
     content = (
       <ProductForm
-        bundle={area === "bundles"}
+        item={item.data}
+        bundle={isBundle}
         brands={brands.data}
         productTypes={productTypes.data}
         collections={collections.data}
         availableTags={tags.data}
+        products={products.data}
+        variants={variants.data}
+        bundleProductIds={bundleProducts.data.flatMap((product) => typeof product.id === "string" ? [product.id] : [])}
       />
     );
   } else if (area === "products" && sub === "edit") {

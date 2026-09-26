@@ -19,6 +19,28 @@ function load(file, mocks, globals = {}) {
   return exports;
 }
 
+test("catalog records deduplicate IDs within and across overlapping API pages", async () => {
+  const duplicateId = "90667543-8e82-4ae2-9556-665a69f43c5c";
+  const api = load("lib/quithero-admin.ts", { "server-only": {} }, {
+    process: { env: { QUITHERO_API_KEY: "test-key" } },
+    fetch: async (url) => ({
+      ok: true,
+      text: async () => JSON.stringify({
+        data: url.includes("page=1&")
+          ? [{ id: duplicateId, name: "First" }, { id: duplicateId, name: "Duplicate" }, { id: "second" }]
+          : [{ id: "second" }, { id: duplicateId }, { id: "third" }],
+        pagination: { totalPages: 2, total: 6 },
+      }),
+    }),
+  });
+  const result = await api.safeRetailAll("/products?tags=bundle");
+  assert.deepEqual(Array.from(result.data, (record) => record.id), [duplicateId, "second", "third"]);
+  assert.equal(result.data[0].name, "First");
+  assert.equal(api.records([{ name: "A" }, { name: "B" }]).length, 2);
+  const list = await api.safeRetailList("/product-variants?page=1&limit=100");
+  assert.equal(list.data.length, 2);
+});
+
 test("only catalog list reads use the short-lived cache", async () => {
   const calls = [];
   const api = load("lib/quithero-admin.ts", { "server-only": {} }, {

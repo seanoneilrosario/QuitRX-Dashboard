@@ -10,7 +10,7 @@ function load(file, mocks = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   });
   const exports = {};
-  vm.runInNewContext(outputText, { exports, Error, process: { env: {} }, require: (name) => {
+  vm.runInNewContext(outputText, { exports, Error, setTimeout, clearTimeout, process: { env: {} }, require: (name) => {
     if (!(name in mocks)) throw new Error(`Unexpected import ${name}`);
     return mocks[name];
   } });

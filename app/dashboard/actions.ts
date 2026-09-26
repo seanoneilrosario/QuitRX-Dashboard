@@ -1055,7 +1055,7 @@ export async function getBundleProductBatch(batch = 0) {
     process.env.STOREFRONT_BASE_URL ?? "https://quitrx-website-front-ecru.vercel.app"
   ).replace(/\/$/, "");
   // Sort the complete collection before slicing so new bundles reach page one.
-  const products = result.data.map((product, index) => ({
+  const products = result.data.filter((product) => String(product.status ?? "").toUpperCase() !== "ARCHIVED").map((product, index) => ({
     product,
     index,
     createdAt: Date.parse(typeof product.createdAt === "string" ? product.createdAt : ""),

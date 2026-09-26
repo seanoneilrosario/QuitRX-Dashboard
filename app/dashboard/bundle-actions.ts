@@ -7,19 +7,34 @@ import { bundleComponentResponse, bundleComponents, type BundleSelection } from 
 
 export type BundleActionState = { message: string; success: boolean; selections?: BundleSelection[] };
 
+function withTimeout<T>(promise: Promise<T>, milliseconds: number) {
+  let timeout: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => reject(new Error("The Retail API is taking too long to confirm the deletion.")), milliseconds);
+    }),
+  ]).finally(() => clearTimeout(timeout));
+}
+
+function refreshBundleCatalog() {
+  updateTag(RETAIL_CATALOG_TAG);
+  revalidatePath("/dashboard", "layout");
+}
+
 export async function deleteBundle(productId: string, tagRelationshipIds: string[]): Promise<BundleActionState> {
   const session = await auth();
   if (!(session?.user as { isStaff?: boolean } | undefined)?.isStaff) {
     return { message: "Please sign in as staff to delete bundles.", success: false };
   }
+  const id = productId.trim();
+  if (!id) return { message: "Select a bundle to delete.", success: false };
+  const relationshipIds = [...new Set(tagRelationshipIds.map((relationshipId) => relationshipId.trim()).filter(Boolean))];
+  if (!relationshipIds.length) {
+    return { message: "Unable to find this product's bundle tag. Refresh the page and try again.", success: false };
+  }
   try {
-    const id = productId.trim();
-    if (!id) throw new Error("Select a bundle to delete.");
-    const relationshipIds = [...new Set(tagRelationshipIds.map((relationshipId) => relationshipId.trim()).filter(Boolean))];
-    if (!relationshipIds.length) {
-      throw new Error("Unable to find this product's bundle tag. Refresh the page and try again.");
-    }
-    await Promise.all([
+    await withTimeout(Promise.all([
       retailRequest(`/products/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify({ status: "ARCHIVED" }),
@@ -27,11 +42,21 @@ export async function deleteBundle(productId: string, tagRelationshipIds: string
       ...relationshipIds.map((relationshipId) =>
         retailRequest(`/product-tags/${encodeURIComponent(relationshipId)}`, { method: "DELETE" }),
       ),
-    ]);
-    updateTag(RETAIL_CATALOG_TAG);
-    revalidatePath("/dashboard", "layout");
+    ]), 12_000);
+    refreshBundleCatalog();
     return { message: "Bundle removed and product archived.", success: true };
   } catch (error) {
+    try {
+      const response = await withTimeout(retailRequest<unknown>(`/products/${encodeURIComponent(id)}`, { cache: "no-store" }), 5_000);
+      const wrapper = response && typeof response === "object" ? response as Record<string, unknown> : {};
+      const product = wrapper.data && typeof wrapper.data === "object" ? wrapper.data as Record<string, unknown> : wrapper;
+      if (String(product.status ?? "").toUpperCase() === "ARCHIVED") {
+        refreshBundleCatalog();
+        return { message: "Bundle removed and product archived.", success: true };
+      }
+    } catch {
+      // Preserve the original deletion error when read-back is unavailable.
+    }
     return { message: error instanceof Error ? error.message : "Unable to delete bundle.", success: false };
   }
 }

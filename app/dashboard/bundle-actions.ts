@@ -2,7 +2,7 @@
 
 import { auth } from "@/auth";
 import { revalidatePath, updateTag } from "next/cache";
-import { RETAIL_CATALOG_TAG, retailRequest } from "@/lib/quithero-admin";
+import { RETAIL_CATALOG_TAG, retailRequest, safeRetailAll } from "@/lib/quithero-admin";
 import { bundleComponentResponse, bundleComponents, type BundleSelection } from "@/lib/product-bundles";
 
 export type BundleActionState = { message: string; success: boolean; selections?: BundleSelection[] };
@@ -15,6 +15,25 @@ export async function deleteBundle(productId: string): Promise<BundleActionState
   try {
     const id = productId.trim();
     if (!id) throw new Error("Select a bundle to delete.");
+    const variants = await safeRetailAll("/product-variants");
+    if (variants.error) throw new Error(variants.error);
+    const bundleVariants = variants.data.filter((variant) => variant.productId === id);
+    await Promise.all(
+      bundleVariants
+        .filter((variant): variant is typeof variant & { id: string } => typeof variant.id === "string")
+        .map(async (variant) => {
+          try {
+            await retailRequest(
+              `/products/${encodeURIComponent(id)}/variants/${encodeURIComponent(variant.id)}/bundle`,
+              { method: "PATCH", body: "[]" },
+            );
+          } catch (error) {
+            if (!(error instanceof Error) || !/^QuitHero API returned 404\b/.test(error.message)) {
+              throw error;
+            }
+          }
+        }),
+    );
     try {
       await retailRequest(`/products/${encodeURIComponent(id)}`, { method: "DELETE" });
     } catch (error) {

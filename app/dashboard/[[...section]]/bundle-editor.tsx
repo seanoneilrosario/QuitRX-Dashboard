@@ -134,7 +134,12 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
     if (!window.confirm(`Delete bundle "${parent.productLabel}" and all of its groups? This cannot be undone.`)) return;
     setDeleting(true);
     try {
-      const result = await deleteBundle(parent.productId);
+      const result = await deleteBundle(
+        parent.productId,
+        variants
+          .filter((variant) => variant.productId === parent.productId)
+          .map((variant) => variant.id),
+      );
       setState(result);
       if (!result.success) return;
       setSavedSelections(selections);

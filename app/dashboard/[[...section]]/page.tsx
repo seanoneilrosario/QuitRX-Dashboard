@@ -714,7 +714,7 @@ function ProductForm({
   return (
     <>
       <Header
-        title={bundle ? "Add bundle" : item ? "Edit product" : "Create product"}
+        title={bundle ? item ? "Complete bundle" : "Add bundle" : item ? "Edit product" : "Create product"}
         description={bundle ? "Configure a bundle group and its allowed product selections." : "Product information is saved directly to the QuitHero Retail API."}
         action={
           <Link className={styles.secondary} href={backPath}>
@@ -854,9 +854,12 @@ function ProductForm({
         </section>
         </>}
         {bundle && <>
-        <input type="hidden" name="tags" value={bundleTag?.value ?? ""} />
+        <input type="hidden" name="tags" value={[...new Set([...productTags.map((tag) => tag.value), ...(bundleTag ? [bundleTag.value] : [])])].join(",")} />
         {!bundleTag && <input type="hidden" name="_newTags" value={JSON.stringify(["bundle"])} />}
         <BundleCreateFields
+          initialName={text(item?.name, "")}
+          initialBrandId={text(item?.brandId ?? nested(item ?? {}, "brand")?.id, "")}
+          initialProductTypeId={text(item?.productTypeId ?? nested(item ?? {}, "productType")?.id, "")}
           brands={brands.flatMap((brand) => typeof brand.id === "string" ? [{ id: brand.id, label: text(brand.name, brand.id) }] : [])}
           productTypes={productTypes.flatMap((type) => typeof type.id === "string" ? [{ id: type.id, label: text(type.name, type.id) }] : [])}
           products={products.flatMap((product) => typeof product.id === "string" ? [{ id: product.id, label: text(product.name, product.id) }] : [])}
@@ -868,11 +871,11 @@ function ProductForm({
         <div className={styles.formActions}>
           <Link href={backPath}>Cancel</Link>
           <ActionButton className={styles.primary} disabled={bundle && Boolean(bundleError)} pendingLabel={item ? "Saving…" : "Creating…"}>
-            {bundle ? "Create bundle" : item ? "Save changes" : "Create product"}
+            {bundle ? item ? "Complete bundle" : "Create bundle" : item ? "Save changes" : "Create product"}
           </ActionButton>
         </div>
       </ResourceSaveForm>
-      {typeof item?.id === "string" && (
+      {!bundle && typeof item?.id === "string" && (
         <>
           <Notice message={recommendationError} />
           <FrequentlyBoughtTogetherEditor
@@ -2021,8 +2024,13 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       safeRetailAll("/product-variants"),
       safeRetailAll("/products?tags=bundle"),
     ]) : [{ data: [], error: undefined }, { data: [], error: undefined }, { data: [], error: undefined }];
+    const existingBundle = area === "bundles" && id
+      ? await safeRetailRecord(`/products/${encodeURIComponent(id)}`)
+      : { data: undefined, error: undefined };
+    if (area === "bundles" && id && !existingBundle.error && (!existingBundle.data || !taggedBundles.data.some((product) => product.id === id))) notFound();
     content = (
       <ProductForm
+        item={existingBundle.data}
         bundle={area === "bundles"}
         products={bundleProducts.data}
         bundleProductIds={taggedBundles.data.flatMap((product) => typeof product.id === "string" ? [product.id] : [])}
@@ -2033,7 +2041,7 @@ export default async function DashboardPage({ params, searchParams }: Props) {
           sku: text(variant.sku, ""),
           productLabel: text(bundleProducts.data.find((product) => product.id === variant.productId)?.name, variant.productId),
         }] : [])}
-        bundleError={brands.error ?? productTypes.error ?? tags.error ?? bundleProducts.error ?? bundleVariants.error ?? taggedBundles.error}
+        bundleError={existingBundle.error ?? brands.error ?? productTypes.error ?? tags.error ?? bundleProducts.error ?? bundleVariants.error ?? taggedBundles.error}
         brands={brands.data}
         productTypes={productTypes.data}
         collections={collections.data}

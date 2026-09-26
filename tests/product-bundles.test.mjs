@@ -10,7 +10,7 @@ function load(file, mocks = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   });
   const exports = {};
-  vm.runInNewContext(outputText, { exports, require: (name) => {
+  vm.runInNewContext(outputText, { exports, Error, require: (name) => {
     if (!(name in mocks)) throw new Error(`Unexpected import ${name}`);
     return mocks[name];
   } });
@@ -108,6 +108,7 @@ test("bundle creation requires staff and retries a partial save without duplicat
       RETAIL_CATALOG_TAG: "catalog",
       retailRequest: async (path, options = {}) => {
         calls.push({ path, ...options });
+        if (path.startsWith("/product-variants?")) return { data: [] };
         if (path.endsWith("/bundle")) {
           if (fail) throw new Error("Bundle save failed");
           return options.method ? {} : [selection];
@@ -139,6 +140,87 @@ test("bundle creation requires staff and retries a partial save without duplicat
   assert.equal(calls.filter((call) => call.path === "/product-variants" && call.method === "POST").length, 1);
   assert.equal(calls.filter((call) => call.path === "/product-tags" && call.method === "POST").length, 1);
   assert.equal(calls.some((call) => call.path === "/products/product" && call.method === "PATCH"), true);
+});
+
+test("duplicate SKUs are rejected before creating a product", async () => {
+  const calls = [];
+  const actions = load("app/dashboard/actions.ts", {
+    "@/auth": { auth: async () => ({ user: { isStaff: true } }) },
+    "next/cache": {}, "next/navigation": {}, "@/lib/sanity-storefront": {},
+    "@/lib/product-bundles": validation, "@/lib/create-bundle": creation,
+    "@/lib/quithero-admin": { retailRequest: async (path, options = {}) => {
+      calls.push({ path, ...options });
+      return { data: [{ id: "existing", productId: "another-product", sku: "test" }] };
+    } },
+  });
+  const form = new FormData();
+  for (const [key, value] of Object.entries({ _resource: "products", brandId: "brand", productTypeId: "type", _bundleName: "Test 2", _bundleSku: "test", _bundlePrice: "10", _bundleSelections: JSON.stringify([selection]) })) form.set(key, value);
+  const state = await actions.saveResourceWithState({ message: "", success: false }, form);
+  assert.equal(state.success, false);
+  assert.match(state.message, /already used/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, undefined);
+});
+
+test("completing an incomplete bundle reuses the product without changing its name or slug", async () => {
+  const calls = [];
+  const actions = load("app/dashboard/actions.ts", {
+    "@/auth": { auth: async () => ({ user: { isStaff: true } }) },
+    "next/cache": { updateTag() {}, revalidatePath() {} },
+    "next/navigation": { redirect: (path) => { throw new Error(`redirect:${path}`); } },
+    "@/lib/sanity-storefront": {}, "@/lib/product-bundles": validation, "@/lib/create-bundle": creation,
+    "@/lib/quithero-admin": { retailRequest: async (path, options = {}) => {
+      calls.push({ path, ...options });
+      if (path.startsWith("/product-variants?")) return { data: [] };
+      if (path.endsWith("/bundle")) return options.method ? {} : [selection];
+      return { data: { id: path === "/product-variants" ? "parent" : "existing-product" } };
+    } },
+  });
+  const form = new FormData();
+  for (const [key, value] of Object.entries({ _resource: "products", _id: "existing-product", brandId: "brand", productTypeId: "type", _bundleName: "New group", _bundleSku: "TEST-2-UNIQUE", _bundlePrice: "10", _bundleSelections: JSON.stringify([selection]) })) form.set(key, value);
+  await assert.rejects(actions.saveResourceWithState({ message: "", success: false }, form), /redirect:\/dashboard\/bundles/);
+  assert.equal(calls.some((call) => call.path === "/products" && call.method === "POST"), false);
+  const product = calls.find((call) => call.path === "/products/existing-product");
+  assert.equal(product.method, "PATCH");
+  assert.equal(JSON.parse(product.body).name, undefined);
+  assert.equal(JSON.parse(product.body).slug, undefined);
+  assert.equal(JSON.parse(calls.find((call) => call.path === "/product-variants").body).productId, "existing-product");
+});
+
+test("SKU checks scan later pages and allow the current variant on retry", async () => {
+  const request = async (path) => path.includes("page=1&")
+    ? { data: Array.from({ length: 100 }, (_, i) => ({ id: String(i), sku: `SKU-${i}` })), pagination: { totalPages: 2 } }
+    : { data: [{ id: "parent", sku: "test" }], pagination: { totalPages: 2 } };
+  await assert.rejects(creation.assertBundleSkuAvailable(request, "TEST", ""), /already used/);
+  await creation.assertBundleSkuAvailable(request, "test", "parent");
+});
+
+test("a variant committed before a 500 is recovered and selections are saved without another POST", async () => {
+  const calls = [];
+  let savedId;
+  const fields = { name: "Group 1", sku: "BUNDLE-1", price: 10, selections: [selection] };
+  const request = async (path, options = {}) => {
+    calls.push({ path, ...options });
+    if (options.method === "POST") throw new Error("QuitHero API returned 500: Internal server error (POST /product-variants)");
+    if (path.startsWith("/product-variants?")) return { data: [{ id: "parent", productId: "product", name: fields.name, sku: fields.sku, price: "10.00" }] };
+    return options.method ? undefined : [selection];
+  };
+  assert.equal(await creation.persistBundleGroup(request, "product", fields, "", (id) => { savedId = id; }), "parent");
+  assert.equal(savedId, "parent");
+  assert.equal(calls.filter((call) => call.method === "POST").length, 1);
+  assert.equal(calls.filter((call) => call.method === "PATCH").length, 1);
+});
+
+test("an uncommitted variant failure stays an error and does not save selections", async () => {
+  const calls = [];
+  const request = async (path, options = {}) => {
+    calls.push({ path, ...options });
+    if (options.method === "POST") throw new Error("QuitHero API returned 500: Internal server error");
+    return { data: [] };
+  };
+  await assert.rejects(creation.persistBundleGroup(request, "product", { name: "Group 1", sku: "BUNDLE-1", price: 10, selections: [selection] }, "", () => assert.fail("No group was created")), /group could not be confirmed/);
+  assert.equal(calls.length, 2);
+  assert.equal(calls.some((call) => call.method === "PATCH"), false);
 });
 
 test("bundle validation accepts multiple options and rejects malformed selections", () => {

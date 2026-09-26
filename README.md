@@ -57,3 +57,9 @@ reporting success. API credentials stay on the server. If saving selections
 fails after the product and group were created, retrying the form reuses their
 returned IDs. Run bundle validation and save-flow checks with
 `node --test tests/product-bundles.test.mjs`.
+
+Bundle creation checks SKU availability before creating the product. Products
+left without groups after a failed request offer **Complete bundle**, which
+reuses the existing product. If variant creation returns a 500, the dashboard
+checks for the matching saved group before continuing; it does not blindly
+repeat the create request.

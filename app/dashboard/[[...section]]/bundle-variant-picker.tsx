@@ -7,7 +7,7 @@ import type {
   BundleVariant,
 } from "./bundle-editor";
 import styles from "./dashboard.module.css";
-import { ActionButton } from "./action-controls";
+import { ActionButton, ActionLink } from "./action-controls";
 import { getBundleConfiguration } from "@/app/dashboard/actions";
 
 export default function BundleVariantPicker({
@@ -296,7 +296,7 @@ export default function BundleVariantPicker({
 
                     {!product.variants
                       .length && (
-                      <p
+                      <div
                         className={
                           styles.bundleEmpty
                         }
@@ -304,7 +304,10 @@ export default function BundleVariantPicker({
                         No bundle groups are
                         available for this
                         product.
-                      </p>
+                        <ActionLink href={`/dashboard/bundles/create?id=${encodeURIComponent(product.id)}`} className={styles.secondary}>
+                          Complete bundle
+                        </ActionLink>
+                      </div>
                     )}
                   </div>
                 </article>

@@ -6,7 +6,7 @@ import { availableStock, records, RETAIL_CATALOG_TAG, type RetailRecord, retailR
 import { deleteStorefrontCollection, syncStorefrontCollection } from "@/lib/sanity-storefront";
 import { auth } from "@/auth";
 import { bundleComponentResponse, BundleSelection } from "@/lib/product-bundles";
-import { bundleCreationFields, persistBundleGroup } from "@/lib/create-bundle";
+import { assertBundleSkuAvailable, bundleCreationFields, persistBundleGroup } from "@/lib/create-bundle";
 
 const allowedResources = new Set([
   "products",
@@ -382,11 +382,14 @@ async function persistResource(formData: FormData) {
     if (!(session?.user as { isStaff?: boolean } | undefined)?.isStaff) throw new Error("Please sign in as staff to create bundles.");
   }
   const bundleFields = creatingBundle ? bundleCreationFields(formData) : undefined;
+  if (bundleFields) await assertBundleSkuAvailable(retailRequest, bundleFields.sku, String(formData.get("_bundleVariantId") ?? ""));
   const body = payload(formData);
   if (bundleFields) {
-    body.name = bundleFields.name;
-    body.slug = slugify(`${bundleFields.name}-${bundleFields.sku}`);
-    if (!id) body.status = "DRAFT";
+    if (!id) {
+      body.name = bundleFields.name;
+      body.slug = slugify(`${bundleFields.name}-${bundleFields.sku}`);
+      body.status = "DRAFT";
+    }
     if (!body.brandId || !body.productTypeId) throw new Error("Select a vendor and type for the bundle.");
   }
   let customerAddress: Record<string, string> | undefined;

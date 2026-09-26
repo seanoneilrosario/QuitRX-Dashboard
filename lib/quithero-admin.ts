@@ -94,7 +94,18 @@ export async function retailRequest<T = unknown>(path: string, init: RequestInit
   try { body = text ? JSON.parse(text) : undefined; } catch { body = text; }
   if (!response.ok) {
     const detail = apiErrorMessage(body);
-    throw new Error(detail ? `QuitHero API returned ${response.status}: ${detail}` : `QuitHero API returned ${response.status}.`);
+    const requestPath = path.split("?")[0];
+    // Keep credentials, query strings and request/response bodies out of logs.
+    console.error("[QuitHero dashboard] API request failed", {
+      method,
+      path: requestPath,
+      status: response.status,
+      environment: process.env.VERCEL_ENV ?? "local",
+      deployment: process.env.VERCEL_URL,
+      requestId: response.headers?.get("x-request-id") ?? undefined,
+    });
+    const message = detail ? `QuitHero API returned ${response.status}: ${detail}` : `QuitHero API returned ${response.status}.`;
+    throw new Error(`${message} (${method} ${requestPath})`);
   }
   return body as T;
 }

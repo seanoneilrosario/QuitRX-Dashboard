@@ -107,6 +107,25 @@ test("API errors include QuitHero validation details", async () => {
   await assert.rejects(api.retailRequest("/products/123"), /400: Request could not be processed/);
 });
 
+test("failed API writes identify the endpoint without logging secrets or retrying creation", async () => {
+  const logs = [];
+  let requests = 0;
+  const api = load("lib/quithero-admin.ts", { "server-only": {} }, {
+    process: { env: { QUITHERO_API_KEY: "private-key", VERCEL_ENV: "production", VERCEL_URL: "dashboard.vercel.app" } },
+    console: { error: (...args) => logs.push(args) },
+    fetch: async () => {
+      requests += 1;
+      return { ok: false, status: 500, headers: { get: () => "request-123" }, text: async () => JSON.stringify({ message: "Internal server error" }) };
+    },
+  });
+  await assert.rejects(api.retailRequest("/product-variants?private=value", { method: "POST", body: '{"sku":"private-sku"}' }), /500: Internal server error \(POST \/product-variants\)/);
+  assert.equal(requests, 1);
+  assert.equal(logs[0][1].environment, "production");
+  assert.equal(logs[0][1].requestId, "request-123");
+  assert.equal(logs[0][1].path, "/product-variants");
+  assert.equal(JSON.stringify(logs).includes("private"), false);
+});
+
 test("successful saves and deletes expire the catalog; failed writes do not", async () => {
   const events = [];
   let fail = false;

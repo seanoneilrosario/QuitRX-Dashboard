@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { deleteBundle, saveBundle, type BundleActionState } from "../bundle-actions";
 import type { BundleSelection } from "@/lib/product-bundles";
@@ -26,7 +25,6 @@ function signature(selections: EditorSelection[]) {
 
 export default function BundleEditor({ parent, groupNumber, products, variants, bundleProductIds, initial, onDeleteStarted, onDeleteFailed, onDeletingChange }: { parent: BundleVariant; groupNumber: number; products: BundleProduct[]; variants: BundleVariant[]; bundleProductIds: string[]; initial: BundleSelection[]; onDeleteStarted: (productId: string) => void; onDeleteFailed: (productId: string, message: string) => void; onDeletingChange: (variantId: string) => void }) {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const initialSelections = useMemo(() => selectionsFromComponents(initial), [initial]);
   const [selections, setSelections] = useState(initialSelections);
   const [savedSelections, setSavedSelections] = useState(initialSelections);
@@ -153,7 +151,6 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
         onDeleteFailed(parent.productId, result.message);
         return;
       }
-      await Promise.all(["bundle-products", "bundle-product-catalog", "bundle-variants", "bundle-configuration"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
       window.location.reload();
     } catch (error) {
       onDeleteFailed(parent.productId, error instanceof Error ? error.message : "Unable to delete bundle. Please try again.");

@@ -153,7 +153,8 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
         onDeleteFailed(parent.productId, result.message);
         return;
       }
-      void Promise.all(["bundle-products", "bundle-product-catalog", "bundle-variants", "bundle-configuration"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
+      await Promise.all(["bundle-products", "bundle-product-catalog", "bundle-variants", "bundle-configuration"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
+      window.location.reload();
     } catch (error) {
       onDeleteFailed(parent.productId, error instanceof Error ? error.message : "Unable to delete bundle. Please try again.");
     } finally {

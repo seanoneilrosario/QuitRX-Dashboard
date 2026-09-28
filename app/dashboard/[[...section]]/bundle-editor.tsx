@@ -46,6 +46,14 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
     router.replace("/dashboard/bundles", { scroll: false });
   }, [router]);
 
+  const closeModalWithoutNavigation = useCallback(() => {
+    setOpen(false);
+    window.dispatchEvent(new Event("bundle-editor-close"));
+    const url = new URL(window.location.href);
+    url.searchParams.delete("variantId");
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, []);
+
   const availableProducts = useMemo(() => products.flatMap((product) => {
     if (product.id === parent.productId || bundleIds.has(product.id)) return [];
     const productVariants = variants.filter((variant) => variant.productId === product.id && variant.id !== parent.id);
@@ -134,7 +142,7 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
     if (!window.confirm(`Delete bundle "${parent.productLabel}" and remove it from the storefront?`)) return;
     setDeleting(true);
     onDeletingChange(parent.id);
-    closeModal();
+    closeModalWithoutNavigation();
     onDeleteStarted(parent.productId);
     try {
       const result = await deleteBundle(

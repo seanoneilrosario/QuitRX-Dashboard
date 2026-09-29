@@ -14,9 +14,10 @@ export type CollectionProductOption = { id: string; name: string; slug: string; 
 export type CollectionRule = { field: "name" | "brand" | "tag"; operator: "equals" | "contains"; value: string };
 
 export function productMatchesCollectionRule(product: CollectionProductOption, rule: CollectionRule) {
+  if (rule.field === "tag" && rule.operator !== "equals") return false;
   const expected = rule.value.trim().toLocaleLowerCase();
   const values = rule.field === "tag" ? product.tags : [rule.field === "brand" ? product.brand : product.name];
-  return Boolean(expected) && values.some((value) => rule.operator === "contains" ? value.toLocaleLowerCase().includes(expected) : value.toLocaleLowerCase() === expected);
+  return Boolean(expected) && values.some((value) => rule.operator === "contains" ? value.trim().toLocaleLowerCase().includes(expected) : value.trim().toLocaleLowerCase() === expected);
 }
 
 export function dynamicCollectionProductIds(products: CollectionProductOption[], rules: CollectionRule[], match: "ALL" | "ANY") {

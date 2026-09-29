@@ -192,3 +192,25 @@ export async function safeRetailRecord(path: string) {
     return { data: undefined, error: error instanceof Error ? error.message : "Unable to reach QuitHero." };
   }
 }
+
+// Invalid legacy rules can prevent the detail endpoint from evaluating a
+// collection. The list endpoint still exposes its saved configuration.
+export async function safeCollectionForEdit(id: string) {
+  const result = await safeRetailRecord(`/collections/${encodeURIComponent(id)}`);
+  if (result.data || !result.error?.includes('Operator "contains" is not valid for tag')) return result;
+  try {
+    for (let page = 1; ; page += 1) {
+      const payload = await retailRequest<unknown>(`/collections?page=${page}&limit=100`, { cache: "no-store" });
+      const item = records(payload).find((collection) => collection.id === id);
+      if (item && item.type === "DYNAMIC" && Array.isArray(item.rules) && item.rules.length) {
+        return { data: item, error: undefined };
+      }
+      const wrapper = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+      const pagination = wrapper.pagination as RetailPagination | undefined;
+      if (page >= (Number(pagination?.totalPages) || 1)) break;
+    }
+  } catch {
+    // Keep the original detail error if recovery cannot find usable rules.
+  }
+  return result;
+}

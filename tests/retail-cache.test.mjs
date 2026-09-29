@@ -470,6 +470,38 @@ test("dynamic collection rules match normalized tags with ALL and ANY logic", ()
   assert.deepEqual(dynamicCollectionProductIds(products, [{ field: "tag", operator: "equals", value: "mint" }, { field: "name", operator: "contains", value: "berry" }], "ANY"), ["mint", "berry"]);
 });
 
+test("collection tag equality trims whitespace but does not match partial tags", () => {
+  const { dynamicCollectionProductIds } = load("lib/collection-products.ts", {});
+  const products = [{ id: "pod", name: "Mint Pod", brand: "Acme", slug: "mint-pod", tags: [" Pods "] }];
+  const match = (field, operator, value) => Array.from(dynamicCollectionProductIds(products, [{ field, operator, value }], "ALL"));
+  assert.deepEqual(match("tag", "equals", " PODS "), ["pod"]);
+  assert.deepEqual(match("tag", "equals", "pod"), []);
+  assert.deepEqual(match("tag", "contains", "pod"), []);
+  assert.deepEqual(match("name", "contains", "pod"), ["pod"]);
+  assert.deepEqual(match("brand", "contains", "ac"), ["pod"]);
+});
+
+test("collection creation rejects tag contains before contacting QuitHero", async () => {
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": {},
+    "next/navigation": {},
+    "@/auth": { auth: async () => ({ user: { isStaff: true } }) },
+    "@/lib/product-bundles": {},
+    "@/lib/create-bundle": {},
+    "@/lib/quithero-admin": { retailRequest: async () => assert.fail("Invalid rule reached the API") },
+    "@/lib/sanity-storefront": {},
+  }, { Error });
+  const form = new FormData();
+  form.set("name", "Pods");
+  form.set("type", "DYNAMIC");
+  form.set("match", "ALL");
+  form.set("productIds", "[]");
+  form.set("rules", JSON.stringify([{ field: "tag", operator: "contains", value: "pod" }]));
+  const result = await actions.createCollection({}, form);
+  assert.equal(result.success, false);
+  assert.match(result.message, /Tag rules only support Equals/);
+});
+
 test("frequently bought together recommendations are read and saved in order", async () => {
   const requests = [];
   const storefront = load("lib/sanity-storefront.ts", { "server-only": {} }, {
@@ -489,4 +521,42 @@ test("frequently bought together recommendations are read and saved in order", a
   assert.equal(document._id, "frequentlyBoughtTogether.product-1");
   assert.equal(document._type, "frequentlyBoughtTogether");
   assert.deepEqual(document.relatedProductIds, ["related-2", "related-1"]);
+});
+
+test("collection edit recovers legacy rules from a fresh paginated collection list", async () => {
+  const requests = [];
+  const collection = { id: "broken", name: "Test", type: "DYNAMIC", rules: [{ field: "tag", operator: "contains", value: "pod" }] };
+  const api = load("lib/quithero-admin.ts", { "server-only": {} }, {
+    process: { env: { QUITHERO_API_KEY: "test-key" } },
+    fetch: async (url, options) => {
+      requests.push({ url, options });
+      if (url.endsWith("/collections/broken")) return { ok: false, status: 400, text: async () => JSON.stringify({ message: 'Operator "contains" is not valid for tag.' }) };
+      return { ok: true, text: async () => JSON.stringify({ data: url.includes("page=2") ? [collection] : [], pagination: { totalPages: 2 } }) };
+    },
+  });
+  const result = await api.safeCollectionForEdit("broken");
+  assert.equal(result.data.id, "broken");
+  assert.equal(result.data.rules[0].operator, "contains");
+  assert.equal(result.error, undefined);
+  assert.equal(requests.length, 3);
+  assert.ok(requests.every(({ options }) => options.cache === "no-store"));
+});
+
+test("collection edit preserves missing-record and unrelated API errors", async () => {
+  for (const message of ['Operator "contains" is not valid for tag.', "Unauthorized"]) {
+    let requests = 0;
+    const api = load("lib/quithero-admin.ts", { "server-only": {} }, {
+      process: { env: { QUITHERO_API_KEY: "test-key" } },
+      fetch: async (url) => {
+        requests += 1;
+        return url.includes("?")
+          ? { ok: true, text: async () => JSON.stringify({ data: [] }) }
+          : { ok: false, status: 400, text: async () => JSON.stringify({ message }) };
+      },
+    });
+    const result = await api.safeCollectionForEdit("missing");
+    assert.equal(result.data, undefined);
+    assert.ok(result.error.includes(message));
+    assert.equal(requests, message === "Unauthorized" ? 1 : 2);
+  }
 });

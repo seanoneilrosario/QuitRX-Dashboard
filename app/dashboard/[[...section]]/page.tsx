@@ -16,6 +16,7 @@ import {
   safeRetailList,
   safeRetailPage,
   safeRetailRecord,
+  safeCollectionForEdit,
   availableStock,
   type RetailPagination,
   type RetailRecord,
@@ -2102,7 +2103,7 @@ export default async function DashboardPage({ params, searchParams }: Props) {
     if (sub === "edit") {
       const [result, products] = await Promise.all([
         id
-          ? safeRetailRecord(`/collections/${encodeURIComponent(id)}`)
+          ? safeCollectionForEdit(id)
           : Promise.resolve({ data: undefined, error: undefined }),
         safeRetailAll("/products"),
       ]);

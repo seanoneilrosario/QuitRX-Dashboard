@@ -170,6 +170,11 @@ function validateCollection(body: Record<string, unknown>, editing = false) {
       })
     )
       throw new Error("Complete at least one valid collection rule.");
+    for (const rule of body.rules as Record<string, unknown>[]) {
+      if (rule.field === "tag" && rule.operator !== "equals")
+        throw new Error("Tag rules only support Equals. Choose a complete tag name.");
+      rule.value = (rule.value as string).trim();
+    }
     if (
       !Array.isArray(body.productIds) ||
       body.productIds.some((id) => typeof id !== "string" || !id)

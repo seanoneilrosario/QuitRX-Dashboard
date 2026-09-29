@@ -20,10 +20,12 @@ export default function RealtimeConnection() {
 
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
+    socket.connect();
 
     return () => {
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
+      socket.disconnect();
     };
   },[]);
 

@@ -32,12 +32,6 @@ function storefrontUrl(
   resource: "product" | "collections",
   item: RetailRecord,
 ) {
-  const url = text(item.url, "");
-
-  if (url) {
-    return new URL(url, `${baseUrl}/`).toString();
-  }
-
   return `${baseUrl}/${resource}/${encodeURIComponent(
     text(item.slug, ""),
   )}`;
@@ -408,7 +402,7 @@ export default function ProductsClient({
                 <a
                     href={storefrontUrl(
                     storefrontBaseUrl,
-                    "products",
+                    "product",
                     item,
                     )}
                     target="_blank"

@@ -29,7 +29,7 @@ function nested(item: RetailRecord, key: string) {
 
 function storefrontUrl(
   baseUrl: string,
-  resource: "products" | "collections",
+  resource: "product" | "collections",
   item: RetailRecord,
 ) {
   const url = text(item.url, "");

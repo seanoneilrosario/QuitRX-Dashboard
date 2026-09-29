@@ -125,8 +125,6 @@ const storefrontBaseUrl = (
   process.env.STOREFRONT_BASE_URL ?? "https://quitrx-website-front-ecru.vercel.app"
 ).replace(/\/$/, "");
 function storefrontUrl(resource: "product" | "collections", item: RetailRecord) {
-  const url = text(item.url, "");
-  if (url) return new URL(url, `${storefrontBaseUrl}/`).toString();
   return `${storefrontBaseUrl}/${resource}/${encodeURIComponent(text(item.slug, ""))}`;
 }
 function nested(item: RetailRecord, key: string) {

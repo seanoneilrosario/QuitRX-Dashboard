@@ -124,7 +124,7 @@ function money(value: unknown) {
 const storefrontBaseUrl = (
   process.env.STOREFRONT_BASE_URL ?? "https://quitrx-website-front-ecru.vercel.app"
 ).replace(/\/$/, "");
-function storefrontUrl(resource: "products" | "collections", item: RetailRecord) {
+function storefrontUrl(resource: "product" | "collections", item: RetailRecord) {
   const url = text(item.url, "");
   if (url) return new URL(url, `${storefrontBaseUrl}/`).toString();
   return `${storefrontBaseUrl}/${resource}/${encodeURIComponent(text(item.slug, ""))}`;
@@ -507,7 +507,7 @@ function Products({
             </td>
             <td>
               <div className={styles.actions}>
-              <a href={storefrontUrl("products", item)} target="_blank" rel="noopener noreferrer">
+              <a href={storefrontUrl("product", item)} target="_blank" rel="noopener noreferrer">
                 View
               </a>
               </div>

@@ -7,7 +7,7 @@ import ts from "typescript";
 function load(file, mocks, globals = {}) {
   const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
   const { outputText } = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   });
   const exports = {};
   vm.runInNewContext(outputText, {
@@ -625,5 +625,58 @@ test("collection save rejects legacy tag fields and invalid combinations before 
     const result = await actions.createCollection({}, form);
     assert.equal(result.success, false);
     assert.match(result.message, /valid collection rule/);
+  }
+});
+
+
+test("collection form preserves the selected rule when an action resets the form", () => {
+  for (const editing of [false, true]) {
+    const states = [];
+    let cursor = 0;
+    const jsx = (type, props) => ({ type, props });
+    const { CollectionCreateForm } = load("app/dashboard/[[...section]]/collection-create-fields.tsx", {
+      react: {
+        useActionState: () => [{ message: "", success: false }, () => {}, false],
+        useId: () => "tags",
+        useMemo: (fn) => fn(),
+        useState: (initial) => {
+          const index = cursor++;
+          if (!(index in states)) states[index] = typeof initial === "function" ? initial() : initial;
+          return [states[index], (next) => { states[index] = typeof next === "function" ? next(states[index]) : next; }];
+        },
+      },
+      "react/jsx-runtime": { jsx, jsxs: jsx },
+      "../actions": { createCollection() {} },
+      "./dashboard.module.css": { default: {} },
+      "./action-controls": { ActionButton() {} },
+    });
+    const render = () => {
+      cursor = 0;
+      return CollectionCreateForm({ products: [], initial: {
+        ...(editing ? { id: "collection-1" } : {}),
+        type: "DYNAMIC", match: "ANY",
+        rules: [{ field: "name", operator: "contains", value: "old" }],
+      } });
+    };
+    const find = (node, label) => {
+      if (!node || typeof node !== "object") return undefined;
+      if (node.props?.["aria-label"] === label) return node;
+      for (const child of [node.props?.children].flat(Infinity)) {
+        const found = find(child, label);
+        if (found) return found;
+      }
+    };
+    let form = render();
+    find(form, "Rule field").props.onChange({ target: { value: "tags" } });
+    form = render();
+    find(form, "Rule value").props.onChange({ target: { value: "bundle" } });
+    form = render();
+    let prevented = false;
+    form.props.onReset({ preventDefault() { prevented = true; } });
+    assert.equal(prevented, true);
+    form = render();
+    assert.equal(find(form, "Rule field").props.value, "tags");
+    assert.equal(find(form, "Rule operator").props.value, "contains");
+    assert.equal(find(form, "Rule value").props.value, "bundle");
   }
 });

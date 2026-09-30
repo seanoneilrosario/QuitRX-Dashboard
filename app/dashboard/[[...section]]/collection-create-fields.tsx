@@ -39,15 +39,7 @@ export default function CollectionCreateFields({ initial }: { initial?: Record<s
   const previewUrl = useRef("");
 
   useEffect(() => {
-    const form = imageInput.current?.form;
-    const clearPreview = () => {
-      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
-      previewUrl.current = "";
-      setImagePreview("");
-    };
-    form?.addEventListener("reset", clearPreview);
     return () => {
-      form?.removeEventListener("reset", clearPreview);
       if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
     };
   }, []);
@@ -224,14 +216,9 @@ export function CollectionCreateForm({
     <form
       action={action}
       className={styles.form}
-      onReset={() => {
-        if (!editing) {
-          setType("MANUAL");
-          setMatch("ALL");
-          setSelected([]);
-          setRules([{ id: 0, field: "tags", operator: "contains", value: "" }]);
-        }
-      }}
+      // React resets forms after actions resolve, including handled save errors.
+      // Keep the visible controls aligned with the current rule state.
+      onReset={(event) => event.preventDefault()}
     >
       <input type="hidden" name="_id" value={editing ? String(initial.id) : ""} />
       {Array.isArray(initial?.rules) &&

@@ -12,6 +12,7 @@ import {
   type RetailRecord,
 } from "@/lib/quithero-admin";
 import { deleteStorefrontCollection, syncStorefrontCollection } from "@/lib/sanity-storefront";
+import { isValidCollectionRule } from "@/lib/collection-products";
 import { auth } from "@/auth";
 import { bundleComponentResponse, BundleSelection } from "@/lib/product-bundles";
 import { assertBundleSkuAvailable, bundleCreationFields, persistBundleGroup } from "@/lib/create-bundle";
@@ -158,22 +159,11 @@ function validateCollection(body: Record<string, unknown>, editing = false) {
     if (
       !Array.isArray(body.rules) ||
       !body.rules.length ||
-      body.rules.some((rule) => {
-        if (!rule || typeof rule !== "object") return true;
-        const value = rule as Record<string, unknown>;
-        return (
-          !["name", "brand", "tag"].includes(String(value.field)) ||
-          !["equals", "contains"].includes(String(value.operator)) ||
-          typeof value.value !== "string" ||
-          !value.value.trim()
-        );
-      })
+      body.rules.some((rule) => !isValidCollectionRule(rule))
     )
       throw new Error("Complete at least one valid collection rule.");
     for (const rule of body.rules as Record<string, unknown>[]) {
-      if (rule.field === "tag" && rule.operator !== "equals")
-        throw new Error("Tag rules only support Equals. Choose a complete tag name.");
-      rule.value = (rule.value as string).trim();
+      if (typeof rule.value === "string") rule.value = rule.value.trim();
     }
     if (
       !Array.isArray(body.productIds) ||
@@ -242,7 +232,7 @@ export async function createCollection(
         image: collectionImage,
         productIds: Array.isArray(body.productIds) ? (body.productIds as string[]) : undefined,
         rules: Array.isArray(body.rules)
-          ? (body.rules as { field: string; operator: string; value: string }[])
+          ? (body.rules as { field: string; operator: string; value: string | number }[])
           : undefined,
       });
     } catch (error) {

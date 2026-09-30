@@ -197,7 +197,9 @@ export async function safeRetailRecord(path: string) {
 // collection. The list endpoint still exposes its saved configuration.
 export async function safeCollectionForEdit(id: string) {
   const result = await safeRetailRecord(`/collections/${encodeURIComponent(id)}`);
-  if (result.data || !result.error?.includes('Operator "contains" is not valid for tag')) return result;
+  const legacyRuleError = result.error?.includes('Operator "contains" is not valid for tag') ||
+    /Unsupported collection rule field: tag(?:[.\s)]|$)/.test(result.error ?? "");
+  if (result.data || !legacyRuleError) return result;
   try {
     for (let page = 1; ; page += 1) {
       const payload = await retailRequest<unknown>(`/collections?page=${page}&limit=100`, { cache: "no-store" });

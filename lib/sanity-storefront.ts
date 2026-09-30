@@ -1,6 +1,6 @@
 import "server-only";
 
-type StorefrontRule = { field: string; operator: string; value: string };
+type StorefrontRule = { field: string; operator: string; value: string | number };
 type StorefrontCollection = {
   id: string;
   name: string;

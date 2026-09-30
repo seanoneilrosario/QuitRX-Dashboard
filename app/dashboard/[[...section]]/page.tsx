@@ -1100,13 +1100,6 @@ function ResourcePage({
                   <Link href={`/dashboard/collections/view?id=${encodeURIComponent(text(item.id))}`}>
                     View
                   </Link>
-                  <a
-                    href={storefrontUrl("collections", item)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View collections on store
-                  </a>
                 </>
               )}
               {kind !== "collections" && (

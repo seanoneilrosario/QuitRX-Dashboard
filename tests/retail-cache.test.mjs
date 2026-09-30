@@ -465,9 +465,9 @@ test("collection rules accept exactly the supported field/operator combinations"
   const { isValidCollectionRule, collectionRuleValue } = load("lib/collection-products.ts", {});
   const allowed = {
     name: ["contains", "equals"], description: ["contains"], sku: ["contains"],
-    tags: ["contains"], brand: ["contains"], category: ["contains"],
-    productType: ["contains"], vendor: ["contains"],
-    price: ["greater_than", "less_than"], inventory: ["greater_than"],
+    tags: ["equals", "contains"], brand: ["contains"], category: ["contains"],
+    productType: ["equals", "contains"], vendor: ["contains"],
+    price: ["equals", "greater_than", "less_than"], inventory: ["equals", "greater_than", "less_than"],
   };
   for (const [field, operators] of Object.entries(allowed)) {
     for (const operator of ["contains", "equals", "greater_than", "less_than"]) {
@@ -499,6 +499,10 @@ test("collection preview matches text, numeric boundaries, and ALL/ANY rules", (
   }
   assert.deepEqual(match("name", "equals", "mint pod"), ["pod"]);
   assert.deepEqual(match("name", "equals", "pod"), []);
+  assert.deepEqual(match("tags", "equals", "pods"), ["pod"]);
+  assert.deepEqual(match("tags", "equals", "pod"), []);
+  assert.deepEqual(match("productType", "equals", "refill"), ["pod"]);
+  assert.deepEqual(match("productType", "equals", "fill"), []);
   assert.deepEqual(match("price", "greater_than", 12.5), []);
   assert.deepEqual(match("price", "less_than", 12.5), ["empty"]);
   assert.deepEqual(match("inventory", "greater_than", 0), ["pod"]);

@@ -134,7 +134,7 @@ export default function CollectionCreateFields({ initial }: { initial?: Record<s
 
 function initialRules(initial?: Record<string, unknown>): Rule[] {
   if (!Array.isArray(initial?.rules))
-    return [{ id: 0, field: "tags", operator: "contains", value: "" }];
+    return [{ id: 0, field: "tags", operator: "equals", value: "" }];
   const rules = initial.rules.flatMap((rule, id) => {
     if (!rule || typeof rule !== "object") return [];
     const value = { ...rule } as Record<string, unknown>;
@@ -156,7 +156,7 @@ function initialRules(initial?: Record<string, unknown>): Rule[] {
       },
     ];
   });
-  return rules.length ? rules : [{ id: 0, field: "tags", operator: "contains", value: "" }];
+  return rules.length ? rules : [{ id: 0, field: "tags", operator: "equals", value: "" }];
 }
 
 export function CollectionCreateForm({
@@ -343,7 +343,7 @@ export function CollectionCreateForm({
               ))}
             </datalist>
             {rules.some((rule) => rule.field === "tags") && (
-              <small>Contains matches part of any tag. Matching ignores case.</small>
+              <small>Equals matches a complete tag name. Contains matches part of a tag. Matching ignores case.</small>
             )}
             <div className={styles.ruleList}>
               {rules.map((rule) => (
@@ -434,7 +434,7 @@ export function CollectionCreateForm({
               onClick={() => {
                 setRules((current) => [
                   ...current,
-                  { id: nextRuleId, field: "tags", operator: "contains", value: "" },
+                  { id: nextRuleId, field: "tags", operator: "equals", value: "" },
                 ]);
                 setNextRuleId((current) => current + 1);
               }}

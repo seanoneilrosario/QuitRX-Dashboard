@@ -22,40 +22,21 @@ function refreshBundleCatalog() {
   revalidatePath("/dashboard", "layout");
 }
 
-export async function deleteBundle(productId: string, tagRelationshipIds: string[]): Promise<BundleActionState> {
+export async function deleteBundle(productId: string, _tagRelationshipIds: string[]): Promise<BundleActionState> {
   const session = await auth();
   if (!(session?.user as { isStaff?: boolean } | undefined)?.isStaff) {
     return { message: "Please sign in as staff to delete bundles.", success: false };
   }
   const id = productId.trim();
   if (!id) return { message: "Select a bundle to delete.", success: false };
-  const relationshipIds = [...new Set(tagRelationshipIds.map((relationshipId) => relationshipId.trim()).filter(Boolean))];
-  if (!relationshipIds.length) {
-    return { message: "Unable to find this product's bundle tag. Refresh the page and try again.", success: false };
-  }
   try {
-    await withTimeout(Promise.all([
-      retailRequest(`/products/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "ARCHIVED" }),
-      }),
-      ...relationshipIds.map((relationshipId) =>
-        retailRequest(`/product-tags/${encodeURIComponent(relationshipId)}`, { method: "DELETE" }),
-      ),
-    ]), 12_000);
+    await withTimeout(retailRequest(`/products/${encodeURIComponent(id)}`, { method: "DELETE" }), 12_000);
     refreshBundleCatalog();
-    return { message: "Bundle removed and product archived.", success: true };
+    return { message: "Bundle and catalog product deleted.", success: true };
   } catch (error) {
-    try {
-      const response = await withTimeout(retailRequest<unknown>(`/products/${encodeURIComponent(id)}`, { cache: "no-store" }), 5_000);
-      const wrapper = response && typeof response === "object" ? response as Record<string, unknown> : {};
-      const product = wrapper.data && typeof wrapper.data === "object" ? wrapper.data as Record<string, unknown> : wrapper;
-      if (String(product.status ?? "").toUpperCase() === "ARCHIVED") {
-        refreshBundleCatalog();
-        return { message: "Bundle removed and product archived.", success: true };
-      }
-    } catch {
-      // Preserve the original deletion error when read-back is unavailable.
+    if (error instanceof Error && /^QuitHero API returned 404\b/.test(error.message)) {
+      refreshBundleCatalog();
+      return { message: "Bundle and catalog product deleted.", success: true };
     }
     return { message: error instanceof Error ? error.message : "Unable to delete bundle.", success: false };
   }

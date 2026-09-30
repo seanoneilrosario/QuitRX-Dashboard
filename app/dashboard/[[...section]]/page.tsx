@@ -1156,14 +1156,13 @@ function CollectionView({
       />
       <Notice message={error} />
       {matchingProducts.length ? (
-        <Table heads={["Product", "Slug", "Brand", "Product type", "Actions"]}>
+        <Table heads={["Product", "Slug", "Brand", "Product type"]}>
           {matchingProducts.map((product) => (
             <tr key={text(product.id)}>
               <td><strong>{text(product.name, "Unnamed product")}</strong><small>{text(product.sku, "")}</small></td>
               <td>{text(product.slug)}</td>
               <td>{text(nested(product, "brand")?.name ?? product.brand)}</td>
               <td>{text(nested(product, "productType")?.name ?? product.productType)}</td>
-              <td><Link href={`/dashboard/products/edit?id=${encodeURIComponent(text(product.id))}`}>Edit</Link></td>
             </tr>
           ))}
         </Table>

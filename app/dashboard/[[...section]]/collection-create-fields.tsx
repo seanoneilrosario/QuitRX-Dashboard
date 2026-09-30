@@ -176,7 +176,8 @@ export function CollectionCreateForm({
   );
   const [match, setMatch] = useState<"ALL" | "ANY">(initial?.match === "ANY" ? "ANY" : "ALL");
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<string[]>(() => collectionProductIds(initial));
+  const initialProductIds = collectionProductIds(initial);
+  const [selected, setSelected] = useState<string[]>(() => initialProductIds);
   const [rules, setRules] = useState<Rule[]>(() => initialRules(initial));
   const [nextRuleId, setNextRuleId] = useState(() => initialRules(initial).length);
   const visibleProducts = useMemo(() => {
@@ -221,6 +222,9 @@ export function CollectionCreateForm({
       onReset={(event) => event.preventDefault()}
     >
       <input type="hidden" name="_id" value={editing ? String(initial.id) : ""} />
+      {editing && initial?.type === "MANUAL" && (
+        <input type="hidden" name="_initialProductIds" value={JSON.stringify(initialProductIds)} />
+      )}
       {Array.isArray(initial?.rules) &&
         initial.rules.some((rule) => rule && typeof rule === "object" && rule.field === "tag") && (
           <p role="status">

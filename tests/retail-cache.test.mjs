@@ -426,6 +426,34 @@ test("editing a manual collection patches its updated product IDs", async () => 
   assert.deepEqual(request.body.productIds, []);
 });
 
+test("removing products from a manual collection deletes them from the catalog", async () => {
+  const requests = [];
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": { updateTag: () => {}, revalidatePath: () => {} },
+    "next/navigation": { redirect: () => {} },
+    "@/auth": { auth: async () => ({ user: { isStaff: true } }) },
+    "@/lib/product-bundles": {},
+    "@/lib/create-bundle": {},
+    "@/lib/quithero-admin": { RETAIL_CATALOG_TAG: "retail-catalog", retailRequest: async (path, options = {}) => { requests.push({ path, method: options.method ?? "GET" }); return { id: "collection-1" }; } },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async () => {} },
+  }, { File, Error });
+  const form = new FormData();
+  form.set("_id", "collection-1");
+  form.set("_initialProductIds", JSON.stringify(["product-1", "product-2"]));
+  form.set("name", "Quit Kits");
+  form.set("slug", "quit-kits");
+  form.set("type", "MANUAL");
+  form.set("match", "ALL");
+  form.set("productIds", JSON.stringify(["product-2"]));
+  form.set("rules", "[]");
+  const result = await actions.createCollection({}, form);
+  assert.equal(result.success, true, result.message);
+  assert.deepEqual(requests, [
+    { path: "/collections/collection-1", method: "PATCH" },
+    { path: "/products/product-1", method: "DELETE" },
+  ]);
+});
+
 test("storefront collection sync writes the Sanity productCollection shape", async () => {
   let request;
   const storefront = load("lib/sanity-storefront.ts", { "server-only": {} }, {

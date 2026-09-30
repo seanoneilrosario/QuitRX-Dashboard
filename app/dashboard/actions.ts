@@ -186,6 +186,18 @@ export async function createCollection(
     const body = payload(formData);
     if (!body.slug && typeof body.name === "string") body.slug = slugify(body.name);
     validateCollection(body, Boolean(id));
+    let removedProductIds: string[] = [];
+    if (id && body.type === "MANUAL" && formData.has("_initialProductIds")) {
+      try {
+        const initialProductIds = JSON.parse(String(formData.get("_initialProductIds"))) as unknown;
+        if (!Array.isArray(initialProductIds) || initialProductIds.some((value) => typeof value !== "string" || !value))
+          throw new Error();
+        const selectedProductIds = new Set(body.productIds as string[]);
+        removedProductIds = initialProductIds.filter((productId) => !selectedProductIds.has(productId));
+      } catch {
+        throw new Error("Unable to verify products removed from this collection.");
+      }
+    }
     const retailBody = { ...body };
     if (retailBody.type === "DYNAMIC") delete retailBody.productIds;
     const saved = await retailRequest<unknown>(
@@ -216,6 +228,14 @@ export async function createCollection(
       data = collectionRecord(await retailRequest(`/collections/${encodeURIComponent(collectionId)}`, {
         cache: "no-store",
       }));
+    }
+    for (const productId of removedProductIds) {
+      try {
+        await retailRequest(`/products/${encodeURIComponent(productId)}`, { method: "DELETE" });
+      } catch (error) {
+        const alreadyDeleted = error instanceof Error && /^QuitHero API returned 404\b/.test(error.message);
+        if (!alreadyDeleted) throw error;
+      }
     }
     const collectionImage = typeof data.image === "string"
       ? data.image

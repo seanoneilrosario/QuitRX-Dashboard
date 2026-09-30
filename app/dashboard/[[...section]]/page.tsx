@@ -35,6 +35,7 @@ import {
 } from "@/lib/sanity-storefront";
 import {
   dynamicCollectionProductIds,
+  isValidCollectionRule,
   type CollectionProductOption,
   type CollectionRule,
 } from "@/lib/collection-products";
@@ -972,6 +973,13 @@ function collectionProductOptions(products: RetailRecord[]) {
             name: text(product.name, "Unnamed product"),
             slug: text(product.slug, ""),
             brand: text(nested(product, "brand")?.name ?? product.brand, ""),
+            description: text(product.description, ""),
+            sku: text(product.sku, ""),
+            category: text(nested(product, "category")?.name ?? product.category, ""),
+            productType: text(nested(product, "productType")?.name ?? product.productType, ""),
+            vendor: text(nested(product, "vendor")?.name ?? product.vendor, ""),
+            price: product.price != null && String(product.price).trim() && Number.isFinite(Number(product.price)) ? Number(product.price) : undefined,
+            inventory: product.inventory != null && String(product.inventory).trim() && Number.isFinite(Number(product.inventory)) ? Number(product.inventory) : undefined,
             tags: Array.isArray(product.tags)
               ? product.tags
                   .map((tag) =>
@@ -1013,6 +1021,7 @@ function collectionProductCount(collection: RetailRecord, products: CollectionPr
     ? collection.rules.flatMap((rule): CollectionRule[] => {
         if (!rule || typeof rule !== "object") return [];
         const value = rule as RetailRecord;
+<<<<<<< HEAD
         return ["name", "brand", "tag", "price", "inventory"].includes(String(value.field)) &&
           ["equals", "contains", "greaterThan", "lessThan"].includes(String(value.operator)) &&
           typeof value.value === "string"
@@ -1024,6 +1033,10 @@ function collectionProductCount(collection: RetailRecord, products: CollectionPr
               },
             ]
           : [];
+=======
+        const normalized = { ...value, field: value.field === "tag" ? "tags" : value.field };
+        return isValidCollectionRule(normalized) ? [normalized] : [];
+>>>>>>> 2f268024cdb6fb21ed01f5dddbf8a1f9e43ae841
       })
     : [];
   return dynamicCollectionProductIds(products, rules, collection.match === "ANY" ? "ANY" : "ALL")

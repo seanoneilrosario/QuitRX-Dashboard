@@ -7,11 +7,12 @@ import ts from "typescript";
 function load(file, mocks, globals = {}) {
   const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
   const { outputText } = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   });
   const exports = {};
   vm.runInNewContext(outputText, {
     exports, require: (name) => {
+      if (name === "@/lib/collection-products") return load("lib/collection-products.ts", {});
       if (!(name in mocks)) throw new Error(`Unexpected import: ${name}`);
       return mocks[name];
     }, ...globals,
@@ -388,9 +389,9 @@ test("manual and dynamic collection creation send structured API payloads", asyn
   dynamic.set("type", "DYNAMIC");
   dynamic.set("match", "ANY");
   dynamic.set("productIds", "[]");
-  dynamic.set("rules", JSON.stringify([{ field: "tag", operator: "equals", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }]));
+  dynamic.set("rules", JSON.stringify([{ field: "tags", operator: "contains", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }]));
   assert.equal((await actions.createCollection({}, dynamic)).success, true);
-  assert.deepEqual(requests[1], { path: "/collections", body: { name: "Bundle Products", type: "DYNAMIC", match: "ANY", rules: [{ field: "tag", operator: "equals", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }], slug: "bundle-products" } });
+  assert.deepEqual(requests[1], { path: "/collections", body: { name: "Bundle Products", type: "DYNAMIC", match: "ANY", rules: [{ field: "tags", operator: "contains", value: "bundle" }, { field: "name", operator: "contains", value: "POD" }], slug: "bundle-products" } });
 });
 
 test("collection creation returns validation and API errors", async () => {
@@ -460,46 +461,86 @@ test("collection editor uses product IDs instead of collection relationship IDs"
   ] }), ["product-1", "product-2", "product-3"]);
 });
 
-test("dynamic collection rules match normalized tags with ALL and ANY logic", () => {
+test("collection rules accept exactly the supported field/operator combinations", () => {
+  const { isValidCollectionRule, collectionRuleValue } = load("lib/collection-products.ts", {});
+  const allowed = {
+    name: ["contains", "equals"], description: ["contains"], sku: ["contains"],
+    tags: ["contains"], brand: ["contains"], category: ["contains"],
+    productType: ["contains"], vendor: ["contains"],
+    price: ["greater_than", "less_than"], inventory: ["greater_than"],
+  };
+  for (const [field, operators] of Object.entries(allowed)) {
+    for (const operator of ["contains", "equals", "greater_than", "less_than"]) {
+      assert.equal(isValidCollectionRule({ field, operator, value: ["price", "inventory"].includes(field) ? 0 : "pod" }), operators.includes(operator), field + " " + operator);
+    }
+  }
+  for (const field of ["tag", "unknown", "__proto__"]) {
+    assert.equal(isValidCollectionRule({ field, operator: "contains", value: "pod" }), false);
+  }
+  for (const value of ["0", "", null, Infinity, NaN]) {
+    assert.equal(isValidCollectionRule({ field: "price", operator: "greater_than", value }), false);
+  }
+  assert.equal(isValidCollectionRule({ field: "tags", operator: "contains", value: " " }), false);
+  assert.equal(collectionRuleValue("inventory", "0"), 0);
+  assert.equal(collectionRuleValue("price", "12.50"), 12.5);
+  assert.equal(collectionRuleValue("inventory", ""), "");
+});
+
+test("collection preview matches text, numeric boundaries, and ALL/ANY rules", () => {
   const { dynamicCollectionProductIds } = load("lib/collection-products.ts", {});
   const products = [
-    { id: "mint", name: "Mint Pod", slug: "mint-pod", brand: "Acme", tags: ["Bundle", "Mint"] },
-    { id: "berry", name: "Berry Pod", slug: "berry-pod", brand: "Acme", tags: ["Bundle", "Berry"] },
+    { id: "pod", name: "Mint Pod", slug: "mint-pod", description: "Fresh mint", sku: "RX-001", tags: [" Pods "], brand: "RELX", category: "Vapes", productType: "Refill", vendor: "Supplier", price: 12.5, inventory: 2 },
+    { id: "empty", name: "Empty", slug: "empty", tags: [], brand: "", price: 0, inventory: 0 },
+    { id: "missing", name: "Missing", slug: "missing", tags: [], brand: "" },
   ];
-  assert.deepEqual(dynamicCollectionProductIds(products, [{ field: "tag", operator: "equals", value: "bundle" }, { field: "tag", operator: "equals", value: "mint" }], "ALL"), ["mint"]);
-  assert.deepEqual(dynamicCollectionProductIds(products, [{ field: "tag", operator: "equals", value: "mint" }, { field: "name", operator: "contains", value: "berry" }], "ANY"), ["mint", "berry"]);
-});
-
-test("collection tag equality trims whitespace but does not match partial tags", () => {
-  const { dynamicCollectionProductIds } = load("lib/collection-products.ts", {});
-  const products = [{ id: "pod", name: "Mint Pod", brand: "Acme", slug: "mint-pod", tags: [" Pods "] }];
   const match = (field, operator, value) => Array.from(dynamicCollectionProductIds(products, [{ field, operator, value }], "ALL"));
-  assert.deepEqual(match("tag", "equals", " PODS "), ["pod"]);
-  assert.deepEqual(match("tag", "equals", "pod"), []);
-  assert.deepEqual(match("tag", "contains", "pod"), []);
-  assert.deepEqual(match("name", "contains", "pod"), ["pod"]);
-  assert.deepEqual(match("brand", "contains", "ac"), ["pod"]);
+  for (const [field, value] of Object.entries({ name: " POD ", description: "MINT", sku: "rx-", tags: "pod", brand: "rel", category: "vape", productType: "fill", vendor: "sup" })) {
+    assert.deepEqual(match(field, "contains", value), ["pod"]);
+  }
+  assert.deepEqual(match("name", "equals", "mint pod"), ["pod"]);
+  assert.deepEqual(match("name", "equals", "pod"), []);
+  assert.deepEqual(match("price", "greater_than", 12.5), []);
+  assert.deepEqual(match("price", "less_than", 12.5), ["empty"]);
+  assert.deepEqual(match("inventory", "greater_than", 0), ["pod"]);
+  assert.deepEqual(match("inventory", "greater_than", "0"), ["pod"]);
+  assert.deepEqual(match("price", "less_than", ""), []);
+  const rules = [{ field: "brand", operator: "contains", value: "RELX" }, { field: "inventory", operator: "greater_than", value: 0 }];
+  assert.deepEqual(Array.from(dynamicCollectionProductIds(products, rules, "ALL")), ["pod"]);
+  assert.deepEqual(Array.from(dynamicCollectionProductIds(products, [...rules, { field: "name", operator: "equals", value: "Empty" }], "ANY")), ["pod", "empty"]);
 });
 
-test("collection creation rejects tag contains before contacting QuitHero", async () => {
+test("collection creation and editing submit tags and numeric rules for the API and storefront", async () => {
+  const requests = [];
+  const synced = [];
   const actions = load("app/dashboard/actions.ts", {
-    "next/cache": {},
+    "next/cache": { updateTag() {}, revalidatePath() {} },
     "next/navigation": {},
     "@/auth": { auth: async () => ({ user: { isStaff: true } }) },
     "@/lib/product-bundles": {},
     "@/lib/create-bundle": {},
-    "@/lib/quithero-admin": { retailRequest: async () => assert.fail("Invalid rule reached the API") },
-    "@/lib/sanity-storefront": {},
-  }, { Error });
-  const form = new FormData();
-  form.set("name", "Pods");
-  form.set("type", "DYNAMIC");
-  form.set("match", "ALL");
-  form.set("productIds", "[]");
-  form.set("rules", JSON.stringify([{ field: "tag", operator: "contains", value: "pod" }]));
-  const result = await actions.createCollection({}, form);
-  assert.equal(result.success, false);
-  assert.match(result.message, /Tag rules only support Equals/);
+    "@/lib/quithero-admin": { retailRequest: async (path, init) => {
+      requests.push({ path, method: init.method, body: JSON.parse(init.body) });
+      return { id: "pods" };
+    } },
+    "@/lib/sanity-storefront": { syncStorefrontCollection: async (data) => synced.push(data) },
+  }, { Error, File });
+  for (const id of ["", "pods"]) {
+    const form = new FormData();
+    form.set("_id", id);
+    form.set("name", "Pods");
+    form.set("type", "DYNAMIC");
+    form.set("match", "ALL");
+    form.set("productIds", '["product-1"]');
+    form.set("rules", JSON.stringify([{ field: "tags", operator: "contains", value: " pod " }, { field: "inventory", operator: "greater_than", value: 0 }]));
+    const result = await actions.createCollection({}, form);
+    assert.equal(result.success, true, result.message);
+    assert.equal(requests.at(-1).path, id ? "/collections/pods" : "/collections");
+    assert.equal(requests.at(-1).method, id ? "PATCH" : "POST");
+    assert.deepEqual(requests.at(-1).body.rules, [{ field: "tags", operator: "contains", value: "pod" }, { field: "inventory", operator: "greater_than", value: 0 }]);
+    assert.equal(requests.at(-1).body.productIds, undefined);
+    assert.equal(synced.at(-1).rules[0].operator, "contains");
+    assert.equal(synced.at(-1).rules[1].value, 0);
+  }
 });
 
 test("frequently bought together recommendations are read and saved in order", async () => {
@@ -523,14 +564,15 @@ test("frequently bought together recommendations are read and saved in order", a
   assert.deepEqual(document.relatedProductIds, ["related-2", "related-1"]);
 });
 
-test("collection edit recovers legacy rules from a fresh paginated collection list", async () => {
+for (const message of ['Operator "contains" is not valid for tag.', "Unsupported collection rule field: tag"]) {
+test("collection edit recovers from " + message, async () => {
   const requests = [];
   const collection = { id: "broken", name: "Test", type: "DYNAMIC", rules: [{ field: "tag", operator: "contains", value: "pod" }] };
   const api = load("lib/quithero-admin.ts", { "server-only": {} }, {
     process: { env: { QUITHERO_API_KEY: "test-key" } },
     fetch: async (url, options) => {
       requests.push({ url, options });
-      if (url.endsWith("/collections/broken")) return { ok: false, status: 400, text: async () => JSON.stringify({ message: 'Operator "contains" is not valid for tag.' }) };
+      if (url.endsWith("/collections/broken")) return { ok: false, status: 400, text: async () => JSON.stringify({ message }) };
       return { ok: true, text: async () => JSON.stringify({ data: url.includes("page=2") ? [collection] : [], pagination: { totalPages: 2 } }) };
     },
   });
@@ -542,8 +584,10 @@ test("collection edit recovers legacy rules from a fresh paginated collection li
   assert.ok(requests.every(({ options }) => options.cache === "no-store"));
 });
 
+}
+
 test("collection edit preserves missing-record and unrelated API errors", async () => {
-  for (const message of ['Operator "contains" is not valid for tag.', "Unauthorized"]) {
+  for (const message of ['Operator "contains" is not valid for tag.', "Unsupported collection rule field: tag", "Unauthorized", "Unsupported collection rule field: vendor"]) {
     let requests = 0;
     const api = load("lib/quithero-admin.ts", { "server-only": {} }, {
       process: { env: { QUITHERO_API_KEY: "test-key" } },
@@ -557,6 +601,82 @@ test("collection edit preserves missing-record and unrelated API errors", async 
     const result = await api.safeCollectionForEdit("missing");
     assert.equal(result.data, undefined);
     assert.ok(result.error.includes(message));
-    assert.equal(requests, message === "Unauthorized" ? 1 : 2);
+    assert.equal(requests, ["Unauthorized", "Unsupported collection rule field: vendor"].includes(message) ? 1 : 2);
+  }
+});
+
+
+test("collection save rejects legacy tag fields and invalid combinations before API writes", async () => {
+  const actions = load("app/dashboard/actions.ts", {
+    "next/cache": {}, "next/navigation": {},
+    "@/auth": { auth: async () => ({ user: { isStaff: true } }) },
+    "@/lib/product-bundles": {}, "@/lib/create-bundle": {},
+    "@/lib/quithero-admin": { retailRequest: async () => assert.fail("Invalid rules reached API") },
+    "@/lib/sanity-storefront": {},
+  }, { Error });
+  for (const rule of [
+    { field: "tag", operator: "contains", value: "pod" },
+    { field: "tags", operator: "equals", value: "pod" },
+    { field: "inventory", operator: "less_than", value: 0 },
+    { field: "price", operator: "greater_than", value: "0" },
+  ]) {
+    const form = new FormData();
+    for (const [key, value] of Object.entries({ name: "Test", type: "DYNAMIC", match: "ALL", productIds: "[]", rules: JSON.stringify([rule]) })) form.set(key, value);
+    const result = await actions.createCollection({}, form);
+    assert.equal(result.success, false);
+    assert.match(result.message, /valid collection rule/);
+  }
+});
+
+
+test("collection form preserves the selected rule when an action resets the form", () => {
+  for (const editing of [false, true]) {
+    const states = [];
+    let cursor = 0;
+    const jsx = (type, props) => ({ type, props });
+    const { CollectionCreateForm } = load("app/dashboard/[[...section]]/collection-create-fields.tsx", {
+      react: {
+        useActionState: () => [{ message: "", success: false }, () => {}, false],
+        useId: () => "tags",
+        useMemo: (fn) => fn(),
+        useState: (initial) => {
+          const index = cursor++;
+          if (!(index in states)) states[index] = typeof initial === "function" ? initial() : initial;
+          return [states[index], (next) => { states[index] = typeof next === "function" ? next(states[index]) : next; }];
+        },
+      },
+      "react/jsx-runtime": { jsx, jsxs: jsx },
+      "../actions": { createCollection() {} },
+      "./dashboard.module.css": { default: {} },
+      "./action-controls": { ActionButton() {} },
+    });
+    const render = () => {
+      cursor = 0;
+      return CollectionCreateForm({ products: [], initial: {
+        ...(editing ? { id: "collection-1" } : {}),
+        type: "DYNAMIC", match: "ANY",
+        rules: [{ field: "name", operator: "contains", value: "old" }],
+      } });
+    };
+    const find = (node, label) => {
+      if (!node || typeof node !== "object") return undefined;
+      if (node.props?.["aria-label"] === label) return node;
+      for (const child of [node.props?.children].flat(Infinity)) {
+        const found = find(child, label);
+        if (found) return found;
+      }
+    };
+    let form = render();
+    find(form, "Rule field").props.onChange({ target: { value: "tags" } });
+    form = render();
+    find(form, "Rule value").props.onChange({ target: { value: "bundle" } });
+    form = render();
+    let prevented = false;
+    form.props.onReset({ preventDefault() { prevented = true; } });
+    assert.equal(prevented, true);
+    form = render();
+    assert.equal(find(form, "Rule field").props.value, "tags");
+    assert.equal(find(form, "Rule operator").props.value, "contains");
+    assert.equal(find(form, "Rule value").props.value, "bundle");
   }
 });

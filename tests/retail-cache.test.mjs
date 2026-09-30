@@ -494,13 +494,14 @@ test("collection preview matches text, numeric boundaries, and ALL/ANY rules", (
     { id: "missing", name: "Missing", slug: "missing", tags: [], brand: "" },
   ];
   const match = (field, operator, value) => Array.from(dynamicCollectionProductIds(products, [{ field, operator, value }], "ALL"));
-  for (const [field, value] of Object.entries({ name: " POD ", description: "MINT", sku: "rx-", tags: "pod", brand: "rel", category: "vape", productType: "fill", vendor: "sup" })) {
+  for (const [field, value] of Object.entries({ name: " POD ", description: "MINT", sku: "rx-", tags: "pods", brand: "rel", category: "vape", productType: "fill", vendor: "sup" })) {
     assert.deepEqual(match(field, "contains", value), ["pod"]);
   }
   assert.deepEqual(match("name", "equals", "mint pod"), ["pod"]);
   assert.deepEqual(match("name", "equals", "pod"), []);
   assert.deepEqual(match("tags", "equals", "pods"), ["pod"]);
   assert.deepEqual(match("tags", "equals", "pod"), []);
+  assert.deepEqual(match("tags", "contains", "pod"), []);
   assert.deepEqual(match("productType", "equals", "refill"), ["pod"]);
   assert.deepEqual(match("productType", "equals", "fill"), []);
   assert.deepEqual(match("price", "greater_than", 12.5), []);

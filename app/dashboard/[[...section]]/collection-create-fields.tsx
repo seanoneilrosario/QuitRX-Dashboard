@@ -343,7 +343,7 @@ export function CollectionCreateForm({
               ))}
             </datalist>
             {rules.some((rule) => rule.field === "tags") && (
-              <small>Equals matches a complete tag name. Contains matches part of a tag. Matching ignores case.</small>
+              <small>Tags match a complete tag name, like Shopify&apos;s &quot;includes&quot; condition. Matching ignores case.</small>
             )}
             <div className={styles.ruleList}>
               {rules.map((rule) => (

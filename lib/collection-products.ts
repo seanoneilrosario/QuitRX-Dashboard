@@ -108,7 +108,10 @@ export function productMatchesCollectionRule(
         : actual === Number(rule.value);
   }
   const expected = String(rule.value).trim().toLocaleLowerCase();
-  const values = rule.field === "tags" ? product.tags : [product[rule.field]];
+  if (rule.field === "tags") {
+    return product.tags.some((tag) => tag.trim().toLocaleLowerCase() === expected);
+  }
+  const values = [product[rule.field]];
   return values.some(
     (value) =>
       typeof value === "string" &&

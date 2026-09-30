@@ -22,22 +22,6 @@ export function collectionProductIds(initial?: Record<string, unknown>) {
   return [];
 }
 
-<<<<<<< HEAD
-export type CollectionProductOption = { id: string; name: string; slug: string; brand: string; tags: string[]; prices: number[]; inventory: number };
-export type CollectionRule = { field: "name" | "brand" | "tag" | "price" | "inventory"; operator: "equals" | "contains" | "greaterThan" | "lessThan"; value: string };
-
-export function productMatchesCollectionRule(product: CollectionProductOption, rule: CollectionRule) {
-  if (rule.field === "price" || rule.field === "inventory") {
-    const expected = Number(rule.value);
-    if (!Number.isFinite(expected)) return false;
-    const values = rule.field === "price" ? product.prices : [product.inventory];
-    return values.some((value) => rule.operator === "greaterThan" ? value > expected : rule.operator === "lessThan" ? value < expected : value === expected);
-  }
-  if (rule.field === "tag" && rule.operator !== "equals") return false;
-  const expected = rule.value.trim().toLocaleLowerCase();
-  const values = rule.field === "tag" ? product.tags : [rule.field === "brand" ? product.brand : product.name];
-  return Boolean(expected) && values.some((value) => rule.operator === "contains" ? value.trim().toLocaleLowerCase().includes(expected) : value.trim().toLocaleLowerCase() === expected);
-=======
 export const collectionRuleOperators = {
   name: ["contains", "equals"],
   description: ["contains"],
@@ -47,8 +31,8 @@ export const collectionRuleOperators = {
   category: ["contains"],
   productType: ["contains"],
   vendor: ["contains"],
-  price: ["greater_than", "less_than"],
-  inventory: ["greater_than"],
+  price: ["equals", "greater_than", "less_than"],
+  inventory: ["equals", "greater_than", "less_than"],
 } as const;
 
 export const collectionRuleLabels = {
@@ -87,7 +71,6 @@ export type CollectionProductOption = {
 
 export function isNumericCollectionField(field: string) {
   return field === "price" || field === "inventory";
->>>>>>> 2f268024cdb6fb21ed01f5dddbf8a1f9e43ae841
 }
 
 export function collectionRuleValue(field: string, value: string | number) {
@@ -120,7 +103,9 @@ export function productMatchesCollectionRule(
     if (typeof actual !== "number" || !Number.isFinite(actual)) return false;
     return rule.operator === "greater_than"
       ? actual > Number(rule.value)
-      : actual < Number(rule.value);
+      : rule.operator === "less_than"
+        ? actual < Number(rule.value)
+        : actual === Number(rule.value);
   }
   const expected = String(rule.value).trim().toLocaleLowerCase();
   const values = rule.field === "tags" ? product.tags : [product[rule.field]];

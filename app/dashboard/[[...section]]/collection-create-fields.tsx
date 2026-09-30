@@ -137,11 +137,6 @@ function initialRules(initial?: Record<string, unknown>): Rule[] {
     return [{ id: 0, field: "tags", operator: "contains", value: "" }];
   const rules = initial.rules.flatMap((rule, id) => {
     if (!rule || typeof rule !== "object") return [];
-<<<<<<< HEAD
-    const value = rule as Record<string, unknown>;
-    if (!["name", "brand", "tag", "price", "inventory"].includes(String(value.field)) || !["equals", "contains", "greaterThan", "lessThan"].includes(String(value.operator))) return [];
-    return [{ id, field: value.field as Rule["field"], operator: value.field === "tag" ? "equals" as const : value.operator as Rule["operator"], value: typeof value.value === "string" ? value.value : "" }];
-=======
     const value = { ...rule } as Record<string, unknown>;
     if (value.field === "tag") value.field = "tags";
     if (
@@ -160,7 +155,6 @@ function initialRules(initial?: Record<string, unknown>): Rule[] {
             : "",
       },
     ];
->>>>>>> 2f268024cdb6fb21ed01f5dddbf8a1f9e43ae841
   });
   return rules.length ? rules : [{ id: 0, field: "tags", operator: "contains", value: "" }];
 }
@@ -218,40 +212,6 @@ export function CollectionCreateForm({
   const updateRule = (id: number, patch: Partial<Rule>) =>
     setRules((current) => current.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule)));
 
-<<<<<<< HEAD
-  return <form action={action} className={styles.form} onReset={() => { if (!editing) { setType("MANUAL"); setMatch("ALL"); setSelected([]); setRules([{ id: 0, field: "tag", operator: "equals", value: "" }]); } }}>
-    <input type="hidden" name="_id" value={editing ? String(initial.id) : ""}/>
-    {hasLegacyTagRule && !state.success && <p role="status">This collection has an unsupported Tag Contains rule. Change it to Equals, then review the complete tag name and matching products before saving.</p>}
-    <div className={styles.inlineForm}><CollectionCreateFields initial={initial}/>
-      <fieldset className={`${styles.collectionMode} ${styles.full}`} disabled={pending}>
-        <legend>Collection type</legend>
-        <label><input type="radio" name="type" value="MANUAL" checked={type === "MANUAL"} onChange={() => setType("MANUAL")}/><span>Manual<small>Select individual products.</small></span></label>
-        <label><input type="radio" name="type" value="DYNAMIC" checked={type === "DYNAMIC"} onChange={() => setType("DYNAMIC")}/><span>Dynamic<small>Include products using rules.</small></span></label>
-      </fieldset>
-      <input type="hidden" name="match" value={match}/><input type="hidden" name="productIds" value={JSON.stringify(type === "DYNAMIC" ? dynamicProductIds : selected)}/><input type="hidden" name="rules" value={JSON.stringify(rules.map(({ field, operator, value }) => ({ field, operator, value: value.trim() })))}/>
-      {type === "MANUAL" ? <section className={styles.collectionProducts}>
-        <label>Search products<input type="search" placeholder="Search name, slug, brand or tag" value={query} onChange={(event) => setQuery(event.target.value)} disabled={pending}/></label>
-        <small>{selected.length} {selected.length === 1 ? "product" : "products"} selected · selected products are shown first</small>
-        <div className={styles.productChoices}>{visibleProducts.map((product) => <label key={product.id}><input type="checkbox" checked={selected.includes(product.id)} onChange={() => setSelected((current) => current.includes(product.id) ? current.filter((id) => id !== product.id) : [...current, product.id])} disabled={pending}/><span>{product.name}<small>{[product.brand, product.slug].filter(Boolean).join(" · ")}</small></span></label>)}{!visibleProducts.length && <div><strong>No products found</strong><small>Try a different search.</small></div>}</div>
-      </section> : <section className={styles.collectionProducts}>
-        <label>Products must match<select value={match} onChange={(event) => setMatch(event.target.value as "ALL" | "ANY")} disabled={pending}><option value="ALL">All rules</option><option value="ANY">Any rule</option></select></label>
-        <small>{dynamicProductIds.length} matching {dynamicProductIds.length === 1 ? "product" : "products"}</small>
-        <datalist id={tagListId}>{availableTags.map((tag) => <option key={tag} value={tag}/>)}</datalist>
-        {rules.some((rule) => rule.field === "tag") && <small>Tags must match a complete tag name. Choose an existing tag from the suggestions.</small>}
-        <div className={styles.ruleList}>{rules.map((rule) => <div className={styles.ruleRow} key={rule.id}>
-          <select aria-label="Rule field" value={rule.field} onChange={(event) => { const field = event.target.value as Rule["field"]; updateRule(rule.id, { field, operator: field === "tag" || field === "price" || field === "inventory" || rule.operator === "greaterThan" || rule.operator === "lessThan" ? "equals" : rule.operator }); }} disabled={pending}><option value="name">Name</option><option value="brand">Brand</option><option value="tag">Tag</option><option value="price">Price</option><option value="inventory">Inventory</option></select>
-          <select aria-label="Rule operator" value={rule.operator} onChange={(event) => updateRule(rule.id, { operator: event.target.value as Rule["operator"] })} disabled={pending}><option value="equals">Equals</option>{rule.field === "price" || rule.field === "inventory" ? <><option value="greaterThan">Greater than</option><option value="lessThan">Less than</option></> : rule.field !== "tag" && <option value="contains">Contains</option>}</select>
-          <input required type={rule.field === "price" || rule.field === "inventory" ? "number" : "text"} step={rule.field === "price" ? "0.01" : undefined} min={rule.field === "price" || rule.field === "inventory" ? "0" : undefined} aria-label="Rule value" list={rule.field === "tag" ? tagListId : undefined} placeholder={rule.field === "tag" ? "Tag name" : "Value"} value={rule.value} onChange={(event) => updateRule(rule.id, { value: event.target.value })} disabled={pending}/>
-          <button type="button" onClick={() => setRules((current) => current.filter((item) => item.id !== rule.id))} disabled={pending || rules.length === 1}>Remove</button>
-        </div>)}</div>
-        <button type="button" className={styles.secondary} disabled={pending} onClick={() => { setRules((current) => [...current, { id: nextRuleId, field: "tag", operator: "equals", value: "" }]); setNextRuleId((current) => current + 1); }}>+ Add rule</button>
-        <div className={styles.productChoices} aria-label="Matching products">{products.filter((product) => dynamicProductIds.includes(product.id)).map((product) => <label key={product.id}><input type="checkbox" checked readOnly aria-label={`${product.name} matches the collection rules`}/><span>{product.name}<small>{[product.brand, product.slug].filter(Boolean).join(" · ")}</small></span></label>)}{!dynamicProductIds.length && <div><strong>No matching products</strong><small>Change the rules to include products.</small></div>}</div>
-      </section>}
-    </div>
-    <ActionButton className={styles.primary} pending={pending} pendingLabel={editing ? "Updating…" : "Creating…"} disabled={type === "MANUAL" ? !editing && !selected.length : rules.some((rule) => !rule.value.trim())}>{editing ? "Save changes" : "Create collection"}</ActionButton>
-    {state.message && <p role={state.success ? "status" : "alert"} className={`${styles.collectionFeedback} ${state.success ? styles.success : ""}`}>{state.message}</p>}
-  </form>;
-=======
   return (
     <form
       action={action}
@@ -536,5 +496,4 @@ export function CollectionCreateForm({
       )}
     </form>
   );
->>>>>>> 2f268024cdb6fb21ed01f5dddbf8a1f9e43ae841
 }

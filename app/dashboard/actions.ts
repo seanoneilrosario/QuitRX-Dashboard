@@ -159,35 +159,11 @@ function validateCollection(body: Record<string, unknown>, editing = false) {
     if (
       !Array.isArray(body.rules) ||
       !body.rules.length ||
-<<<<<<< HEAD
-      body.rules.some((rule) => {
-        if (!rule || typeof rule !== "object") return true;
-        const value = rule as Record<string, unknown>;
-        return (
-          !["name", "brand", "tag", "price", "inventory"].includes(String(value.field)) ||
-          !["equals", "contains", "greaterThan", "lessThan"].includes(String(value.operator)) ||
-          typeof value.value !== "string" ||
-          !value.value.trim()
-        );
-      })
-    )
-      throw new Error("Complete at least one valid collection rule.");
-    for (const rule of body.rules as Record<string, unknown>[]) {
-      const numeric = rule.field === "price" || rule.field === "inventory";
-      if (rule.field === "tag" && rule.operator !== "equals")
-        throw new Error("Tag rules only support Equals. Choose a complete tag name.");
-      if (numeric && rule.operator === "contains")
-        throw new Error("Price and inventory rules do not support Contains.");
-      if (!numeric && (rule.operator === "greaterThan" || rule.operator === "lessThan"))
-        throw new Error("Greater than and Less than are only available for price and inventory rules.");
-      rule.value = (rule.value as string).trim();
-=======
       body.rules.some((rule) => !isValidCollectionRule(rule))
     )
       throw new Error("Complete at least one valid collection rule.");
     for (const rule of body.rules as Record<string, unknown>[]) {
       if (typeof rule.value === "string") rule.value = rule.value.trim();
->>>>>>> 2f268024cdb6fb21ed01f5dddbf8a1f9e43ae841
     }
     if (
       !Array.isArray(body.productIds) ||

@@ -992,18 +992,6 @@ function collectionProductOptions(products: RetailRecord[]) {
                   )
                   .filter(Boolean)
               : [],
-            prices: Array.isArray(product.variants)
-              ? product.variants.flatMap((variant) => {
-                  const rawPrice = (variant as RetailRecord).price;
-                  const value = typeof rawPrice === "string"
-                    ? Number(rawPrice.replace(/[^0-9.-]/g, ""))
-                    : Number(rawPrice);
-                  return Number.isFinite(value) ? [value] : [];
-                })
-              : [],
-            inventory: Array.isArray(product.variants)
-              ? product.variants.reduce((total, variant) => total + (Number((variant as RetailRecord).inventory) || 0), 0)
-              : 0,
           },
         ]
       : [],
@@ -1021,22 +1009,8 @@ function collectionProductCount(collection: RetailRecord, products: CollectionPr
     ? collection.rules.flatMap((rule): CollectionRule[] => {
         if (!rule || typeof rule !== "object") return [];
         const value = rule as RetailRecord;
-<<<<<<< HEAD
-        return ["name", "brand", "tag", "price", "inventory"].includes(String(value.field)) &&
-          ["equals", "contains", "greaterThan", "lessThan"].includes(String(value.operator)) &&
-          typeof value.value === "string"
-          ? [
-              {
-                field: value.field as CollectionRule["field"],
-                operator: value.operator as CollectionRule["operator"],
-                value: value.value,
-              },
-            ]
-          : [];
-=======
         const normalized = { ...value, field: value.field === "tag" ? "tags" : value.field };
         return isValidCollectionRule(normalized) ? [normalized] : [];
->>>>>>> 2f268024cdb6fb21ed01f5dddbf8a1f9e43ae841
       })
     : [];
   return dynamicCollectionProductIds(products, rules, collection.match === "ANY" ? "ANY" : "ALL")

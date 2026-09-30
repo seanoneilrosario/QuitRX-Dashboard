@@ -22,7 +22,7 @@ function refreshBundleCatalog() {
   revalidatePath("/dashboard", "layout");
 }
 
-export async function deleteBundle(productId: string, _tagRelationshipIds: string[]): Promise<BundleActionState> {
+export async function deleteBundle(productId: string, tagRelationshipIds: string[]): Promise<BundleActionState> {
   const session = await auth();
   if (!(session?.user as { isStaff?: boolean } | undefined)?.isStaff) {
     return { message: "Please sign in as staff to delete bundles.", success: false };
@@ -30,14 +30,17 @@ export async function deleteBundle(productId: string, _tagRelationshipIds: strin
   const id = productId.trim();
   if (!id) return { message: "Select a bundle to delete.", success: false };
   try {
-    await withTimeout(retailRequest(`/products/${encodeURIComponent(id)}`, { method: "DELETE" }), 12_000);
+    await withTimeout(retailRequest(`/products/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "ARCHIVED" }),
+    }), 12_000);
+    await Promise.allSettled(
+      [...new Set(tagRelationshipIds.map((relationshipId) => relationshipId.trim()).filter(Boolean))]
+        .map((relationshipId) => retailRequest(`/product-tags/${encodeURIComponent(relationshipId)}`, { method: "DELETE" })),
+    );
     refreshBundleCatalog();
-    return { message: "Bundle and catalog product deleted.", success: true };
+    return { message: "Bundle deleted and removed from the product catalog.", success: true };
   } catch (error) {
-    if (error instanceof Error && /^QuitHero API returned 404\b/.test(error.message)) {
-      refreshBundleCatalog();
-      return { message: "Bundle and catalog product deleted.", success: true };
-    }
     return { message: error instanceof Error ? error.message : "Unable to delete bundle.", success: false };
   }
 }

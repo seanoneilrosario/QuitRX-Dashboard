@@ -294,7 +294,7 @@ test("bundle saves multiple variant options per uniquely positioned selection", 
   assert.equal(calls.length, 0);
 });
 
-test("bundle deletion requires staff, deletes the catalog product and refreshes caches", async () => {
+test("bundle deletion requires staff, archives the catalog product and refreshes caches", async () => {
   let staff = false;
   let failure;
   const calls = [];
@@ -322,8 +322,13 @@ test("bundle deletion requires staff, deletes the catalog product and refreshes 
   failure = undefined;
   assert.equal((await actions.deleteBundle("product/1", ["relationship-1"])).success, true);
   assert.deepEqual(calls.at(-1), {
-    path: "/products/product%2F1",
+    path: "/product-tags/relationship-1",
     method: "DELETE",
+  });
+  assert.deepEqual(calls.at(-2), {
+    path: "/products/product%2F1",
+    method: "PATCH",
+    body: JSON.stringify({ status: "ARCHIVED" }),
   });
   assert.deepEqual(cacheEvents, ["retail-catalog", "/dashboard"]);
 });

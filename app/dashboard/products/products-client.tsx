@@ -245,8 +245,9 @@ export default function ProductsClient({
           .includes(query.toLowerCase());
 
       const matchesStatus =
-        !status ||
-        text(item.status, "").toLowerCase() === status.toLowerCase();
+        status
+          ? text(item.status, "").toLowerCase() === status.toLowerCase()
+          : text(item.status, "").toUpperCase() !== "ARCHIVED";
 
       return matchesQuery && matchesStatus;
     })

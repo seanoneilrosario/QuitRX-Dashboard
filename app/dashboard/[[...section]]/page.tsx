@@ -34,6 +34,7 @@ import {
   type FrequentlyBoughtTogether,
 } from "@/lib/sanity-storefront";
 import {
+  collectionProductIds,
   dynamicCollectionProductIds,
   isValidCollectionRule,
   type CollectionProductOption,
@@ -79,6 +80,7 @@ const routes = [
   ["products", "frequently-bought"],
   ["collections"],
   ["collections", "edit"],
+  ["collections", "view"],
   ["bundles"],
   ["bundles", "create"],
   ["customers"],
@@ -998,13 +1000,8 @@ function collectionProductOptions(products: RetailRecord[]) {
   );
 }
 
-function collectionProductCount(collection: RetailRecord, products: CollectionProductOption[]) {
-  if (collection.type !== "DYNAMIC")
-    return Array.isArray(collection.products)
-      ? collection.products.length
-      : Array.isArray(collection.productIds)
-        ? collection.productIds.length
-        : 0;
+function collectionMatchingProductIds(collection: RetailRecord, products: CollectionProductOption[]) {
+  if (collection.type !== "DYNAMIC") return collectionProductIds(collection);
   const rules = Array.isArray(collection.rules)
     ? collection.rules.flatMap((rule): CollectionRule[] => {
         if (!rule || typeof rule !== "object") return [];
@@ -1013,8 +1010,11 @@ function collectionProductCount(collection: RetailRecord, products: CollectionPr
         return isValidCollectionRule(normalized) ? [normalized] : [];
       })
     : [];
-  return dynamicCollectionProductIds(products, rules, collection.match === "ANY" ? "ANY" : "ALL")
-    .length;
+  return dynamicCollectionProductIds(products, rules, collection.match === "ANY" ? "ANY" : "ALL");
+}
+
+function collectionProductCount(collection: RetailRecord, products: CollectionProductOption[]) {
+  return collectionMatchingProductIds(collection, products).length;
 }
 
 function ResourcePage({
@@ -1097,12 +1097,15 @@ function ResourcePage({
                   <Link href={`/dashboard/collections/edit?id=${encodeURIComponent(text(item.id))}`}>
                     Edit
                   </Link>
+                  <Link href={`/dashboard/collections/view?id=${encodeURIComponent(text(item.id))}`}>
+                    View
+                  </Link>
                   <a
                     href={storefrontUrl("collections", item)}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    View
+                    View collections on store
                   </a>
                 </>
               )}
@@ -1118,6 +1121,62 @@ function ResourcePage({
           </tr>
         ))}
       </Table>
+    </>
+  );
+}
+
+function CollectionView({
+  item,
+  products,
+  error,
+}: {
+  item?: RetailRecord;
+  products: RetailRecord[];
+  error?: string;
+}) {
+  if (!item)
+    return (
+      <>
+        <Header title="Collection not found" description="Choose a collection from the collection list." />
+        <Notice message={error} />
+        <Link className={styles.primary} href="/dashboard/collections">Back to collections</Link>
+      </>
+    );
+
+  const productOptions = collectionProductOptions(products);
+  const matchingIds = new Set(collectionMatchingProductIds(item, productOptions));
+  const matchingProducts = products.filter((product) => typeof product.id === "string" && matchingIds.has(product.id));
+
+  return (
+    <>
+      <Header
+        title={text(item.name, "Collection")}
+        description={`${matchingProducts.length} ${matchingProducts.length === 1 ? "product" : "products"} in this collection.`}
+        action={
+          <div className={styles.collectionDeleteActions}>
+            <Link className={styles.secondary} href="/dashboard/collections">Back to collections</Link>
+            <a className={styles.primary} href={storefrontUrl("collections", item)} target="_blank" rel="noopener noreferrer">
+              View collections on store
+            </a>
+          </div>
+        }
+      />
+      <Notice message={error} />
+      {matchingProducts.length ? (
+        <Table heads={["Product", "Slug", "Brand", "Product type", "Actions"]}>
+          {matchingProducts.map((product) => (
+            <tr key={text(product.id)}>
+              <td><strong>{text(product.name, "Unnamed product")}</strong><small>{text(product.sku, "")}</small></td>
+              <td>{text(product.slug)}</td>
+              <td>{text(nested(product, "brand")?.name ?? product.brand)}</td>
+              <td>{text(nested(product, "productType")?.name ?? product.productType)}</td>
+              <td><Link href={`/dashboard/products/edit?id=${encodeURIComponent(text(product.id))}`}>Edit</Link></td>
+            </tr>
+          ))}
+        </Table>
+      ) : (
+        <div className={styles.emptyState}><strong>No matching products</strong><span>This collection currently has no products.</span></div>
+      )}
     </>
   );
 }
@@ -2097,14 +2156,16 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       />
     );
   } else if (area === "collections") {
-    if (sub === "edit") {
+    if (sub === "edit" || sub === "view") {
       const [result, products] = await Promise.all([
         id
           ? safeCollectionForEdit(id)
           : Promise.resolve({ data: undefined, error: undefined }),
         safeRetailAll("/products"),
       ]);
-      content = (
+      content = sub === "view" ? (
+        <CollectionView item={result.data} products={products.data} error={result.error ?? products.error} />
+      ) : (
         <CollectionEdit
           item={result.data}
           products={products.data}

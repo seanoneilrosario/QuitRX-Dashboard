@@ -984,6 +984,18 @@ function collectionProductOptions(products: RetailRecord[]) {
                   )
                   .filter(Boolean)
               : [],
+            prices: Array.isArray(product.variants)
+              ? product.variants.flatMap((variant) => {
+                  const rawPrice = (variant as RetailRecord).price;
+                  const value = typeof rawPrice === "string"
+                    ? Number(rawPrice.replace(/[^0-9.-]/g, ""))
+                    : Number(rawPrice);
+                  return Number.isFinite(value) ? [value] : [];
+                })
+              : [],
+            inventory: Array.isArray(product.variants)
+              ? product.variants.reduce((total, variant) => total + (Number((variant as RetailRecord).inventory) || 0), 0)
+              : 0,
           },
         ]
       : [],
@@ -1001,8 +1013,8 @@ function collectionProductCount(collection: RetailRecord, products: CollectionPr
     ? collection.rules.flatMap((rule): CollectionRule[] => {
         if (!rule || typeof rule !== "object") return [];
         const value = rule as RetailRecord;
-        return ["name", "brand", "tag"].includes(String(value.field)) &&
-          ["equals", "contains"].includes(String(value.operator)) &&
+        return ["name", "brand", "tag", "price", "inventory"].includes(String(value.field)) &&
+          ["equals", "contains", "greaterThan", "lessThan"].includes(String(value.operator)) &&
           typeof value.value === "string"
           ? [
               {

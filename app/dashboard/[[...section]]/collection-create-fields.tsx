@@ -63,7 +63,7 @@ function initialRules(initial?: Record<string, unknown>): Rule[] {
   const rules = initial.rules.flatMap((rule, id) => {
     if (!rule || typeof rule !== "object") return [];
     const value = rule as Record<string, unknown>;
-    if (!["name", "brand", "tag"].includes(String(value.field)) || !["equals", "contains"].includes(String(value.operator))) return [];
+    if (!["name", "brand", "tag", "price", "inventory"].includes(String(value.field)) || !["equals", "contains", "greaterThan", "lessThan"].includes(String(value.operator))) return [];
     return [{ id, field: value.field as Rule["field"], operator: value.field === "tag" ? "equals" as const : value.operator as Rule["operator"], value: typeof value.value === "string" ? value.value : "" }];
   });
   return rules.length ? rules : [{ id: 0, field: "tag", operator: "equals", value: "" }];
@@ -92,7 +92,7 @@ export function CollectionCreateForm({ products, initial }: { products: ProductO
 
   return <form action={action} className={styles.form} onReset={() => { if (!editing) { setType("MANUAL"); setMatch("ALL"); setSelected([]); setRules([{ id: 0, field: "tag", operator: "equals", value: "" }]); } }}>
     <input type="hidden" name="_id" value={editing ? String(initial.id) : ""}/>
-    {hasLegacyTagRule && !state.success && <p role="status">This collection has an unsupported Tag Contains rule. It has been changed to Equals in this form. Review the complete tag name and matching products, then save to repair the collection.</p>}
+    {hasLegacyTagRule && !state.success && <p role="status">This collection has an unsupported Tag Contains rule. Change it to Equals, then review the complete tag name and matching products before saving.</p>}
     <div className={styles.inlineForm}><CollectionCreateFields initial={initial}/>
       <fieldset className={`${styles.collectionMode} ${styles.full}`} disabled={pending}>
         <legend>Collection type</legend>
@@ -110,9 +110,9 @@ export function CollectionCreateForm({ products, initial }: { products: ProductO
         <datalist id={tagListId}>{availableTags.map((tag) => <option key={tag} value={tag}/>)}</datalist>
         {rules.some((rule) => rule.field === "tag") && <small>Tags must match a complete tag name. Choose an existing tag from the suggestions.</small>}
         <div className={styles.ruleList}>{rules.map((rule) => <div className={styles.ruleRow} key={rule.id}>
-          <select aria-label="Rule field" value={rule.field} onChange={(event) => updateRule(rule.id, { field: event.target.value as Rule["field"], ...(event.target.value === "tag" ? { operator: "equals" as const } : {}) })} disabled={pending}><option value="name">Name</option><option value="brand">Brand</option><option value="tag">Tag</option></select>
-          <select aria-label="Rule operator" value={rule.operator} onChange={(event) => updateRule(rule.id, { operator: event.target.value as Rule["operator"] })} disabled={pending}><option value="equals">Equals</option>{rule.field !== "tag" && <option value="contains">Contains</option>}</select>
-          <input required aria-label="Rule value" list={rule.field === "tag" ? tagListId : undefined} placeholder={rule.field === "tag" ? "Exact tag name" : "Value"} value={rule.value} onChange={(event) => updateRule(rule.id, { value: event.target.value })} disabled={pending}/>
+          <select aria-label="Rule field" value={rule.field} onChange={(event) => { const field = event.target.value as Rule["field"]; updateRule(rule.id, { field, operator: field === "tag" || field === "price" || field === "inventory" || rule.operator === "greaterThan" || rule.operator === "lessThan" ? "equals" : rule.operator }); }} disabled={pending}><option value="name">Name</option><option value="brand">Brand</option><option value="tag">Tag</option><option value="price">Price</option><option value="inventory">Inventory</option></select>
+          <select aria-label="Rule operator" value={rule.operator} onChange={(event) => updateRule(rule.id, { operator: event.target.value as Rule["operator"] })} disabled={pending}><option value="equals">Equals</option>{rule.field === "price" || rule.field === "inventory" ? <><option value="greaterThan">Greater than</option><option value="lessThan">Less than</option></> : rule.field !== "tag" && <option value="contains">Contains</option>}</select>
+          <input required type={rule.field === "price" || rule.field === "inventory" ? "number" : "text"} step={rule.field === "price" ? "0.01" : undefined} min={rule.field === "price" || rule.field === "inventory" ? "0" : undefined} aria-label="Rule value" list={rule.field === "tag" ? tagListId : undefined} placeholder={rule.field === "tag" ? "Tag name" : "Value"} value={rule.value} onChange={(event) => updateRule(rule.id, { value: event.target.value })} disabled={pending}/>
           <button type="button" onClick={() => setRules((current) => current.filter((item) => item.id !== rule.id))} disabled={pending || rules.length === 1}>Remove</button>
         </div>)}</div>
         <button type="button" className={styles.secondary} disabled={pending} onClick={() => { setRules((current) => [...current, { id: nextRuleId, field: "tag", operator: "equals", value: "" }]); setNextRuleId((current) => current + 1); }}>+ Add rule</button>

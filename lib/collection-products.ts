@@ -10,10 +10,16 @@ export function collectionProductIds(initial?: Record<string, unknown>) {
   return [];
 }
 
-export type CollectionProductOption = { id: string; name: string; slug: string; brand: string; tags: string[] };
-export type CollectionRule = { field: "name" | "brand" | "tag"; operator: "equals" | "contains"; value: string };
+export type CollectionProductOption = { id: string; name: string; slug: string; brand: string; tags: string[]; prices: number[]; inventory: number };
+export type CollectionRule = { field: "name" | "brand" | "tag" | "price" | "inventory"; operator: "equals" | "contains" | "greaterThan" | "lessThan"; value: string };
 
 export function productMatchesCollectionRule(product: CollectionProductOption, rule: CollectionRule) {
+  if (rule.field === "price" || rule.field === "inventory") {
+    const expected = Number(rule.value);
+    if (!Number.isFinite(expected)) return false;
+    const values = rule.field === "price" ? product.prices : [product.inventory];
+    return values.some((value) => rule.operator === "greaterThan" ? value > expected : rule.operator === "lessThan" ? value < expected : value === expected);
+  }
   if (rule.field === "tag" && rule.operator !== "equals") return false;
   const expected = rule.value.trim().toLocaleLowerCase();
   const values = rule.field === "tag" ? product.tags : [rule.field === "brand" ? product.brand : product.name];

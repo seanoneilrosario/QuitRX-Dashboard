@@ -245,8 +245,8 @@ export default function ProductsClient({
           .includes(query.toLowerCase());
 
       const matchesStatus =
-        status
-          ? text(item.status, "").toLowerCase() === status.toLowerCase();
+        !status ||
+        text(item.status, "").toLowerCase() === status.toLowerCase();
 
       return matchesQuery && matchesStatus;
     })

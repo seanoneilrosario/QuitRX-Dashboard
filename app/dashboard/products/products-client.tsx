@@ -246,8 +246,7 @@ export default function ProductsClient({
 
       const matchesStatus =
         status
-          ? text(item.status, "").toLowerCase() === status.toLowerCase()
-          : text(item.status, "").toUpperCase() !== "ARCHIVED";
+          ? text(item.status, "").toLowerCase() === status.toLowerCase();
 
       return matchesQuery && matchesStatus;
     })

@@ -1,9 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getProducts, getProductVariants } from "@/app/dashboard/actions";
 import { ActionButton, ActionLink } from "../[[...section]]/action-controls";
 import styles from "../[[...section]]/dashboard.module.css";
 
@@ -11,6 +8,23 @@ type RetailRecord = Record<string, unknown>;
 
 type ProductVariant = RetailRecord & {
   __availableStock?: number;
+};
+
+type RetailPagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+type ProductPageData = {
+  data: RetailRecord[];
+  pagination: RetailPagination;
+  error?: string;
+};
+
+type ProductVariantsData = {
+  data: ProductVariant[];
 };
 
 function text(value: unknown, fallback = "—") {
@@ -109,22 +123,37 @@ function Pagination({
   page,
   total,
   totalPages,
-  isPending,
-  onPageChange,
+  query,
+  status,
 }: {
   page: number;
   total: number;
   totalPages: number;
-  isPending: boolean;
-  onPageChange: (page: number) => void;
+  query: string;
+  status: string;
 }) {
   if (totalPages <= 1) return null;
+
+  const href = (nextPage: number) => {
+    const params = new URLSearchParams();
+
+    params.set("page", String(nextPage));
+
+    if (query) {
+      params.set("q", query);
+    }
+
+    if (status) {
+      params.set("status", status);
+    }
+
+    return `/dashboard/products?${params.toString()}`;
+  };
 
   return (
     <nav
       className={styles.pagination}
       aria-label="Pagination"
-      aria-busy={isPending}
     >
       <span>
         Showing page {page} of {totalPages} ·{" "}
@@ -133,17 +162,7 @@ function Pagination({
 
       <div>
         {page > 1 ? (
-          <Link
-            href="#"
-            onClick={(event) => {
-              event.preventDefault();
-
-              if (!isPending) {
-                onPageChange(page - 1);
-              }
-            }}
-            aria-disabled={isPending}
-          >
+          <Link href={href(page - 1)}>
             Previous
           </Link>
         ) : (
@@ -151,17 +170,7 @@ function Pagination({
         )}
 
         {page < totalPages ? (
-          <Link
-            href="#"
-            onClick={(event) => {
-              event.preventDefault();
-
-              if (!isPending) {
-                onPageChange(page + 1);
-              }
-            }}
-            aria-disabled={isPending}
-          >
+          <Link href={href(page + 1)}>
             Next
           </Link>
         ) : (
@@ -185,96 +194,23 @@ export default function ProductsClient({
   status: string;
   page: number;
   storefrontBaseUrl: string;
-  initialData: Awaited<ReturnType<typeof getProducts>>;
-  initialVariants: Awaited<ReturnType<typeof getProductVariants>>;
+  initialData: ProductPageData;
+  initialVariants: ProductVariantsData;
   initialError?: string;
 }) {
-  const queryClient = useQueryClient();
+  
+  const items = initialData.data;
+  const variants = initialVariants.data as ProductVariant[];
 
-  const [currentPage, setCurrentPage] = useState(page);
-    const [isPending, startTransition] = useTransition();
+  const total = initialData.pagination.total;
+  const totalPages = initialData.pagination.totalPages;
 
-    const pageSize = 50;
+  const safeCurrentPage = Math.min(
+    page,
+    Math.max(1, totalPages),
+  );
 
-    useEffect(() => {
-    setCurrentPage(page);
-    }, [page]);
-
-    const goToPage = (nextPage: number) => {
-    startTransition(() => {
-        setCurrentPage(nextPage);
-    });
-    };
-
-  const productsQuery = useQuery({
-    queryKey: ["products"],
-    queryFn: async () => {
-      console.log("🟣 TANSTACK QUERY FN RUNNING: PRODUCTS");
-      return getProducts();
-    },
-    initialData,
-  });
-
-  const variantsQuery = useQuery({
-    queryKey: ["product-variants"],
-    queryFn: async () => {
-      console.log("🟣 TANSTACK QUERY FN RUNNING: PRODUCT VARIANTS");
-      return getProductVariants();
-    },
-    initialData: initialVariants,
-  });
-
-  useEffect(() => {
-    console.log("🟡 PRODUCTS CACHE:", {
-      products: queryClient.getQueryData(["products"]),
-      variants: queryClient.getQueryData(["product-variants"]),
-    });
-  }, [queryClient]);
-
-  const items = productsQuery.data.data;
-  const variants = variantsQuery.data.data as ProductVariant[];
-
-  const filtered = items
-    .filter((item) => {
-      const matchesQuery =
-        !query ||
-        `${text(item.name)} ${text(item.slug)} ${text(item.status)} ${text(
-          nested(item, "brand")?.name,
-        )} ${text(nested(item, "productType")?.name)}`
-          .toLowerCase()
-          .includes(query.toLowerCase());
-
-      const matchesStatus =
-        !status ||
-        text(item.status, "").toLowerCase() === status.toLowerCase();
-
-      return matchesQuery && matchesStatus;
-    })
-    .sort((a, b) => {
-      const newest = Date.parse(text(b.createdAt, ""));
-      const oldest = Date.parse(text(a.createdAt, ""));
-
-      return (
-        (Number.isNaN(newest) ? 0 : newest) -
-        (Number.isNaN(oldest) ? 0 : oldest)
-      );
-    });
-
-  const total = filtered.length;
-    const totalPages = Math.max(
-    1,
-    Math.ceil(total / pageSize),
-    );
-
-    const safeCurrentPage = Math.min(
-    currentPage,
-    totalPages,
-    );
-
-    const visibleItems = filtered.slice(
-    (safeCurrentPage - 1) * pageSize,
-    safeCurrentPage * pageSize,
-    );
+  const visibleItems = items;
 
   return (
     <>
@@ -336,87 +272,76 @@ export default function ProductsClient({
         </div>
       </div>
 
-      {isPending ? (
-  <div
-    className={styles.customerLoading}
-    aria-live="polite"
-    aria-busy="true"
-  >
-    <div className={styles.customerSpinner} />
-    <span>Loading products…</span>
-    </div>
-    ) : (
-    <Table
+      <Table
         heads={[
-        "Product",
-        "Brand",
-        "Type",
-        "Inventory",
-        "Status",
-        "Actions",
+          "Product",
+          "Brand",
+          "Type",
+          "Inventory",
+          "Status",
+          "Actions",
         ]}
-    >
+      >
         {visibleItems.map((item, index) => {
-        const productVariants = variants.filter(
+          const productVariants = variants.filter(
             (variant) =>
             text(variant.productId, "") === text(item.id, ""),
-        );
+          );
 
-        const inventory = productVariants.reduce(
-            (total, variant) =>
-            total + Number(variant.__availableStock ?? 0),
-            0,
-        );
+          const inventory = productVariants.reduce(
+              (total, variant) =>
+              total + Number(variant.__availableStock ?? 0),
+              0,
+          );
 
-        return (
-            <tr key={text(item.id, String(index))}>
-            <td>
-                <strong>{text(item.name)}</strong>
-                <small>{text(item.slug)}</small>
-            </td>
+          return (
+              <tr key={text(item.id, String(index))}>
+              <td>
+                  <strong>{text(item.name)}</strong>
+                  <small>{text(item.slug)}</small>
+              </td>
 
-            <td>
-                {text(
-                nested(item, "brand")?.name ?? item.brandId,
-                )}
-            </td>
+              <td>
+                  {text(
+                  nested(item, "brand")?.name ?? item.brandId,
+                  )}
+              </td>
 
-            <td>
-                {text(
-                nested(item, "productType")?.name ??
-                    item.productTypeId,
-                )}
-            </td>
+              <td>
+                  {text(
+                  nested(item, "productType")?.name ??
+                      item.productTypeId,
+                  )}
+              </td>
 
-            <td>
-                {inventory} in stock for {productVariants.length}{" "}
-                {productVariants.length === 1 ? "variant" : "variants"}
-            </td>
+              <td>
+                  {inventory} in stock for {productVariants.length}{" "}
+                  {productVariants.length === 1 ? "variant" : "variants"}
+              </td>
 
-            <td>
-                <Status value={item.status} />
-            </td>
+              <td>
+                  <Status value={item.status} />
+              </td>
 
-            <td>
-                <div className={styles.actions}>
-                <a
-                    href={storefrontUrl(
-                    storefrontBaseUrl,
-                    "product",
-                    item,
-                    )}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                >
-                    View
-                </a>
-                </div>
-            </td>
-            </tr>
-        );
+              <td>
+                  <div className={styles.actions}>
+                  <a
+                      href={storefrontUrl(
+                      storefrontBaseUrl,
+                      "product",
+                      item,
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                  >
+                      View
+                  </a>
+                  </div>
+              </td>
+              </tr>
+          );
         })}
-    </Table>
-    )}
+      </Table>
 
       {!visibleItems.length ? (
         <div className={styles.notice}>
@@ -431,9 +356,9 @@ export default function ProductsClient({
         page={safeCurrentPage}
         total={total}
         totalPages={totalPages}
-        isPending={isPending}
-        onPageChange={goToPage}
-        />
+        query={query}
+        status={status}
+      />
     </>
   );
 }

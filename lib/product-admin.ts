@@ -1,0 +1,124 @@
+import "server-only";
+import { records, RetailPagination, RETAIL_CATALOG_TAG } from "./quithero-admin";
+
+const API_BASE = (process.env.QUITHERO_API_BASE_URL ?? "https://retail-api.quithero.com.au").replace(/\/$/, "");
+
+const cachedCatalogPaths = new Set([
+  "/products", "/product-variants", "/brands", "/product-type", "/collections", "/tags", "/product-options",
+]);
+
+function apiErrorMessage(body: unknown) {
+  if (typeof body === "string") return body.trim();
+  if (!body || typeof body !== "object") return "";
+
+  const { message, error } = body as Record<string, unknown>;
+  if (Array.isArray(message)) return message.filter((item): item is string => typeof item === "string").join(" ");
+  if (typeof message === "string") return message.trim();
+  if (typeof error === "string") return error.trim();
+  return "";
+}
+
+const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+function retryDelay(response: Response, attempt: number) {
+  const retryAfter = response.headers.get("retry-after");
+  const seconds = retryAfter ? Number(retryAfter) : Number.NaN;
+  if (Number.isFinite(seconds)) return Math.min(Math.max(seconds * 1000, 1000), 30000);
+
+  const date = retryAfter ? Date.parse(retryAfter) : Number.NaN;
+  if (Number.isFinite(date)) return Math.min(Math.max(date - Date.now(), 1000), 30000);
+  return 1000 * (2 ** attempt);
+}
+
+function apiKey() {
+  let value = process.env.QUITHERO_API_KEY?.trim();
+  if (!value) throw new Error("QUITHERO_API_KEY is not configured.");
+
+  // Vercel values are plain text, while copied .env entries may include the
+  // variable name or escape `$`. Normalize those forms before authenticating.
+  value = value.replace(/^QUITHERO_API_KEY\s*=\s*/, "");
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+  value = value.replace(/\\\$/g, "$");
+
+  if (!value) throw new Error("QUITHERO_API_KEY is not configured.");
+  return value;
+}
+
+async function retailRequestProduct<T = unknown>(path: string, init: RequestInit = {}) {
+  // Cache catalog lists briefly; keep edit records and operational data fresh.
+  const cacheCatalog = (init.method ?? "GET").toUpperCase() === "GET"
+    && cachedCatalogPaths.has(path.split("?")[0])
+    && init.cache !== "no-store";
+  const suppliedHeaders = (init.headers ?? {}) as Record<string, string>;
+  const usesBearerToken = Object.keys(suppliedHeaders).some(
+    (name) => name.toLowerCase() === "authorization",
+  );
+  const usesFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+  const request = {
+    ...init,
+    headers: {
+      ...(usesFormData ? {} : { "content-type": "application/json" }),
+      ...(usesBearerToken && !usesFormData ? {} : { "x-api-key": apiKey() }),
+      ...init.headers,
+    },
+    cache: cacheCatalog ? "force-cache" as const : "no-store" as const,
+    next: cacheCatalog ? { revalidate: 30, tags: [RETAIL_CATALOG_TAG] } : undefined,
+  };
+  let response = await fetch(`${API_BASE}${path}`, request);
+  const method = (init.method ?? "GET").toUpperCase();
+  const canRetry = method === "GET" || (method === "PATCH" && path.endsWith("/bundle"));
+  if (canRetry) {
+    for (let attempt = 0; response.status === 429 && attempt < 4; attempt += 1) {
+      await wait(retryDelay(response, attempt));
+      response = await fetch(`${API_BASE}${path}`, request);
+    }
+  }
+
+  const text = await response.text();
+  let body: unknown;
+  try { body = text ? JSON.parse(text) : undefined; } catch { body = text; }
+  if (!response.ok) {
+    const detail = apiErrorMessage(body);
+    const requestPath = path.split("?")[0];
+    // Keep credentials, query strings and request/response bodies out of logs.
+    console.error("[QuitHero dashboard] API request failed", {
+      method,
+      path: requestPath,
+      status: response.status,
+      environment: process.env.VERCEL_ENV ?? "local",
+      deployment: process.env.VERCEL_URL,
+      requestId: response.headers?.get("x-request-id") ?? undefined,
+    });
+    const message = detail ? `QuitHero API returned ${response.status}: ${detail}` : `QuitHero API returned ${response.status}.`;
+    throw new Error(`${message} (${method} ${requestPath})`);
+  }
+  return body as T;
+}
+
+export async function safeRetailProduct(path: string, page = 1, limit = 100) {
+    try {
+        const separator = path.includes("?") ? "&" : "?";
+        const payload = await retailRequestProduct<unknown>(`${path}${separator}page=${page}&limit=${limit}&fields=name,slug,status,inventor,brand,productType`);
+        console.log(payload);
+        const wrapper = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+        const raw = wrapper.pagination && typeof wrapper.pagination === "object" ? wrapper.pagination as Record<string, unknown> : {};
+        const pagination: RetailPagination = {
+        page: Number(raw.page) || page,
+        limit: Number(raw.limit) || limit,
+        total: Number(raw.total) || records(payload).length,
+        totalPages: Number(raw.totalPages) || 1,
+        };
+        return { data: records(payload), pagination, error: undefined };
+    } catch (error) {
+        return {
+        data: [],
+        pagination: { page, limit, total: 0, totalPages: 1 },
+        error: error instanceof Error ? error.message : "Unable to reach QuitHero.",
+        };
+    }
+}

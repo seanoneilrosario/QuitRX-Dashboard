@@ -64,6 +64,7 @@ import StoreActivity from "../store-activity/store-activity-client";
 import InventoryHistory from "../store-activity/inventory-history-client";
 
 import Table from "./table";
+import { safeRetailProduct } from "@/lib/product-admin";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
@@ -2041,17 +2042,12 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       />
     );
   } else if (area === "products" && !sub) {
-    const [result, variants] = await Promise.all([
-      safeRetailAll("/products"),
-      safeRetailAll("/product-variants"),
-    ]);
 
-    const initialVariants = {
-      data: variants.data.map((variant) => ({
-        ...variant,
-        __availableStock: availableStock(variant),
-      })),
-    };
+    const result = await safeRetailProduct("/products", page, 50);
+
+    for (const product of result.data) {
+      console.log("product", product.name);
+    }
 
     content = (
       <ProductsClient
@@ -2060,8 +2056,8 @@ export default async function DashboardPage({ params, searchParams }: Props) {
         page={page}
         storefrontBaseUrl={storefrontBaseUrl}
         initialData={result}
-        initialVariants={initialVariants}
-        initialError={result.error ?? variants.error}
+        initialVariants={{ data: [] }}
+        initialError={result.error}
       />
     );
   } else if ((area === "products" || area === "bundles") && sub === "create") {

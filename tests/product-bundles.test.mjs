@@ -11,14 +11,23 @@ function load(file, mocks = {}) {
   });
   const exports = {};
   vm.runInNewContext(outputText, { exports, Error, setTimeout, clearTimeout, process: { env: {} }, require: (name) => {
+    if (name === "@/lib/collection-products") return load("lib/collection-products.ts");
     if (!(name in mocks)) throw new Error(`Unexpected import ${name}`);
     return mocks[name];
   } });
   return exports;
 }
 const validation = load("lib/product-bundles.ts");
-const selection = { position: 0, name: "POD 1", options: [{ componentVariantId: "child" }, { componentVariantId: "child-2" }] };
+const selection = { quantity: 2, position: 0, name: "POD 1", options: [{ componentVariantId: "child" }, { componentVariantId: "child-2" }] };
 const creation = load("lib/create-bundle.ts", { "./product-bundles": validation });
+
+test("selection quantities default to one and require positive whole numbers", () => {
+  assert.equal(validation.bundleComponents([{ ...selection, quantity: undefined }], "parent")[0].quantity, 1);
+  assert.equal(validation.bundleComponents([selection], "parent")[0].quantity, 2);
+  for (const quantity of [0, -1, 1.5, null, "2", Infinity]) {
+    assert.throws(() => validation.bundleComponents([{ ...selection, quantity }], "parent"), /positive whole number/);
+  }
+});
 
 test("bundle batches put newest products first across batch boundaries", async () => {
   const products = Array.from({ length: 501 }, (_, index) => ({ id: String(index), createdAt: new Date(Date.UTC(2025, 0, 1) + index * 1000).toISOString() }));

@@ -59,7 +59,11 @@ export async function saveBundle(_previous: BundleActionState, form: FormData): 
       method: "PATCH", body: JSON.stringify(components),
     });
     const saved = await retailRequest<unknown>(`/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}/bundle`);
-    return { message: "Bundle saved.", success: true, selections: bundleComponentResponse(saved, variantId) };
+    const confirmed = bundleComponentResponse(saved, variantId);
+    if (components.some((selection) => confirmed.find((item) => item.position === selection.position)?.quantity !== selection.quantity)) {
+      throw new Error("The API did not retain the selection quantities. Please check that the Retail API supports bundle selection quantities.");
+    }
+    return { message: "Bundle saved.", success: true, selections: confirmed };
   } catch (error) {
     return { message: error instanceof Error ? error.message : "Unable to save bundle.", success: false };
   }

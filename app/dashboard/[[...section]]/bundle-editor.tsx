@@ -16,7 +16,7 @@ function selectionsFromComponents(selections: BundleSelection[]): EditorSelectio
 }
 
 function componentsFromSelections(selections: EditorSelection[]): BundleSelection[] {
-  return selections.map((selection, position) => ({ position, name: selection.name.trim() || `Selection ${position + 1}`, options: selection.options }));
+  return selections.map((selection, position) => ({ position, name: selection.name.trim() || `Selection ${position + 1}`, quantity: selection.quantity, options: selection.options }));
 }
 
 function signature(selections: EditorSelection[]) {
@@ -96,7 +96,7 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
   }, [open]);
 
   function addSelection() {
-    setSelections((current) => [...current, { key: nextSelectionKey, position: current.length, name: `Selection ${current.length + 1}`, options: [] }]);
+    setSelections((current) => [...current, { key: nextSelectionKey, position: current.length, name: `Selection ${current.length + 1}`, quantity: 1, options: [] }]);
     setNextSelectionKey((current) => current + 1);
   }
 
@@ -181,6 +181,10 @@ export default function BundleEditor({ parent, groupNumber, products, variants, 
           {selections.map((selection, selectionIndex) => <section className={styles.bundleComponent} key={selection.key}>
             <div className={styles.bundleSlotHeader}><div><h3>Selection {selectionIndex + 1}</h3><small>{selection.options.length ? `${selection.options.length} selected ${selection.options.length === 1 ? "variant" : "variants"}` : "No variants selected"}</small></div><button type="button" className={styles.bundleRemove} onClick={() => removeSelection(selection.key)}>Remove selection</button></div>
             <label className={styles.bundleSearch}>Selection name<input type="text" value={selection.name} onChange={(event) => renameSelection(selection.key, event.target.value)} placeholder={`Selection ${selectionIndex + 1}`}/></label>
+            <label className={styles.bundleSearch}>Quantity
+              <input type="number" min="1" step="1" required value={selection.quantity || ""} onChange={(event) => setSelections((current) => current.map((item) => item.key === selection.key ? { ...item, quantity: Number(event.target.value) } : item))} />
+              <small>Applies to every product option in this selection. Hidden on the storefront.</small>
+            </label>
             <div className={styles.bundleAvailable}>
               {availableProducts.map((product) => <article className={styles.bundleProduct} key={product.id}><strong>{product.label}</strong><div>
                 {product.variants.map((variant) => { const checked = selection.options.some((option) => option.componentVariantId === variant.id); return <label key={variant.id}><input type="checkbox" checked={checked} onChange={() => toggleVariant(selection.key, variant.id)}/><span>{variant.label}{variant.sku && <small>SKU: {variant.sku}</small>}</span></label>; })}

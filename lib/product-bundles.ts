@@ -1,5 +1,5 @@
 export type BundleOption = { componentVariantId: string };
-export type BundleSelection = { position: number; name: string; options: BundleOption[] };
+export type BundleSelection = { position: number; name: string; quantity: number; options: BundleOption[] };
 
 export function bundleComponentResponse(value: unknown, parentId: string): BundleSelection[] {
   if (value == null) return [];
@@ -19,7 +19,8 @@ export function bundleComponents(value: unknown, parentId: string): BundleSelect
   const seenPositions = new Set<number>();
   return value.map((item: unknown, index) => {
     if (!item || typeof item !== "object") throw new Error("Invalid bundle component.");
-    const { componentVariantId, name, options, position } = item as Record<string, unknown>;
+    const { componentVariantId, name, options, position, quantity = 1 } = item as Record<string, unknown>;
+    if (typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity < 1) throw new Error("Selection quantity must be a positive whole number.");
     if (typeof position !== "number" || !Number.isSafeInteger(position) || position < 0) throw new Error("Invalid component position.");
     if (seenPositions.has(position)) throw new Error("Each bundle selection must have a unique position.");
     seenPositions.add(position);
@@ -36,6 +37,6 @@ export function bundleComponents(value: unknown, parentId: string): BundleSelect
     if (new Set(parsedOptions.map((option) => option.componentVariantId)).size !== parsedOptions.length) {
       throw new Error("A variant can only be added once per bundle selection.");
     }
-    return { position, name: typeof name === "string" && name.trim() ? name.trim() : `Selection ${index + 1}`, options: parsedOptions };
+    return { position, name: typeof name === "string" && name.trim() ? name.trim() : `Selection ${index + 1}`, quantity, options: parsedOptions };
   }).sort((a, b) => a.position - b.position);
 }

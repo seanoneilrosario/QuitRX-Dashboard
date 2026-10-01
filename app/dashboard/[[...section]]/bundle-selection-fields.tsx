@@ -41,6 +41,10 @@ export default function BundleSelectionFields({ products, variants, selections, 
         <label className={styles.bundleSearch}>Selection name
           <input value={selection.name} placeholder={`Selection ${index + 1}`} onChange={(event) => update(index, { ...selection, name: event.target.value })} />
         </label>
+        <label className={styles.bundleSearch}>Quantity
+          <input type="number" min="1" step="1" required value={selection.quantity || ""} onChange={(event) => update(index, { ...selection, quantity: Number(event.target.value) })} />
+          <small>Applies to every product option in this selection. Hidden on the storefront.</small>
+        </label>
         <div className={styles.bundleAvailable}>
           {available.map((product) => <article className={styles.bundleProduct} key={product.id}>
             <strong>{product.label}</strong><div>
@@ -59,6 +63,6 @@ export default function BundleSelectionFields({ products, variants, selections, 
       </section>)}
     </div>
     {!selections.length && <p className={styles.bundleEmpty}>No selections configured yet.</p>}
-    <button type="button" className={styles.secondary} onClick={() => onChange([...selections, { position: selections.length, name: `Selection ${selections.length + 1}`, options: [] }])}>+ Add selection</button>
+    <button type="button" className={styles.secondary} onClick={() => onChange([...selections, { position: selections.length, name: `Selection ${selections.length + 1}`, quantity: 1, options: [] }])}>+ Add selection</button>
   </>;
 }

@@ -257,7 +257,7 @@ export async function safeCollectionPage(
   limit = 24,
 ) {
   const productFields =
-    "id,name,slug,brand,productType";
+    "id,name,slug,status,brand,productType";
 
   try {
     const payload = await retailRequest<unknown>(

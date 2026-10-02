@@ -167,12 +167,13 @@ export default function CollectionViewClient({
         {products.length ? (
             <>
             <Table
-                heads={[
+              heads={[
                 "Product",
                 "Slug",
                 "Brand",
                 "Product type",
-                ]}
+                "Status",
+              ]}
             >
                 {products.map((product, index) => (
                 <tr key={text(product.id, `product-${index}`)}>
@@ -205,6 +206,10 @@ export default function CollectionViewClient({
                         )?.name ??
                         product.productType,
                     )}
+                    </td>
+
+                    <td>
+                    {text(product.status)}
                     </td>
                 </tr>
                 ))}

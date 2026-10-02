@@ -9,6 +9,7 @@ import {
   retailRequest,
   safeRetailAll,
   safeRetailPage,
+  safeCollectionPage,
   type RetailRecord,
 } from "@/lib/quithero-admin";
 import { deleteStorefrontCollection, syncStorefrontCollection } from "@/lib/sanity-storefront";
@@ -130,7 +131,275 @@ function normalizeCustomerUpdate(formData: FormData, body: Record<string, unknow
   }
 }
 
+export type CollectionPreviewProduct = {
+  id: string;
+  name: string;
+  slug: string;
+  brand: string;
+};
+
+export async function previewCollection(
+  match: "ALL" | "ANY",
+  rules: Array<{
+    field: string;
+    operator: string;
+    value: string | number;
+  }>,
+  page = 1,
+  limit = 50,
+) {
+  try {
+    const session = await auth();
+
+    const staffUser = session?.user as
+      | { isStaff?: boolean }
+      | undefined;
+
+    if (!staffUser?.isStaff) {
+      throw new Error(
+        "You must be signed in as staff to preview products.",
+      );
+    }
+
+    const apiBase = (
+      process.env.QUITHERO_API_BASE_URL ??
+      "https://retail-api.quithero.com.au"
+    ).replace(/\/$/, "");
+
+    const apiKey = process.env.QUITHERO_API_KEY;
+
+    if (!apiKey) {
+      throw new Error(
+        "QuitHero API key is not configured.",
+      );
+    }
+
+    const requestBody = {
+      match,
+      rules,
+    };
+
+    console.log(
+      "[Collection preview] Request body:",
+      JSON.stringify(requestBody),
+    );
+
+    const response = await fetch(
+      `${apiBase}/collections/preview`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          match,
+          rules,
+          page,
+          limit,
+        }),
+        cache: "no-store",
+      },
+    );
+
+    const responseText = await response.text();
+
+    let responseBody: unknown;
+
+    try {
+      responseBody = responseText
+        ? JSON.parse(responseText)
+        : undefined;
+    } catch {
+      responseBody = undefined;
+    }
+
+    if (!response.ok) {
+      console.error(
+        "[Collection preview] API error:",
+        {
+          status: response.status,
+          body: responseBody,
+        },
+      );
+
+      const message =
+        responseBody &&
+        typeof responseBody === "object" &&
+        "message" in responseBody
+          ? String(
+              (
+                responseBody as Record<
+                  string,
+                  unknown
+                >
+              ).message,
+            )
+          : `QuitHero API returned ${response.status}.`;
+
+      throw new Error(message);
+    }
+
+    const result =
+      responseBody &&
+      typeof responseBody === "object"
+        ? (responseBody as {
+            data?: CollectionPreviewProduct[];
+            count?: number;
+            pagination?: {
+              page?: number;
+              limit?: number;
+              total?: number;
+              totalPages?: number;
+              hasNextPage?: boolean;
+            };
+          })
+        : {};
+
+    return {
+      data: Array.isArray(result.data)
+        ? result.data
+        : [],
+
+      count:
+        typeof result.count === "number"
+          ? result.count
+          : 0,
+
+      pagination: {
+        page:
+          typeof result.pagination?.page === "number"
+            ? result.pagination.page
+            : page,
+
+        limit:
+          typeof result.pagination?.limit === "number"
+            ? result.pagination.limit
+            : limit,
+
+        total:
+          typeof result.pagination?.total === "number"
+            ? result.pagination.total
+            : typeof result.count === "number"
+              ? result.count
+              : 0,
+
+        totalPages:
+          typeof result.pagination?.totalPages === "number"
+            ? result.pagination.totalPages
+            : 1,
+
+        hasNextPage:
+          result.pagination?.hasNextPage === true,
+      },
+
+      error: undefined,
+    };
+  } catch (error) {
+    return {
+      data: [] as CollectionPreviewProduct[],
+      count: 0,
+      pagination: {
+        page,
+        limit,
+        total: 0,
+        totalPages: 0,
+        hasNextPage: false,
+      },
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to preview collection products.",
+    };
+  }
+}
+
+export async function getCollectionProductsPage(
+  id: string,
+  page: number,
+  limit = 24,
+) {
+  return safeCollectionPage(id, page, limit);
+}
+
 export type CollectionActionState = { message: string; success: boolean };
+
+export type CollectionProductOption = {
+  id: string;
+  name: string;
+  slug: string;
+  brand: string;
+};
+
+export async function getCollectionProductOptions(
+  page = 1,
+  limit = 100,
+) {
+  try {
+    const session = await auth();
+    const staffUser = session?.user as { isStaff?: boolean } | undefined;
+
+    if (!staffUser?.isStaff) {
+      throw new Error("You must be signed in as staff to load products.");
+    }
+
+    const result = await safeRetailPage(
+      "/products?fields=id,name,slug,brand",
+      page,
+      limit,
+    );
+
+    const data: CollectionProductOption[] = result.data.flatMap(
+      (product: RetailRecord) =>
+        typeof product.id === "string"
+          ? [
+              {
+                id: product.id,
+                name:
+                  typeof product.name === "string"
+                    ? product.name
+                    : "Unnamed product",
+                slug:
+                  typeof product.slug === "string"
+                    ? product.slug
+                    : "",
+                brand:
+                  product.brand &&
+                  typeof product.brand === "object" &&
+                  !Array.isArray(product.brand)
+                    ? typeof (product.brand as RetailRecord).name === "string"
+                      ? String((product.brand as RetailRecord).name)
+                      : ""
+                    : typeof product.brand === "string"
+                      ? product.brand
+                      : "",
+              },
+            ]
+          : [],
+    );
+
+    return {
+      data,
+      pagination: result.pagination,
+      error: result.error,
+    };
+  } catch (error) {
+    return {
+      data: [] as CollectionProductOption[],
+      pagination: {
+        page,
+        limit,
+        total: 0,
+        totalPages: 0,
+      },
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to load products.",
+    };
+  }
+}
 
 function collectionRecord(payload: unknown) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
@@ -155,22 +424,52 @@ function validateCollection(body: Record<string, unknown>, editing = false) {
     )
       throw new Error("Select at least one product.");
     delete body.rules;
-  } else {
-    if (
-      !Array.isArray(body.rules) ||
-      !body.rules.length ||
-      body.rules.some((rule) => !isValidCollectionRule(rule))
-    )
-      throw new Error("Complete at least one valid collection rule.");
-    for (const rule of body.rules as Record<string, unknown>[]) {
-      if (typeof rule.value === "string") rule.value = rule.value.trim();
-    }
-    if (
-      !Array.isArray(body.productIds) ||
-      body.productIds.some((id) => typeof id !== "string" || !id)
-    )
-      throw new Error("Invalid dynamic collection products.");
-  }
+      } else {
+        if (
+          !Array.isArray(body.rules) ||
+          !body.rules.length ||
+          body.rules.some((rule) => {
+            if (!rule || typeof rule !== "object") {
+              return true;
+            }
+
+            const value = rule as Record<string, unknown>;
+
+            const validFields = [
+              "name",
+              "description",
+              "sku",
+              "tag",
+              "tags",
+              "brand",
+              "productType",
+              "price",
+              "inventory",
+            ];
+
+            const validOperators = [
+              "contains",
+              "equals",
+              "greater_than",
+              "less_than",
+            ];
+
+            return (
+              !validFields.includes(String(value.field)) ||
+              !validOperators.includes(String(value.operator)) ||
+              !(
+                typeof value.value === "string" ||
+                typeof value.value === "number"
+              ) ||
+              !String(value.value).trim()
+            );
+          })
+        ) {
+          throw new Error(
+            "Complete at least one valid collection rule.",
+          );
+        }
+      }
 }
 
 export async function createCollection(

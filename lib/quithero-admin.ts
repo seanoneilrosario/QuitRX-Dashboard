@@ -19,7 +19,7 @@ export function availableStock(variant: RetailRecord) {
 
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-function retryDelay(response: Response, attempt: number) {
+export function retryDelay(response: Response, attempt: number) {
   const retryAfter = response.headers.get("retry-after");
   const seconds = retryAfter ? Number(retryAfter) : Number.NaN;
   if (Number.isFinite(seconds)) return Math.min(Math.max(seconds * 1000, 1000), 30000);
@@ -29,7 +29,7 @@ function retryDelay(response: Response, attempt: number) {
   return 1000 * (2 ** attempt);
 }
 
-function apiKey() {
+export function apiKey() {
   let value = process.env.QUITHERO_API_KEY?.trim();
   if (!value) throw new Error("QUITHERO_API_KEY is not configured.");
 
@@ -48,7 +48,7 @@ function apiKey() {
   return value;
 }
 
-function apiErrorMessage(body: unknown) {
+export function apiErrorMessage(body: unknown) {
   if (typeof body === "string") return body.trim();
   if (!body || typeof body !== "object") return "";
 
@@ -196,23 +196,150 @@ export async function safeRetailRecord(path: string) {
 // Invalid legacy rules can prevent the detail endpoint from evaluating a
 // collection. The list endpoint still exposes its saved configuration.
 export async function safeCollectionForEdit(id: string) {
-  const result = await safeRetailRecord(`/collections/${encodeURIComponent(id)}`);
-  const legacyRuleError = result.error?.includes('Operator "contains" is not valid for tag') ||
-    /Unsupported collection rule field: tag(?:[.\s)]|$)/.test(result.error ?? "");
-  if (result.data || !legacyRuleError) return result;
   try {
-    for (let page = 1; ; page += 1) {
-      const payload = await retailRequest<unknown>(`/collections?page=${page}&limit=100`, { cache: "no-store" });
-      const item = records(payload).find((collection) => collection.id === id);
-      if (item && item.type === "DYNAMIC" && Array.isArray(item.rules) && item.rules.length) {
-        return { data: item, error: undefined };
-      }
-      const wrapper = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
-      const pagination = wrapper.pagination as RetailPagination | undefined;
-      if (page >= (Number(pagination?.totalPages) || 1)) break;
+    const payload = await retailRequest<unknown>(
+      `/collections/${encodeURIComponent(id)}`,
+    );
+
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload)
+    ) {
+      return {
+        data: undefined,
+        error: undefined,
+      };
     }
-  } catch {
-    // Keep the original detail error if recovery cannot find usable rules.
+
+    const wrapper = payload as Record<string, unknown>;
+
+    const rawData =
+      wrapper.data &&
+      typeof wrapper.data === "object" &&
+      !Array.isArray(wrapper.data)
+        ? (wrapper.data as RetailRecord)
+        : wrapper;
+
+    const data: RetailRecord = {
+      ...rawData,
+    };
+
+    // Preserve pagination whether the API puts it inside data
+    // or beside data at the top level.
+    if (
+      wrapper.pagination &&
+      typeof wrapper.pagination === "object" &&
+      !Array.isArray(wrapper.pagination)
+    ) {
+      data.pagination = wrapper.pagination;
+    }
+
+    return {
+      data,
+      error: undefined,
+    };
+  } catch (error) {
+    return {
+      data: undefined,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to reach QuitHero.",
+    };
   }
-  return result;
+}
+
+
+export async function safeCollectionPage(
+  id: string,
+  page = 1,
+  limit = 24,
+) {
+  const productFields =
+    "id,name,slug,brand,productType";
+
+  try {
+    const payload = await retailRequest<unknown>(
+      `/collections/${encodeURIComponent(id)}?productFields=${encodeURIComponent(
+        productFields,
+      )}&page=${page}&limit=${limit}`,
+    );
+
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload)
+    ) {
+      return {
+        data: undefined,
+        products: [],
+        pagination: {
+          page,
+          limit,
+          total: 0,
+          totalPages: 1,
+        },
+        error: undefined,
+      };
+    }
+
+    const wrapper =
+      payload as Record<string, unknown>;
+
+    const collection =
+      wrapper.data &&
+      typeof wrapper.data === "object" &&
+      !Array.isArray(wrapper.data)
+        ? (wrapper.data as RetailRecord)
+        : undefined;
+
+    const products =
+      collection && Array.isArray(collection.products)
+        ? (collection.products as RetailRecord[])
+        : [];
+
+    const rawPagination =
+      wrapper.pagination &&
+      typeof wrapper.pagination === "object" &&
+      !Array.isArray(wrapper.pagination)
+        ? (wrapper.pagination as Record<string, unknown>)
+        : {};
+
+    const pagination: RetailPagination = {
+      page:
+        Number(rawPagination.page) || page,
+      limit:
+        Number(rawPagination.limit) || limit,
+      total:
+        Number(rawPagination.total) ||
+        products.length,
+      totalPages:
+        Number(rawPagination.totalPages) || 1,
+    };
+
+    console.log(products);
+
+    return {
+      data: collection,
+      products,
+      pagination,
+      error: undefined,
+    };
+  } catch (error) {
+    return {
+      data: undefined,
+      products: [],
+      pagination: {
+        page,
+        limit,
+        total: 0,
+        totalPages: 1,
+      },
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to reach QuitHero.",
+    };
+  }
 }

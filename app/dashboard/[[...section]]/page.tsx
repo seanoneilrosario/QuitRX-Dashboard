@@ -10,6 +10,7 @@ import {
   getOrderBatch,
   getInventoryBatch,
 } from "../actions";
+import CollectionViewClient from "../collections/collection-view-client";
 import InventoryClient from "./inventory-client";
 import {
   safeRetailAll,
@@ -17,13 +18,14 @@ import {
   safeRetailPage,
   safeRetailRecord,
   safeCollectionForEdit,
+  safeCollectionPage,
   availableStock,
   type RetailPagination,
   type RetailRecord,
 } from "@/lib/quithero-admin";
 import styles from "./dashboard.module.css";
 import TagsInput from "./tags-input";
-import { CollectionCreateForm } from "./collection-create-fields";
+import { CollectionCreateSection } from "../collections/collection-create-section";
 import CollectionDeleteButton from "./collection-delete-button";
 import BundlesPage from "./bundles-page";
 import FrequentlyBoughtTogetherEditor from "./frequently-bought-together-editor";
@@ -65,6 +67,8 @@ import InventoryHistory from "../store-activity/inventory-history-client";
 
 import Table from "./table";
 import { safeRetailProduct } from "@/lib/product-admin";
+import ResourcePage from "../collections/collections-client";
+import CollectionEditSection from "../collections/collection-edit-section";
 
 export const metadata: Metadata = { title: "Staff Dashboard | QuitRX" };
 
@@ -116,10 +120,10 @@ const nav = [
   { label: "Store Activity", href: "/dashboard/store-activity", icon: "↻" },
 ];
 
-function text(value: unknown, fallback = "—") {
+export function text(value: unknown, fallback = "—") {
   return typeof value === "string" || typeof value === "number" ? String(value) : fallback;
 }
-function money(value: unknown) {
+export function money(value: unknown) {
   const amount = Number(value);
   return Number.isFinite(amount)
     ? new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(amount)
@@ -131,7 +135,7 @@ const storefrontBaseUrl = (
 function storefrontUrl(resource: "product" | "collections", item: RetailRecord) {
   return `${storefrontBaseUrl}/${resource}/${encodeURIComponent(text(item.slug, ""))}`;
 }
-function nested(item: RetailRecord, key: string) {
+export function nested(item: RetailRecord, key: string) {
   const value = item[key];
   return value && typeof value === "object" ? (value as RetailRecord) : undefined;
 }
@@ -214,7 +218,7 @@ function isDefaultAddress(item: RetailRecord, address: RetailRecord, index: numb
   );
 }
 
-function Header({
+export function Header({
   title,
   description,
   action,
@@ -235,7 +239,7 @@ function Header({
   );
 }
 
-function Notice({ message }: { message?: string }) {
+export function Notice({ message }: { message?: string }) {
   return message ? (
     <div className={styles.notice}>
       <strong>API connection needed</strong>
@@ -1018,159 +1022,46 @@ function collectionProductCount(collection: RetailRecord, products: CollectionPr
   return collectionMatchingProductIds(collection, products).length;
 }
 
-function ResourcePage({
-  kind,
-  items,
-  products = [],
-  error,
-  path = `/dashboard/products/${kind}`,
-}: {
-  kind: string;
-  items: RetailRecord[];
-  products?: RetailRecord[];
-  error?: string;
-  path?: string;
-}) {
-  const config = resourceConfig[kind];
-  const productOptions = collectionProductOptions(products);
-  return (
-    <>
-      <Header title={config.title} description={config.description} />
-      <Notice message={error} />
-      <details className={styles.creator}>
-        <summary>+ Add {config.title.toLowerCase().replace(/s$/, "")}</summary>
-        {kind === "collections" ? (
-          <CollectionCreateForm products={productOptions} />
-        ) : (
-          <form action={saveResource}>
-            <input type="hidden" name="_resource" value={config.resource} />
-            <input type="hidden" name="_returnTo" value={path} />
-            <div className={styles.inlineForm}>
-              {config.fields.map(([name, label, type]) => (
-                <label key={name}>
-                  {label}
-                  <input
-                    required={["productId", "name", "sku", "price", "url", "slug"].includes(name)}
-                    type={type ?? "text"}
-                    step={type === "number" ? "any" : undefined}
-                    name={name}
-                  />
-                </label>
-              ))}
-            </div>
-            <ActionButton className={styles.primary} pendingLabel="Saving…">
-              Save
-            </ActionButton>
-          </form>
-        )}
-      </details>
-      <Table heads={config.heads}>
-        {items.map((item, index) => (
-          <tr key={text(item.id, String(index))}>
-            <td>
-              <div className={kind === "collections" ? styles.collectionCell : undefined}>
-                {kind === "collections" && typeof item.image === "string" && item.image && (
-                  // API-hosted collection images are displayed without Next image transformation.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img className={styles.collectionThumbnail} src={item.image} alt="" />
-                )}
-                <div>
-                  <strong>{text(item.name ?? item.url)}</strong>
-                  <small>
-                    {kind === "collections"
-                      ? `${collectionProductCount(item, productOptions)} products`
-                      : text(item.productId)}
-                  </small>
-                </div>
-              </div>
-            </td>
-            <td>{text(item.sku ?? item.slug ?? item.productId)}</td>
-            <td>
-              {kind === "variants"
-                ? money(item.price)
-                : text(item.altText ?? item.seoTitle ?? item.id)}
-            </td>
-            <td>{kind === "variants" ? availableStock(item) : text(item.sortOrder, "")}</td>
-            <td>
-              <div className={styles.actions}>
-              {kind === "collections" && (
-                <>
-                  <Link href={`/dashboard/collections/edit?id=${encodeURIComponent(text(item.id))}`}>
-                    Edit
-                  </Link>
-                  <Link href={`/dashboard/collections/view?id=${encodeURIComponent(text(item.id))}`}>
-                    View
-                  </Link>
-                </>
-              )}
-              {kind !== "collections" && (
-                <form action={deleteResource}>
-                  <input type="hidden" name="_resource" value={config.resource} />
-                  <input type="hidden" name="_id" value={text(item.id)} />
-                  <ActionButton pendingLabel="Deleting…">Delete</ActionButton>
-                </form>
-              )}
-              </div>
-            </td>
-          </tr>
-        ))}
-      </Table>
-    </>
-  );
-}
-
 function CollectionView({
   item,
   products,
+  pagination,
   error,
 }: {
   item?: RetailRecord;
   products: RetailRecord[];
+  pagination: RetailPagination;
   error?: string;
 }) {
-  if (!item)
+  if (!item) {
     return (
       <>
-        <Header title="Collection not found" description="Choose a collection from the collection list." />
+        <Header
+          title="Collection not found"
+          description="Choose a collection from the collection list."
+        />
+
         <Notice message={error} />
-        <Link className={styles.primary} href="/dashboard/collections">Back to collections</Link>
+
+        <Link
+          className={styles.primary}
+          href="/dashboard/collections"
+        >
+          Back to collections
+        </Link>
       </>
     );
-
-  const productOptions = collectionProductOptions(products);
-  const matchingIds = new Set(collectionMatchingProductIds(item, productOptions));
-  const matchingProducts = products.filter((product) => typeof product.id === "string" && matchingIds.has(product.id));
+  }
 
   return (
-    <>
-      <Header
-        title={text(item.name, "Collection")}
-        description={`${matchingProducts.length} ${matchingProducts.length === 1 ? "product" : "products"} in this collection.`}
-        action={
-          <div className={styles.collectionDeleteActions}>
-            <Link className={styles.secondary} href="/dashboard/collections">Back to collections</Link>
-            <a className={styles.primary} href={storefrontUrl("collections", item)} target="_blank" rel="noopener noreferrer">
-              View collections on store
-            </a>
-          </div>
-        }
-      />
-      <Notice message={error} />
-      {matchingProducts.length ? (
-        <Table heads={["Product", "Slug", "Brand", "Product type"]}>
-          {matchingProducts.map((product) => (
-            <tr key={text(product.id)}>
-              <td><strong>{text(product.name, "Unnamed product")}</strong><small>{text(product.sku, "")}</small></td>
-              <td>{text(product.slug)}</td>
-              <td>{text(nested(product, "brand")?.name ?? product.brand)}</td>
-              <td>{text(nested(product, "productType")?.name ?? product.productType)}</td>
-            </tr>
-          ))}
-        </Table>
-      ) : (
-        <div className={styles.emptyState}><strong>No matching products</strong><span>This collection currently has no products.</span></div>
-      )}
-    </>
+    <CollectionViewClient
+      collectionId={text(item.id, "")}
+      collection={item}
+      initialProducts={products}
+      initialPagination={pagination}
+      initialError={error}
+      storefrontUrl={storefrontUrl("collections", item)}
+    />
   );
 }
 
@@ -1183,19 +1074,26 @@ function CollectionEdit({
   products: RetailRecord[];
   error?: string;
 }) {
-  if (!item)
+  if (!item) {
     return (
       <>
         <Header
           title="Collection not found"
           description="Choose a collection from the collection list."
         />
+
         <Notice message={error} />
-        <Link className={styles.primary} href="/dashboard/collections">
+
+        <Link
+          className={styles.primary}
+          href="/dashboard/collections"
+        >
           Back to collections
         </Link>
       </>
     );
+  }
+
   return (
     <>
       <Header
@@ -1203,17 +1101,30 @@ function CollectionEdit({
         description="Update collection details and product membership."
         action={
           <div className={styles.collectionDeleteActions}>
-          <Link className={styles.secondary} href="/dashboard/collections">
-            Back to collections
-          </Link>
-          <CollectionDeleteButton id={text(item.id)} name={text(item.name)} />
+            <Link
+              className={styles.secondary}
+              href="/dashboard/collections"
+            >
+              Back to collections
+            </Link>
+
+            <CollectionDeleteButton
+              id={text(item.id)}
+              name={text(item.name)}
+            />
           </div>
         }
       />
+
       <Notice message={error} />
+
       <section className={styles.formCard}>
         <h2>Collection details</h2>
-        <CollectionCreateForm products={collectionProductOptions(products)} initial={item} />
+
+        <CollectionEditSection
+          item={item}
+          products={products}
+        />
       </section>
     </>
   );
@@ -2032,6 +1943,7 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       safeRetailList("/orders"),
       safeRetailList("/product-variants"),
     ]);
+
     content = (
       <Dashboard
         productTotal={p.pagination.total}
@@ -2044,10 +1956,6 @@ export default async function DashboardPage({ params, searchParams }: Props) {
   } else if (area === "products" && !sub) {
 
     const result = await safeRetailProduct("/products", page, 50);
-
-    for (const product of result.data) {
-      console.log("product", product.name);
-    }
 
     content = (
       <ProductsClient
@@ -2135,8 +2043,21 @@ export default async function DashboardPage({ params, searchParams }: Props) {
     );
   } else if (area === "products" && resourceConfig[sub]) {
     const config = resourceConfig[sub];
-    const result = await safeRetailList(`/${config.resource}`);
-    content = <ResourcePage kind={sub} items={result.data} error={result.error} />;
+
+    const result = await safeRetailPage(
+      `/${config.resource}`,
+      page,
+      50,
+    );
+
+    content = (
+      <ResourcePage
+        kind={sub}
+        items={result.data}
+        error={result.error}
+        pagination={result.pagination}
+      />
+    );
   } else if (area === "bundles") {
     content = (
       <BundlesPage
@@ -2144,16 +2065,41 @@ export default async function DashboardPage({ params, searchParams }: Props) {
       />
     );
   } else if (area === "collections") {
-    if (sub === "edit" || sub === "view") {
+    if (sub === "view") {
+      const firstPage = id
+        ? await safeCollectionPage(id, 1, 24)
+        : {
+            data: undefined,
+            products: [],
+            pagination: {
+              page: 1,
+              limit: 24,
+              total: 0,
+              totalPages: 1,
+            },
+            error: undefined,
+          };
+
+      content = (
+        <CollectionView
+          item={firstPage.data}
+          products={firstPage.products}
+          pagination={firstPage.pagination}
+          error={firstPage.error}
+        />
+      );
+    } else if (sub === "edit") {
       const [result, products] = await Promise.all([
         id
           ? safeCollectionForEdit(id)
-          : Promise.resolve({ data: undefined, error: undefined }),
+          : Promise.resolve({
+              data: undefined,
+              error: undefined,
+            }),
         safeRetailAll("/products"),
       ]);
-      content = sub === "view" ? (
-        <CollectionView item={result.data} products={products.data} error={result.error ?? products.error} />
-      ) : (
+
+      content = (
         <CollectionEdit
           item={result.data}
           products={products.data}
@@ -2161,17 +2107,15 @@ export default async function DashboardPage({ params, searchParams }: Props) {
         />
       );
     } else {
-      const [result, products] = await Promise.all([
-        safeRetailList("/collections"),
-        safeRetailAll("/products"),
-      ]);
+      const result = await safeRetailPage("/collections", 1, 50);
+
       content = (
         <ResourcePage
           kind="collections"
           items={result.data}
-          products={products.data}
-          error={result.error ?? products.error}
+          error={result.error}
           path="/dashboard/collections"
+          pagination={result.pagination}
         />
       );
     }

@@ -17,7 +17,7 @@ const API_BASE = (
 const wait = (milliseconds: number) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-async function retailRequestProduct<T = unknown>(
+async function retailRequestDashboard<T = unknown>(
   path: string,
   init: RequestInit = {},
   fresh = false,
@@ -106,7 +106,7 @@ async function retailRequestProduct<T = unknown>(
 
 
 
-export async function safeRetailProduct(
+export async function safeRetailDashboard(
   path: string,
   page = 1,
   limit = 50,
@@ -115,7 +115,7 @@ export async function safeRetailProduct(
   try {
     const separator = path.includes("?") ? "&" : "?";
 
-    const payload = await retailRequestProduct<unknown>(
+    const payload = await retailRequestDashboard<unknown>(
       `${path}${separator}page=${page}&limit=${limit}&fields=id,name,slug,status,inventory,brand,productType`,
       {},
       fresh,

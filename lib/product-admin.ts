@@ -111,12 +111,39 @@ export async function safeRetailProduct(
   page = 1,
   limit = 50,
   fresh = false,
+  filters?: {
+    search?: string;
+    status?: string;
+  },
 ) {
   try {
     const separator = path.includes("?") ? "&" : "?";
 
+    const searchParams = new URLSearchParams();
+
+    if (filters?.search?.trim()) {
+      searchParams.set("search", filters.search.trim());
+    }
+
+    if (filters?.status?.trim()) {
+      searchParams.set("status", filters.status.trim().toLowerCase());
+    }
+
+    if (page) {
+      searchParams.set("page", String(page));
+    }
+
+    if (limit) {
+      searchParams.set("limit", String(limit));
+    }
+
+    searchParams.set(
+      "fields",
+      "id,name,slug,status,inventory,brand,productType",
+    );
+
     const payload = await retailRequestProduct<unknown>(
-      `${path}${separator}page=${page}&limit=${limit}&fields=id,name,slug,status,inventory,brand,productType`,
+      `${path}${separator}${searchParams.toString()}`,
       {},
       fresh,
     );

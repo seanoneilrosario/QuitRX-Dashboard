@@ -1955,7 +1955,16 @@ export default async function DashboardPage({ params, searchParams }: Props) {
     );
   } else if (area === "products" && !sub) {
 
-    const result = await safeRetailProduct("/products", page, 50);
+    const result = await safeRetailProduct(
+      "/products",
+      page,
+      50,
+      false,
+      {
+        search: q,
+        status,
+      },
+    );
 
     content = (
       <ProductsClient

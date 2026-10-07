@@ -1,11 +1,8 @@
 import Link from "next/link";
 
-import {
-  type RetailRecord,
-} from "@/lib/quithero-admin";
-
 import Table from "@/app/components/table";
 import styles from "@/app/components/dashboard.module.css";
+import { RetailRecord } from "@/lib/quitmed-retail-admin/collections/client";
 
 function text(value: unknown, fallback = "—") {
   return typeof value === "string" || typeof value === "number"

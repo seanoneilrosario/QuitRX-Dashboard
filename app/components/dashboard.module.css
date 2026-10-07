@@ -1137,3 +1137,9 @@
     transform: rotate(90deg);
   }
 }
+
+.collectionAction {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}

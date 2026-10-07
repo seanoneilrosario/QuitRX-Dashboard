@@ -116,14 +116,16 @@ export default function CollectionView({
           </p>
         </div>
 
-        <div className={styles.actions}>
+        <div className={styles.collectionAction}>
           <Link
+            className={styles.primary}
             href="/dashboard/collections"
           >
             Back to collections
           </Link>
 
           <Link
+            className={styles.primary}
             href={`/dashboard/collections/edit?id=${encodeURIComponent(
               id,
             )}`}

@@ -3,8 +3,11 @@
 import {
     Attribute,
   createAttribute,
+  createAttributeValue,
+  CreateAttributeValueInput,
   getAttribute,
   removeAttribute,
+  removeAttributeValue,
   updateAttribute,
   type CreateAttributeInput,
 } from "../../../lib/quitmed-retail-admin/attributes/client";
@@ -36,6 +39,24 @@ export async function removeAttributeAction(
   id: string,
 ) {
   await removeAttribute(id);
+
+  return {
+    success: true,
+  };
+}
+
+export async function createAttributeValueAction(
+  attributeId: string,
+  data: CreateAttributeValueInput,
+) {
+  return createAttributeValue(attributeId, data);
+}
+
+export async function removeAttributeValueAction(
+  attributeId: string,
+  valueId: string,
+) {
+  await removeAttributeValue(attributeId, valueId);
 
   return {
     success: true,

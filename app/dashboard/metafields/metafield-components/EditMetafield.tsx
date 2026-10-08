@@ -6,13 +6,16 @@ import { useRouter } from "next/navigation";
 import style from "../../../components/dashboard.module.css";
 
 import {
+  createAttributeValueAction,
     removeAttributeAction,
+  removeAttributeValueAction,
   updateAttributeAction,
 } from "../../../../lib/quitmed-retail-admin/attributes/metafield-actions";
 
 import type {
   Attribute,
   AttributeType,
+  AttributeValue,
 } from "../../../../lib/quitmed-retail-admin/attributes/client";
 
 const attributeTypes: {
@@ -84,6 +87,20 @@ export default function EditMetafield({
   const [position, setPosition] =
     useState(attribute.position);
 
+  const [values, setValues] =
+    useState<AttributeValue[]>(
+      attribute.values ?? [],
+    );
+
+  const [newValue, setNewValue] =
+    useState("");
+
+  const [valueSaving, setValueSaving] =
+    useState(false);
+
+  const [valueError, setValueError] =
+    useState("");
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -131,7 +148,96 @@ export default function EditMetafield({
 
         setDeleting(false);
     }
+  }
+
+  async function handleAddValue() {
+    const cleanValue = newValue.trim();
+
+    if (!cleanValue) {
+      return;
     }
+
+    setValueError("");
+    setValueSaving(true);
+
+    try {
+      const created =
+        await createAttributeValueAction(
+          String(attribute.id),
+          {
+            value: cleanValue,
+          },
+        );
+
+      setValues((current) => [
+        ...current,
+        created,
+      ]);
+
+      setNewValue("");
+    } catch (error) {
+      console.error(
+        "[EditMetafield] Failed to create value:",
+        error,
+      );
+
+      setValueError(
+        error instanceof Error
+          ? error.message
+          : "Failed to add value.",
+      );
+    } finally {
+      setValueSaving(false);
+    }
+  }
+
+  async function handleDeleteValue(
+    value: AttributeValue,
+  ) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${value.value}"?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setValueError("");
+    setValueSaving(true);
+
+    try {
+      const result =
+        await removeAttributeValueAction(
+          String(attribute.id),
+          String(value.id),
+        );
+
+      if (!result.success) {
+        throw new Error(
+          "Failed to delete value.",
+        );
+      }
+
+      setValues((current) =>
+        current.filter(
+          (item) => item.id !== value.id,
+        ),
+      );
+    } catch (error) {
+      console.error(
+        "[EditMetafield] Failed to delete value:",
+        error,
+      );
+
+      setValueError(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete value.",
+      );
+    } finally {
+      setValueSaving(false);
+    }
+  }
 
   async function handleSubmit(
     event: React.FormEvent<HTMLFormElement>,
@@ -310,6 +416,83 @@ export default function EditMetafield({
                     disabled={saving}
                 />
                 </div>
+
+                {(type === "SELECT" || type === "MULTI_SELECT") && (
+                  <div className={style.metafieldValues}>
+                    <div className={style.metafieldValuesHeader}>
+                      <div>
+                        <label className={style.metafieldValuesLabel}>Values</label>
+                        <p className={style.metafieldValuesHelp}>
+                          {type === "MULTI_SELECT"
+                            ? "Add the options that can be assigned to a product."
+                            : "Choose one value when assigning this metafield to a product."}
+                        </p>
+                      </div>
+                      <span className={style.metafieldValuesCount}>
+                        {values.length} {values.length === 1 ? "value" : "values"}
+                      </span>
+                    </div>
+
+                    <div className={style.metafieldValuePanel}>
+                      {values.length > 0 ? (
+                        <div className={style.metafieldValueList}>
+                          {values.map((item) => (
+                            <div key={item.id} className={style.metafieldValueChip}>
+                              <span>{item.value}</span>
+
+                              <button
+                                type="button"
+                                className={style.metafieldValueRemove}
+                                onClick={() => handleDeleteValue(item)}
+                                disabled={valueSaving}
+                                aria-label={`Delete ${item.value}`}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className={style.metafieldValuesEmpty}>
+                          No values added yet.
+                        </div>
+                      )}
+
+                      <div className={style.metafieldValueAddRow}>
+                        <input
+                          type="text"
+                          value={newValue}
+                          onChange={(event) => {
+                            setNewValue(event.target.value);
+                            setValueError("");
+                          }}
+                          placeholder="Enter a new value"
+                          className={style.metafieldValueInput}
+                          disabled={valueSaving}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              handleAddValue();
+                            }
+                          }}
+                        />
+
+                        <button
+                          type="button"
+                          className={style.metafieldValueAddButton}
+                          onClick={handleAddValue}
+                          disabled={!newValue.trim() || valueSaving}
+                        >
+                          {valueSaving ? "Adding..." : "Add value"}
+                        </button>
+                      </div>
+
+                      {valueError && (
+                        <p className={style.metafieldValueError}>{valueError}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className={style.metafieldCheckboxGroup}>
                 <label className={style.metafieldCheckbox}>

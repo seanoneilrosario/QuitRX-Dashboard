@@ -99,3 +99,36 @@ export async function removeAttribute(
     },
   );
 }
+
+export type CreateAttributeValueInput = {
+  value: string;
+  numberValue?: number;
+  booleanValue?: boolean;
+};
+
+export async function createAttributeValue(
+  attributeId: string,
+  data: CreateAttributeValueInput,
+): Promise<AttributeValue> {
+  return retailRequest<AttributeValue>(
+    `/attributes/${encodeURIComponent(attributeId)}/values`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+      cache: "no-store",
+    },
+  );
+}
+
+export async function removeAttributeValue(
+  attributeId: string,
+  valueId: string,
+): Promise<void> {
+  await retailRequest(
+    `/attributes/${encodeURIComponent(attributeId)}/values/${encodeURIComponent(valueId)}`,
+    {
+      method: "DELETE",
+      cache: "no-store",
+    },
+  );
+}

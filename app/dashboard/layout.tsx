@@ -37,7 +37,7 @@ const nav = [
     icon: "▤",
   },
   {
-    label: "Metafields",
+    label: "Filters",
     href: "/dashboard/metafields",
     icon: "▥",
   },

@@ -41,7 +41,7 @@ export default async function MetafieldsPage() {
       <header className={style.pageHeader}>
         <div>
           <p className={style.eyebrow}>QUITRX OPERATIONS</p>
-          <h1>Metafields</h1>
+          <h1>Filters</h1>
           <p>
             Create custom product fields and manage the values
             available to your products and filters.
@@ -52,7 +52,7 @@ export default async function MetafieldsPage() {
           href="/dashboard/metafields/create"
           className={style.primary}
         >
-          + Add metafield
+          + Add Product Filter
         </Link>
       </header>
 

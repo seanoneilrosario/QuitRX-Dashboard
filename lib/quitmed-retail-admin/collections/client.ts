@@ -183,11 +183,11 @@ export async function retailRequest<T = unknown>(
               "application/json",
           }),
 
-      ...(usesBearerToken || usesFormData
-        ? {}
-        : {
-            "x-api-key": apiKey(),
-          }),
+      ...(usesBearerToken
+      ? {}
+      : {
+          "x-api-key": apiKey(),
+        }),
 
       ...init.headers,
     },

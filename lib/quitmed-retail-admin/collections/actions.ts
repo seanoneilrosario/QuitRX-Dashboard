@@ -12,6 +12,8 @@ import {
 import { getCollectionEditProducts } from "./collections";
 import { redirect } from "next/navigation";
 
+import { auth } from "@/auth";
+
 export type CollectionActionState = {
   message: string;
   success: boolean;
@@ -278,6 +280,26 @@ export async function createCollection(
   formData: FormData,
 ): Promise<CollectionActionState> {
   try {
+
+    const session = await auth();
+
+    const staffUser = session?.user as
+      | {
+          isStaff?: boolean;
+          accessToken?: string;
+        }
+      | undefined;
+
+    if (!staffUser?.isStaff) {
+      throw new Error("You must be signed in as staff to save collections.");
+    }
+
+    if (!staffUser.accessToken) {
+      throw new Error(
+        "Your staff session does not include an access token. Please sign in again.",
+      );
+    }
+
     const id = getString(
       formData,
       "_id",
@@ -363,13 +385,14 @@ export async function createCollection(
         imageFile,
       );
 
+      console.log(upload, `/collections/${encodeURIComponent(collectionId)}/image`)
+
       await retailRequest(
-        `/collections/${encodeURIComponent(
-          collectionId,
-        )}/image`,
+        `/collections/${encodeURIComponent(collectionId)}/image`,
         {
           method: "POST",
           body: upload,
+          cache: "no-store",
         },
       );
     }

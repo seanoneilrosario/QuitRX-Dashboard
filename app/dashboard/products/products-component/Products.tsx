@@ -321,6 +321,14 @@ export default function Products({
                                 >
                                 View
                             </Link>
+
+                            <Link
+                                href={`/dashboard/products/edit?id=${encodeURIComponent(
+                                    text(product.id, ""),
+                                )}`}
+                                >
+                                Edit
+                            </Link>
                           </div>
                         </td>
                       </tr>

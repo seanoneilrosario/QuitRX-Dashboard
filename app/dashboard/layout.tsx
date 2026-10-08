@@ -36,11 +36,11 @@ const nav = [
     href: "/dashboard/orders",
     icon: "▤",
   },
-  // {
-  //   label: "Inventory",
-  //   href: "/dashboard/inventory",
-  //   icon: "▥",
-  // },
+  {
+    label: "Metafields",
+    href: "/dashboard/metafields",
+    icon: "▥",
+  },
   {
     label: "Store Activity",
     href: "/dashboard/store-activity",

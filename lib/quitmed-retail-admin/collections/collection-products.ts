@@ -10,7 +10,9 @@ export type CollectionRuleField =
 
 export type CollectionRuleOperator =
   | "equals"
+  | "not_equals"
   | "contains"
+  | "not_contains"
   | "greater_than"
   | "less_than";
 
@@ -37,14 +39,58 @@ export const collectionRuleOperators: Record<
   CollectionRuleField,
   CollectionRuleOperator[]
 > = {
-  name: ["equals", "contains"],
-  description: ["equals", "contains"],
-  sku: ["equals", "contains"],
-  tags: ["equals", "contains"],
-  brand: ["equals", "contains"],
-  productType: ["equals", "contains"],
-  price: ["equals", "greater_than", "less_than"],
-  inventory: ["equals", "greater_than", "less_than"],
+  name: [
+    "contains",
+    "not_contains",
+    "equals",
+    "not_equals",
+  ],
+
+  description: [
+    "contains",
+    "not_contains",
+    "equals",
+    "not_equals",
+  ],
+
+  sku: [
+    "contains",
+    "not_contains",
+    "equals",
+    "not_equals",
+  ],
+
+  tags: [
+    "contains",
+    "not_contains",
+    "equals",
+    "not_equals",
+  ],
+
+  brand: [
+    "contains",
+    "not_contains",
+    "equals",
+    "not_equals",
+  ],
+
+  productType: [
+    "contains",
+    "not_contains",
+    "equals",
+    "not_equals",
+  ],
+
+  price: [
+    "equals",
+    "not_equals",
+    "greater_than",
+    "less_than",
+  ],
+
+  inventory: [
+    "greater_than",
+  ],
 };
 
 export function isNumericCollectionField(

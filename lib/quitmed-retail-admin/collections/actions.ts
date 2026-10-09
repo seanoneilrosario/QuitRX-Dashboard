@@ -32,7 +32,9 @@ export type CollectionRule = {
 
   operator:
     | "contains"
+    | "not_contains"
     | "equals"
+    | "not_equals"
     | "greater_than"
     | "less_than";
 

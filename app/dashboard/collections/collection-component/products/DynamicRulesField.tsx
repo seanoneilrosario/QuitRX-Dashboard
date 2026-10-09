@@ -536,8 +536,10 @@ export default function DynamicRulesField({
                         {
                           contains:
                             "Contains",
+                          not_contains: "Does not contain",
                           equals:
                             "Equals",
+                          not_equals: "Not equals",
                           greater_than:
                             "Greater than",
                           less_than:
@@ -566,7 +568,8 @@ export default function DynamicRulesField({
                   rule.field ===
                   "tags"
                     ? rule.operator ===
-                      "contains"
+                      "contains" || 
+                      rule.operator === "not_contains"
                       ? "Part of a tag name"
                       : "Exact tag name"
                     : "Value"

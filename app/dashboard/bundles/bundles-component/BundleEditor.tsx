@@ -139,6 +139,14 @@ export default function BundleEditor({
     mapBundleToEditor(bundle),
   );
 
+  const [draggedDropdownId, setDraggedDropdownId] =
+    useState<string | null>(null);
+
+  const [draggedOption, setDraggedOption] = useState<{
+    dropdownId: string;
+    variantId: string;
+  } | null>(null);
+
   const [pickerOpenFor, setPickerOpenFor] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<SelectedVariant[]>([]);
@@ -166,6 +174,69 @@ export default function BundleEditor({
       current.map((dropdown, i) =>
         i === index ? { ...dropdown, name } : dropdown,
       ),
+    );
+  }
+
+  function moveDropdown(fromId: string, toId: string) {
+    if (fromId === toId) return;
+
+    setDropdowns((current) => {
+      const fromIndex = current.findIndex(
+        (dropdown) => dropdown.id === fromId,
+      );
+      const toIndex = current.findIndex(
+        (dropdown) => dropdown.id === toId,
+      );
+
+      if (fromIndex < 0 || toIndex < 0) return current;
+
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+
+      if (!moved) return current;
+
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+
+    // Close the picker because dropdown indexes may have changed.
+    setPickerOpenFor(null);
+    setSearch("");
+    setSearchResults([]);
+  }
+
+  function moveVariant(
+    dropdownId: string,
+    fromId: string,
+    toId: string,
+  ) {
+    if (fromId === toId) return;
+
+    setDropdowns((current) =>
+      current.map((dropdown) => {
+        if (dropdown.id !== dropdownId) return dropdown;
+
+        const fromIndex = dropdown.options.findIndex(
+          (option) => option.componentVariantId === fromId,
+        );
+        const toIndex = dropdown.options.findIndex(
+          (option) => option.componentVariantId === toId,
+        );
+
+        if (fromIndex < 0 || toIndex < 0) return dropdown;
+
+        const options = [...dropdown.options];
+        const [moved] = options.splice(fromIndex, 1);
+
+        if (!moved) return dropdown;
+
+        options.splice(toIndex, 0, moved);
+
+        return {
+          ...dropdown,
+          options,
+        };
+      }),
     );
   }
 
@@ -357,6 +428,21 @@ export default function BundleEditor({
             <div
               key={dropdown.id}
               className={style.formCard}
+              onDragOver={(event) => {
+                if (!draggedDropdownId || draggedOption) return;
+
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(event) => {
+                if (!draggedDropdownId || draggedOption) return;
+
+                event.preventDefault();
+                event.stopPropagation();
+
+                moveDropdown(draggedDropdownId, dropdown.id);
+                setDraggedDropdownId(null);
+              }}
             >
               <div className={style.selectionHeader}>
                 <div className={style.selectionNameField}>
@@ -385,6 +471,26 @@ export default function BundleEditor({
                     {dropdown.options.length}
                   </span>
                 </div>
+
+                <button
+                  type="button"
+                  className={style.secondary}
+                  draggable
+                  title="Drag to reorder selections"
+                  aria-label={`Reorder selection ${dropdown.name}`}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", dropdown.id);
+
+                    setDraggedOption(null);
+                    setDraggedDropdownId(dropdown.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedDropdownId(null);
+                  }}
+                >
+                  ↕ Drag selection
+                </button>
               </div>
 
               {dropdown.options.length > 0 && (
@@ -398,8 +504,35 @@ export default function BundleEditor({
 
                     {dropdown.options.map((option) => (
                     <div
-                        key={option.componentVariantId}
-                        className={style.variantListRow}
+                      key={option.componentVariantId}
+                      className={style.variantListRow}
+                      onDragOver={(event) => {
+                        if (!draggedOption) return;
+
+                        // Keep option dragging separate from group dragging.
+                        event.stopPropagation();
+
+                        if (draggedOption.dropdownId !== dropdown.id) return;
+
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(event) => {
+                        if (!draggedOption) return;
+
+                        event.preventDefault();
+                        event.stopPropagation();
+
+                        if (draggedOption.dropdownId === dropdown.id) {
+                          moveVariant(
+                            dropdown.id,
+                            draggedOption.variantId,
+                            option.componentVariantId,
+                          );
+                        }
+
+                        setDraggedOption(null);
+                      }}
                     >
                         <div className={style.variantListValue}>
                         {option.productName}
@@ -414,18 +547,45 @@ export default function BundleEditor({
                         </div>
 
                         <div className={style.variantListAction}>
-                        <button
+                          <button
                             type="button"
                             className={style.secondary}
-                            onClick={() =>
-                            removeVariant(
-                                dropdownIndex,
+                            draggable
+                            title="Drag to reorder options"
+                            aria-label={`Reorder ${option.variantName}`}
+                            onDragStart={(event) => {
+                              event.stopPropagation();
+
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData(
+                                "text/plain",
                                 option.componentVariantId,
-                            )
-                            }
-                        >
-                            Remove
-                        </button>
+                              );
+
+                              setDraggedDropdownId(null);
+                              setDraggedOption({
+                                dropdownId: dropdown.id,
+                                variantId: option.componentVariantId,
+                              });
+                            }}
+                            onDragEnd={() => {
+                              setDraggedOption(null);
+                            }}
+                          >
+                            ↕
+                          </button>
+                          <button
+                              type="button"
+                              className={style.secondary}
+                              onClick={() =>
+                              removeVariant(
+                                  dropdownIndex,
+                                  option.componentVariantId,
+                              )
+                              }
+                          >
+                              Remove
+                          </button>
                         </div>
                     </div>
                     ))}

@@ -4,6 +4,7 @@ import { ActionButton } from "../components/action-controls";
 import styles from "../components/dashboard.module.css";
 
 import { logoutStaff } from "./login/actions";
+import DashboardNav from "./dashboard-nav";
 
 const nav = [
   {
@@ -30,6 +31,16 @@ const nav = [
     label: "Customers",
     href: "/dashboard/customers",
     icon: "♙",
+  },
+  {
+    label: "Customers Segment",
+    href: "/dashboard/customer-segments",
+    icon: "♙",
+  },
+  {
+    label: "Discounts",
+    href: "/dashboard/discounts",
+    icon: "▤",
   },
   {
     label: "Orders",
@@ -64,17 +75,7 @@ export default function DashboardLayout({
           <strong>QuitRX</strong>
         </Link>
 
-        <nav>
-          {nav.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-            >
-              <i>{item.icon}</i>
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <DashboardNav />
 
         <div className={styles.profile}>
           <span>ST</span>
@@ -104,16 +105,7 @@ export default function DashboardLayout({
             <strong>QuitRX</strong>
           </Link>
 
-          <nav>
-            {nav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <DashboardNav mobile />
 
           <form action={logoutStaff}>
             <ActionButton pendingLabel="Signing out…">

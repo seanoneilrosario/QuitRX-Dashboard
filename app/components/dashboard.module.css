@@ -1812,3 +1812,10 @@
     width: 100%;
   }
 }
+
+
+.activeNavLink {
+  background-color: rgba(127, 127, 127, 0.14);
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 currentColor;
+}

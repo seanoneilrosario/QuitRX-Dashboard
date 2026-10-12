@@ -1,11 +1,36 @@
+
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+
 import styles from "./discounts.module.css";
-import { BuyXGetYBenefit, Discount, DiscountMethod, DiscountPayload, DiscountScope } from "@/lib/quitmed-retail-admin/discounts/types";
-import { createDiscountAction, updateDiscountAction } from "@/lib/quitmed-retail-admin/discounts/discount-actions";
+
+import type {
+  BuyXGetYBenefit,
+  Discount,
+  DiscountMethod,
+  DiscountPayload,
+  DiscountScope,
+} from "@/lib/quitmed-retail-admin/discounts/types";
+
+import {
+  createDiscountAction,
+  updateDiscountAction,
+} from "@/lib/quitmed-retail-admin/discounts/discount-actions";
+
+import {
+  searchDiscountProductOptionsAction,
+} from "@/lib/quitmed-retail-admin/discounts/product-actions";
+
+import type {
+  EligibilityOption,
+} from "@/lib/quitmed-retail-admin/discounts/eligibility-actions";
+import ProductPicker, { ProductOption } from "./ProductPicker";
+import CustomerPicker from "./CustomerPicker";
+import SegmentPicker from "./SegmentPicker";
+
 
 type Props = {
   mode: "create" | "edit";
@@ -36,23 +61,206 @@ type FormState = {
   combineWithProductDiscounts: boolean;
   combineWithOrderDiscounts: boolean;
   combineWithShippingDiscounts: boolean;
-  productIds: string;
-  variantIds: string;
-  customerIds: string;
-  segmentIds: string;
 };
 
 function datetimeLocalValue(value?: string | null): string {
   if (!value) return "";
+
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const localDate = new Date(
+    date.getTime() - date.getTimezoneOffset() * 60_000,
+  );
+
   return localDate.toISOString().slice(0, 16);
 }
 
-function relationIds(items?: Array<{ productId?: string; variantId?: string; customerId?: string; segmentId?: string }>, key?: "productId" | "variantId" | "customerId" | "segmentId"): string {
-  if (!items || !key) return "";
-  return items.map((item) => item[key]).filter((id): id is string => Boolean(id)).join("\n");
+function relationIds(
+  items?: Array<{
+    productId?: string;
+    variantId?: string;
+    customerId?: string;
+    segmentId?: string;
+  }>,
+  key?: "productId" | "variantId" | "customerId" | "segmentId",
+): string[] {
+  if (!items || !key) return [];
+
+  return Array.from(
+    new Set(
+      items
+        .map((item) => item[key])
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+}
+
+function parseIds(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(/[\n,;]/)
+        .map((part) => part.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function optionalNumber(value: string): number | null {
+  if (!value.trim()) return null;
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function optionalInteger(value: string): number | null {
+  const parsed = optionalNumber(value);
+
+  return parsed === null ? null : Math.trunc(parsed);
+}
+
+function initialProductOptions(
+  discount?: Discount,
+): ProductOption[] {
+  const options = new Map<string, ProductOption>();
+
+  for (const item of discount?.products ?? []) {
+    const id = item.productId ?? item.product?.id;
+
+    if (!id) continue;
+
+    const label =
+      item.product?.name ??
+      item.product?.title ??
+      item.name ??
+      `Product ${id}`;
+
+    options.set(id, { id, label });
+  }
+
+  for (const item of discount?.productAssignments ?? []) {
+    if (!options.has(item.productId)) {
+      options.set(item.productId, {
+        id: item.productId,
+        label: `Product ${item.productId}`,
+      });
+    }
+  }
+
+  return Array.from(options.values());
+}
+
+function mergeProductOptions(
+  current: ProductOption[],
+  incoming: ProductOption[],
+): ProductOption[] {
+  const options = new Map<string, ProductOption>();
+
+  for (const item of [...current, ...incoming]) {
+    options.set(item.id, item);
+  }
+
+  return Array.from(options.values());
+}
+
+function productIdsForRole(
+  discount: Discount | undefined,
+  role: "APPLIES_TO" | "BUY_X" | "GET_Y",
+): string[] {
+  const assignments = [
+    ...(discount?.products ?? []),
+    ...(discount?.productAssignments ?? []),
+  ];
+
+  return Array.from(
+    new Set(
+      assignments
+        .filter((item) => (item.role ?? "APPLIES_TO") === role)
+        .map((item) => item.productId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+}
+
+function hasProductOrVariantAssignments(
+  discount?: Discount,
+): boolean {
+  return Boolean(
+    (discount?.products?.length ?? 0) > 0 ||
+      (discount?.variants?.length ?? 0) > 0 ||
+      (discount?.productAssignments?.length ?? 0) > 0 ||
+      (discount?.variantAssignments?.length ?? 0) > 0,
+  );
+}
+
+function getObject(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  return value as Record<string, unknown>;
+}
+
+function getString(
+  value: unknown,
+): string | undefined {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : undefined;
+}
+
+function initialEligibilityOptions(
+  items: unknown,
+  kind: "customer" | "segment",
+): EligibilityOption[] {
+  if (!Array.isArray(items)) return [];
+
+  const options = new Map<string, EligibilityOption>();
+
+  for (const value of items) {
+    const item = getObject(value);
+
+    if (!item) continue;
+
+    const relatedRecord = getObject(item[kind]);
+
+    const id =
+      getString(item[kind === "customer" ? "customerId" : "segmentId"]) ??
+      getString(relatedRecord?.id);
+
+    if (!id) continue;
+
+    let label: string;
+
+    if (kind === "customer") {
+      const firstName = getString(relatedRecord?.firstName);
+      const lastName = getString(relatedRecord?.lastName);
+      const email = getString(relatedRecord?.email);
+
+      const fullName = [firstName, lastName]
+        .filter(Boolean)
+        .join(" ");
+
+      label = fullName
+        ? email
+          ? `${fullName} (${email})`
+          : fullName
+        : email ?? `Customer ${id}`;
+    } else {
+      label =
+        getString(relatedRecord?.name) ??
+        `Segment ${id}`;
+    }
+
+    options.set(id, { id, label });
+  }
+
+  return Array.from(options.values());
 }
 
 function initialState(discount?: Discount): FormState {
@@ -65,67 +273,264 @@ function initialState(discount?: Discount): FormState {
     method: discount?.method ?? "PERCENTAGE",
     scope: discount?.scope ?? "ORDER",
     value: discount?.value == null ? "" : String(discount.value),
-    maxDiscountAmount: discount?.maxDiscountAmount == null ? "" : String(discount.maxDiscountAmount),
-    minSubtotal: discount?.minSubtotal == null ? "" : String(discount.minSubtotal),
-    minQuantity: discount?.minQuantity == null ? "" : String(discount.minQuantity),
+    maxDiscountAmount:
+      discount?.maxDiscountAmount == null
+        ? ""
+        : String(discount.maxDiscountAmount),
+    minSubtotal:
+      discount?.minSubtotal == null
+        ? ""
+        : String(discount.minSubtotal),
+    minQuantity:
+      discount?.minQuantity == null
+        ? ""
+        : String(discount.minQuantity),
     startsAt: datetimeLocalValue(discount?.startsAt),
     endsAt: datetimeLocalValue(discount?.endsAt),
-    usageLimit: discount?.usageLimit == null ? "" : String(discount.usageLimit),
-    perCustomerUsageLimit: discount?.perCustomerUsageLimit == null ? "" : String(discount.perCustomerUsageLimit),
-    buyQuantity: discount?.buyQuantity == null ? "" : String(discount.buyQuantity),
-    getQuantity: discount?.getQuantity == null ? "" : String(discount.getQuantity),
+    usageLimit:
+      discount?.usageLimit == null
+        ? ""
+        : String(discount.usageLimit),
+    perCustomerUsageLimit:
+      discount?.perCustomerUsageLimit == null
+        ? ""
+        : String(discount.perCustomerUsageLimit),
+    buyQuantity:
+      discount?.buyQuantity == null
+        ? ""
+        : String(discount.buyQuantity),
+    getQuantity:
+      discount?.getQuantity == null
+        ? ""
+        : String(discount.getQuantity),
     getDiscountType: discount?.getDiscountType ?? "FREE",
-    getDiscountValue: discount?.getDiscountValue == null ? "" : String(discount.getDiscountValue),
-    priority: discount?.priority == null ? "0" : String(discount.priority),
-    combineWithProductDiscounts: discount?.combineWithProductDiscounts ?? false,
-    combineWithOrderDiscounts: discount?.combineWithOrderDiscounts ?? false,
-    combineWithShippingDiscounts: discount?.combineWithShippingDiscounts ?? false,
-    productIds: relationIds(discount?.products, "productId"),
-    variantIds: relationIds(discount?.variants, "variantId"),
-    customerIds: relationIds(discount?.customers, "customerId"),
-    segmentIds: relationIds(discount?.segments, "segmentId"),
+    getDiscountValue:
+      discount?.getDiscountValue == null
+        ? ""
+        : String(discount.getDiscountValue),
+    priority:
+      discount?.priority == null
+        ? "0"
+        : String(discount.priority),
+    combineWithProductDiscounts:
+      discount?.combineWithProductDiscounts ?? false,
+    combineWithOrderDiscounts:
+      discount?.combineWithOrderDiscounts ?? false,
+    combineWithShippingDiscounts:
+      discount?.combineWithShippingDiscounts ?? false,
   };
 }
 
-function parseIds(value: string): string[] {
-  return Array.from(new Set(value.split(/[\n,;]/).map((part) => part.trim()).filter(Boolean)));
-}
+export default function DiscountForm({
+  mode,
+  initialDiscount,
+}: Props) {
+  const [form, setForm] = useState<FormState>(() =>
+    initialState(initialDiscount),
+  );
 
-function optionalNumber(value: string): number | null {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function optionalInteger(value: string): number | null {
-  const parsed = optionalNumber(value);
-  return parsed === null ? null : Math.trunc(parsed);
-}
-
-export default function DiscountForm({ mode, initialDiscount }: Props) {
-  const [form, setForm] = useState<FormState>(() => initialState(initialDiscount));
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Product search and selection state.
+  const [productOptions, setProductOptions] = useState<ProductOption[]>(
+    [],
+  );
+
+  const [knownProductOptions, setKnownProductOptions] = useState<
+    ProductOption[]
+  >(() => initialProductOptions(initialDiscount));
+
+  const [productSearch, setProductSearch] = useState("");
+  const [productPage, setProductPage] = useState(1);
+  const [productHasMore, setProductHasMore] = useState(false);
+  const [loadingMoreProducts, setLoadingMoreProducts] = useState(false);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productOptionsError, setProductOptionsError] = useState<
+    string | null
+  >(null);
+
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>(
+    () => productIdsForRole(initialDiscount, "APPLIES_TO"),
+  );
+
+  const [selectedBuyProductIds, setSelectedBuyProductIds] = useState<
+    string[]
+  >(() => productIdsForRole(initialDiscount, "BUY_X"));
+
+  const [selectedGetProductIds, setSelectedGetProductIds] = useState<
+    string[]
+  >(() => productIdsForRole(initialDiscount, "GET_Y"));
+
+  const [applyToAllProducts, setApplyToAllProducts] = useState(
+    () => !hasProductOrVariantAssignments(initialDiscount),
+  );
+
+  // Customer and segment selections use ID arrays, not text fields.
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>(
+    () => relationIds(initialDiscount?.customers, "customerId"),
+  );
+
+  const [selectedSegmentIds, setSelectedSegmentIds] = useState<string[]>(
+    () => relationIds(initialDiscount?.segments, "segmentId"),
+  );
+
   const router = useRouter();
 
   const isBuyXGetY = form.method === "BUY_X_GET_Y";
   const isFreeShipping = form.method === "FREE_SHIPPING";
+
+  const initialCustomerOptions = useMemo(
+    () =>
+      initialEligibilityOptions(
+        initialDiscount?.customers,
+        "customer",
+      ),
+    [initialDiscount],
+  );
+
+  const initialSegmentOptions = useMemo(
+    () =>
+      initialEligibilityOptions(
+        initialDiscount?.segments,
+        "segment",
+      ),
+    [initialDiscount],
+  );
+
   const numericValueLabel = useMemo(() => {
     if (form.method === "PERCENTAGE") return "Discount percentage";
     if (form.method === "FIXED_AMOUNT") return "Fixed discount amount";
-    if (form.method === "BUY_X_GET_Y") return "Not used for Buy X Get Y";
+    if (form.method === "BUY_X_GET_Y") {
+      return "Not used for Buy X Get Y";
+    }
+
     return "Not used for free shipping";
   }, [form.method]);
 
-  function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+  // Search products on the server, returning one page at a time.
+  useEffect(() => {
+    let cancelled = false;
+
+    setProductsLoading(true);
+    setProductOptionsError(null);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await searchDiscountProductOptionsAction(
+          productSearch,
+          1,
+        );
+
+        if (cancelled) return;
+
+        if (!result.success) {
+          setProductOptionsError(
+            result.message ?? "Unable to load products.",
+          );
+          setProductOptions([]);
+          setProductHasMore(false);
+          return;
+        }
+
+        setProductOptions(result.data);
+
+        setKnownProductOptions((current) =>
+          mergeProductOptions(current, result.data),
+        );
+
+        setProductPage(result.page);
+        setProductHasMore(result.hasMore);
+      } catch (requestError) {
+        if (!cancelled) {
+          setProductOptionsError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Unable to load products.",
+          );
+
+          setProductOptions([]);
+          setProductHasMore(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setProductsLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [productSearch]);
+
+  async function loadMoreProducts() {
+    if (
+      !productHasMore ||
+      loadingMoreProducts ||
+      productsLoading
+    ) {
+      return;
+    }
+
+    setLoadingMoreProducts(true);
+    setProductOptionsError(null);
+
+    try {
+      const result = await searchDiscountProductOptionsAction(
+        productSearch,
+        productPage + 1,
+      );
+
+      if (!result.success) {
+        setProductOptionsError(
+          result.message ?? "Unable to load more products.",
+        );
+        return;
+      }
+
+      setProductOptions((current) =>
+        mergeProductOptions(current, result.data),
+      );
+
+      setKnownProductOptions((current) =>
+        mergeProductOptions(current, result.data),
+      );
+
+      setProductPage(result.page);
+      setProductHasMore(result.hasMore);
+    } catch (requestError) {
+      setProductOptionsError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to load more products.",
+      );
+    } finally {
+      setLoadingMoreProducts(false);
+    }
+  }
+
+  function setField<K extends keyof FormState>(
+    key: K,
+    value: FormState[K],
+  ) {
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
   }
 
   function handleMethodChange(method: DiscountMethod) {
     setForm((current) => ({
       ...current,
       method,
-      scope: method === "FREE_SHIPPING" ? "SHIPPING" : method === "BUY_X_GET_Y" ? "PRODUCT" : current.scope,
+      scope:
+        method === "FREE_SHIPPING"
+          ? "SHIPPING"
+          : method === "BUY_X_GET_Y"
+            ? "PRODUCT"
+            : current.scope,
     }));
   }
 
@@ -138,33 +543,100 @@ export default function DiscountForm({ mode, initialDiscount }: Props) {
       isActive: form.isActive,
       method: form.method,
       scope: form.scope,
-      value: isBuyXGetY || isFreeShipping ? null : optionalNumber(form.value),
+
+      value:
+        isBuyXGetY || isFreeShipping
+          ? null
+          : optionalNumber(form.value),
+
       maxDiscountAmount: optionalNumber(form.maxDiscountAmount),
       minSubtotal: optionalNumber(form.minSubtotal),
       minQuantity: optionalInteger(form.minQuantity),
-      startsAt: form.startsAt ? new Date(form.startsAt).toISOString() : null,
-      endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : null,
+
+      startsAt: form.startsAt
+        ? new Date(form.startsAt).toISOString()
+        : null,
+
+      endsAt: form.endsAt
+        ? new Date(form.endsAt).toISOString()
+        : null,
+
       usageLimit: optionalInteger(form.usageLimit),
-      perCustomerUsageLimit: optionalInteger(form.perCustomerUsageLimit),
-      buyQuantity: isBuyXGetY ? optionalInteger(form.buyQuantity) : null,
-      getQuantity: isBuyXGetY ? optionalInteger(form.getQuantity) : null,
-      getDiscountType: isBuyXGetY ? form.getDiscountType : null,
-      getDiscountValue: isBuyXGetY && form.getDiscountType !== "FREE" ? optionalNumber(form.getDiscountValue) : null,
+      perCustomerUsageLimit: optionalInteger(
+        form.perCustomerUsageLimit,
+      ),
+
+      buyQuantity: isBuyXGetY
+        ? optionalInteger(form.buyQuantity)
+        : null,
+
+      getQuantity: isBuyXGetY
+        ? optionalInteger(form.getQuantity)
+        : null,
+
+      getDiscountType: isBuyXGetY
+        ? form.getDiscountType
+        : null,
+
+      getDiscountValue:
+        isBuyXGetY && form.getDiscountType !== "FREE"
+          ? optionalNumber(form.getDiscountValue)
+          : null,
+
       priority: optionalInteger(form.priority) ?? 0,
-      combineWithProductDiscounts: form.combineWithProductDiscounts,
-      combineWithOrderDiscounts: form.combineWithOrderDiscounts,
-      combineWithShippingDiscounts: form.combineWithShippingDiscounts,
-      productIds: parseIds(form.productIds),
-      variantIds: parseIds(form.variantIds),
-      customerIds: parseIds(form.customerIds),
-      segmentIds: parseIds(form.segmentIds),
+
+      combineWithProductDiscounts:
+        form.combineWithProductDiscounts,
+
+      combineWithOrderDiscounts:
+        form.combineWithOrderDiscounts,
+
+      combineWithShippingDiscounts:
+        form.combineWithShippingDiscounts,
+
+      customerIds: selectedCustomerIds,
+      segmentIds: selectedSegmentIds,
     };
 
-    if (form.isAutomatic) payload.code = null;
+    if (form.isAutomatic) {
+      payload.code = null;
+    }
+
+    if (form.scope === "PRODUCT") {
+      if (isBuyXGetY) {
+        payload.productAssignments = [
+          ...selectedBuyProductIds.map((productId) => ({
+            productId,
+            role: "BUY_X" as const,
+          })),
+          ...selectedGetProductIds.map((productId) => ({
+            productId,
+            role: "GET_Y" as const,
+          })),
+        ];
+      } else if (applyToAllProducts) {
+        // An empty assignment list means the discount is not
+        // restricted to specific products.
+        payload.productAssignments = [];
+      } else {
+        payload.productAssignments = selectedProductIds.map(
+          (productId) => ({
+            productId,
+            role: "APPLIES_TO" as const,
+          }),
+        );
+      }
+
+      // This form manages product targeting, not variant targeting.
+      // Saving a product-scope discount clears existing variant
+      // assignments for that discount.
+      payload.variantAssignments = [];
+    }
+
     return payload;
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
 
@@ -172,30 +644,126 @@ export default function DiscountForm({ mode, initialDiscount }: Props) {
       setError("Enter a discount name.");
       return;
     }
+
     if (!form.isAutomatic && !form.code.trim()) {
-      setError("Enter a discount code, or enable automatic discount.");
-      return;
-    }
-    if (form.method === "PERCENTAGE") {
-      const percentage = Number(form.value);
-      if (!form.value.trim() || !Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
-        setError("Percentage must be greater than 0 and no more than 100.");
-        return;
-      }
-    }
-    if (form.method === "FIXED_AMOUNT") {
-      const amount = Number(form.value);
-      if (!form.value.trim() || !Number.isFinite(amount) || amount <= 0) {
-        setError("Enter a fixed discount amount greater than zero.");
-        return;
-      }
-    }
-    if (isBuyXGetY && (Number(form.buyQuantity) < 1 || Number(form.getQuantity) < 1)) {
-      setError("Buy quantity and get quantity must both be at least 1.");
+      setError(
+        "Enter a discount code, or enable automatic discount.",
+      );
       return;
     }
 
+    if (form.method === "PERCENTAGE") {
+      const percentage = Number(form.value);
+
+      if (
+        !form.value.trim() ||
+        !Number.isFinite(percentage) ||
+        percentage <= 0 ||
+        percentage > 100
+      ) {
+        setError(
+          "Percentage must be greater than 0 and no more than 100.",
+        );
+        return;
+      }
+    }
+
+    if (form.method === "FIXED_AMOUNT") {
+      const amount = Number(form.value);
+
+      if (
+        !form.value.trim() ||
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
+        setError(
+          "Enter a fixed discount amount greater than zero.",
+        );
+        return;
+      }
+    }
+
+    if (
+      isBuyXGetY &&
+      (
+        !form.buyQuantity.trim() ||
+        !form.getQuantity.trim() ||
+        Number(form.buyQuantity) < 1 ||
+        Number(form.getQuantity) < 1
+      )
+    ) {
+      setError(
+        "Buy quantity and get quantity must both be at least 1.",
+      );
+      return;
+    }
+
+    if (
+      isBuyXGetY &&
+      form.getDiscountType !== "FREE"
+    ) {
+      const benefitValue = Number(form.getDiscountValue);
+
+      if (
+        !form.getDiscountValue.trim() ||
+        !Number.isFinite(benefitValue) ||
+        benefitValue <= 0
+      ) {
+        setError(
+          "Enter a Get-item discount value greater than zero.",
+        );
+        return;
+      }
+
+      if (
+        form.getDiscountType === "PERCENTAGE" &&
+        benefitValue > 100
+      ) {
+        setError(
+          "The Get-item percentage cannot exceed 100.",
+        );
+        return;
+      }
+    }
+
+    if (form.scope === "PRODUCT") {
+      if (productsLoading) {
+        setError(
+          "Wait for the product list to finish loading.",
+        );
+        return;
+      }
+
+      if (productOptionsError) {
+        setError(
+          "Products could not be loaded. Refresh the page and try again.",
+        );
+        return;
+      }
+
+      if (isBuyXGetY) {
+        if (selectedBuyProductIds.length === 0) {
+          setError("Select at least one Buy product.");
+          return;
+        }
+
+        if (selectedGetProductIds.length === 0) {
+          setError("Select at least one Get product.");
+          return;
+        }
+      } else if (
+        !applyToAllProducts &&
+        selectedProductIds.length === 0
+      ) {
+        setError(
+          "Select at least one product, or enable Apply to all products.",
+        );
+        return;
+      }
+    }
+
     let payload: DiscountPayload;
+
     try {
       payload = buildPayload();
     } catch {
@@ -203,94 +771,299 @@ export default function DiscountForm({ mode, initialDiscount }: Props) {
       return;
     }
 
-    startTransition(async () => {
-      const result = mode === "create"
-        ? await createDiscountAction(payload)
-        : await updateDiscountAction(initialDiscount!.id, payload);
+    setIsSaving(true);
+
+    try {
+      const result =
+        mode === "create"
+          ? await createDiscountAction(payload)
+          : await updateDiscountAction(
+              initialDiscount!.id,
+              payload,
+            );
 
       if (!result.success) {
-        setError(result.message ?? `Unable to ${mode} discount.`);
+        setError(
+          result.message ?? `Unable to ${mode} discount.`,
+        );
         return;
       }
 
-      const id = result.data?.id ?? initialDiscount?.id;
-      if (id) {
-        router.push(`/dashboard/discounts/view?id=${encodeURIComponent(id)}`);
-        router.refresh();
-      } else {
-        router.push("/dashboard/discounts");
-        router.refresh();
-      }
-    });
+      router.replace("/dashboard/discounts");
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : `Unable to ${mode} discount.`,
+      );
+    } finally {
+      setIsSaving(false);
+    }
   }
 
-  return (
-    <form className={`${styles.panel} ${styles.formPanel}`} onSubmit={handleSubmit}>
-      {error && <div className={styles.error} role="alert">{error}</div>}
+  const productControlsDisabled = isSaving;
 
+  return (
+    <form
+      className={`${styles.panel} ${styles.formPanel}`}
+      onSubmit={handleSubmit}
+    >
+      {error && (
+        <div className={styles.error} role="alert">
+          {error}
+        </div>
+      )}
+
+      {/* Discount details */}
       <section className={styles.formSection}>
-        <h2 className={styles.sectionTitle}>Discount details</h2>
-        <p className={styles.sectionDescription}>Choose how this promotion is named, redeemed and calculated.</p>
+        <h2 className={styles.sectionTitle}>
+          Discount details
+        </h2>
+
+        <p className={styles.sectionDescription}>
+          Choose how this promotion is named, redeemed and calculated.
+        </p>
+
         <div className={styles.formGrid}>
           <div className={`${styles.field} ${styles.fullWidth}`}>
-            <label className={styles.label} htmlFor="discount-name">Discount name *</label>
-            <input id="discount-name" className={styles.input} value={form.name} maxLength={120} required onChange={(event) => setField("name", event.target.value)} />
+            <label
+              className={styles.label}
+              htmlFor="discount-name"
+            >
+              Discount name *
+            </label>
+
+            <input
+              id="discount-name"
+              className={styles.input}
+              value={form.name}
+              maxLength={120}
+              required
+              onChange={(event) =>
+                setField("name", event.target.value)
+              }
+            />
           </div>
+
           <div className={`${styles.field} ${styles.fullWidth}`}>
-            <label className={styles.label} htmlFor="discount-description">Description</label>
-            <textarea id="discount-description" className={styles.textarea} value={form.description} onChange={(event) => setField("description", event.target.value)} />
+            <label
+              className={styles.label}
+              htmlFor="discount-description"
+            >
+              Description
+            </label>
+
+            <textarea
+              id="discount-description"
+              className={styles.textarea}
+              value={form.description}
+              onChange={(event) =>
+                setField("description", event.target.value)
+              }
+            />
           </div>
+
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="discount-method">Discount method *</label>
-            <select id="discount-method" className={styles.select} value={form.method} onChange={(event) => handleMethodChange(event.target.value as DiscountMethod)}>
+            <label
+              className={styles.label}
+              htmlFor="discount-method"
+            >
+              Discount method *
+            </label>
+
+            <select
+              id="discount-method"
+              className={styles.select}
+              value={form.method}
+              onChange={(event) =>
+                handleMethodChange(
+                  event.target.value as DiscountMethod,
+                )
+              }
+            >
               <option value="PERCENTAGE">Percentage</option>
               <option value="FIXED_AMOUNT">Fixed amount</option>
               <option value="BUY_X_GET_Y">Buy X Get Y</option>
               <option value="FREE_SHIPPING">Free shipping</option>
             </select>
           </div>
+
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="discount-scope">Discount scope *</label>
-            <select id="discount-scope" className={styles.select} value={form.scope} onChange={(event) => setField("scope", event.target.value as DiscountScope)}>
+            <label
+              className={styles.label}
+              htmlFor="discount-scope"
+            >
+              Discount scope *
+            </label>
+
+            <select
+              id="discount-scope"
+              className={styles.select}
+              value={form.scope}
+              onChange={(event) =>
+                setField(
+                  "scope",
+                  event.target.value as DiscountScope,
+                )
+              }
+            >
               <option value="ORDER">Order</option>
               <option value="PRODUCT">Product</option>
               <option value="SHIPPING">Shipping</option>
             </select>
-            <span className={styles.help}>Free shipping normally uses Shipping scope; Buy X Get Y normally uses Product scope.</span>
+
+            <span className={styles.help}>
+              Free shipping normally uses Shipping scope; Buy X Get Y
+              normally uses Product scope.
+            </span>
           </div>
+
           {!isBuyXGetY && !isFreeShipping && (
             <div className={styles.field}>
-              <label className={styles.label} htmlFor="discount-value">{numericValueLabel} *</label>
-              <input id="discount-value" className={styles.input} type="number" min="0.01" step="0.01" value={form.value} required onChange={(event) => setField("value", event.target.value)} />
-              {form.method === "PERCENTAGE" && <span className={styles.help}>Enter a percentage from 0 to 100.</span>}
+              <label
+                className={styles.label}
+                htmlFor="discount-value"
+              >
+                {numericValueLabel} *
+              </label>
+
+              <input
+                id="discount-value"
+                className={styles.input}
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.value}
+                required
+                onChange={(event) =>
+                  setField("value", event.target.value)
+                }
+              />
+
+              {form.method === "PERCENTAGE" && (
+                <span className={styles.help}>
+                  Enter a percentage from 0 to 100.
+                </span>
+              )}
             </div>
           )}
+
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="discount-max">Maximum discount amount</label>
-            <input id="discount-max" className={styles.input} type="number" min="0" step="0.01" value={form.maxDiscountAmount} onChange={(event) => setField("maxDiscountAmount", event.target.value)} />
+            <label
+              className={styles.label}
+              htmlFor="discount-max"
+            >
+              Maximum discount amount
+            </label>
+
+            <input
+              id="discount-max"
+              className={styles.input}
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.maxDiscountAmount}
+              onChange={(event) =>
+                setField("maxDiscountAmount", event.target.value)
+              }
+            />
           </div>
+
           {isBuyXGetY && (
             <>
               <div className={styles.field}>
-                <label className={styles.label} htmlFor="buy-quantity">Buy quantity *</label>
-                <input id="buy-quantity" className={styles.input} type="number" min="1" step="1" value={form.buyQuantity} required onChange={(event) => setField("buyQuantity", event.target.value)} />
+                <label
+                  className={styles.label}
+                  htmlFor="buy-quantity"
+                >
+                  Buy quantity *
+                </label>
+
+                <input
+                  id="buy-quantity"
+                  className={styles.input}
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.buyQuantity}
+                  required
+                  onChange={(event) =>
+                    setField("buyQuantity", event.target.value)
+                  }
+                />
               </div>
+
               <div className={styles.field}>
-                <label className={styles.label} htmlFor="get-quantity">Get quantity *</label>
-                <input id="get-quantity" className={styles.input} type="number" min="1" step="1" value={form.getQuantity} required onChange={(event) => setField("getQuantity", event.target.value)} />
+                <label
+                  className={styles.label}
+                  htmlFor="get-quantity"
+                >
+                  Get quantity *
+                </label>
+
+                <input
+                  id="get-quantity"
+                  className={styles.input}
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.getQuantity}
+                  required
+                  onChange={(event) =>
+                    setField("getQuantity", event.target.value)
+                  }
+                />
               </div>
+
               <div className={styles.field}>
-                <label className={styles.label} htmlFor="get-discount-type">Benefit on Get items *</label>
-                <select id="get-discount-type" className={styles.select} value={form.getDiscountType} onChange={(event) => setField("getDiscountType", event.target.value as BuyXGetYBenefit)}>
+                <label
+                  className={styles.label}
+                  htmlFor="get-discount-type"
+                >
+                  Benefit on Get items *
+                </label>
+
+                <select
+                  id="get-discount-type"
+                  className={styles.select}
+                  value={form.getDiscountType}
+                  onChange={(event) =>
+                    setField(
+                      "getDiscountType",
+                      event.target.value as BuyXGetYBenefit,
+                    )
+                  }
+                >
                   <option value="FREE">Free</option>
                   <option value="PERCENTAGE">Percentage off</option>
                   <option value="FIXED_AMOUNT">Fixed amount off</option>
                 </select>
               </div>
+
               {form.getDiscountType !== "FREE" && (
                 <div className={styles.field}>
-                  <label className={styles.label} htmlFor="get-discount-value">Get-item discount value *</label>
-                  <input id="get-discount-value" className={styles.input} type="number" min="0.01" step="0.01" value={form.getDiscountValue} required onChange={(event) => setField("getDiscountValue", event.target.value)} />
+                  <label
+                    className={styles.label}
+                    htmlFor="get-discount-value"
+                  >
+                    Get-item discount value *
+                  </label>
+
+                  <input
+                    id="get-discount-value"
+                    className={styles.input}
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={form.getDiscountValue}
+                    required
+                    onChange={(event) =>
+                      setField(
+                        "getDiscountValue",
+                        event.target.value,
+                      )
+                    }
+                  />
                 </div>
               )}
             </>
@@ -298,94 +1071,435 @@ export default function DiscountForm({ mode, initialDiscount }: Props) {
         </div>
       </section>
 
+      {/* Product eligibility */}
+      {form.scope === "PRODUCT" && (
+        <section className={styles.formSection}>
+          <h2 className={styles.sectionTitle}>
+            Product eligibility
+          </h2>
+
+          <p className={styles.sectionDescription}>
+            Choose which products this discount targets.
+          </p>
+
+          {productsLoading && (
+            <p className={styles.help}>Loading products…</p>
+          )}
+
+          {productOptionsError && (
+            <div className={styles.error} role="alert">
+              {productOptionsError}
+            </div>
+          )}
+
+          {!isBuyXGetY && (
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={applyToAllProducts}
+                disabled={productControlsDisabled}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+
+                  setApplyToAllProducts(checked);
+
+                  if (checked) {
+                    setSelectedProductIds([]);
+                  }
+                }}
+              />
+
+              <span>
+                <strong>Apply to all products</strong>
+                <br />
+                When enabled, no specific product restriction is applied.
+              </span>
+            </label>
+          )}
+
+          {!isBuyXGetY && !applyToAllProducts && (
+            <ProductPicker
+              id="discount-products"
+              label="Eligible products"
+              selectedIds={selectedProductIds}
+              options={productOptions}
+              knownOptions={knownProductOptions}
+              search={productSearch}
+              onSearchChange={setProductSearch}
+              disabled={productControlsDisabled}
+              isLoading={productsLoading}
+              hasMore={productHasMore}
+              loadingMore={loadingMoreProducts}
+              error={productOptionsError}
+              onLoadMore={loadMoreProducts}
+              onChange={(ids) => {
+                setSelectedProductIds(ids);
+                setApplyToAllProducts(false);
+              }}
+            />
+          )}
+
+          {isBuyXGetY && (
+            <>
+              <ProductPicker
+                id="buy-products"
+                label="Buy products"
+                selectedIds={selectedBuyProductIds}
+                options={productOptions}
+                knownOptions={knownProductOptions}
+                search={productSearch}
+                onSearchChange={setProductSearch}
+                disabled={productControlsDisabled}
+                isLoading={productsLoading}
+                hasMore={productHasMore}
+                loadingMore={loadingMoreProducts}
+                error={productOptionsError}
+                onLoadMore={loadMoreProducts}
+                onChange={setSelectedBuyProductIds}
+              />
+
+              <ProductPicker
+                id="get-products"
+                label="Get products"
+                selectedIds={selectedGetProductIds}
+                options={productOptions}
+                knownOptions={knownProductOptions}
+                search={productSearch}
+                onSearchChange={setProductSearch}
+                disabled={productControlsDisabled}
+                isLoading={productsLoading}
+                hasMore={productHasMore}
+                loadingMore={loadingMoreProducts}
+                error={productOptionsError}
+                onLoadMore={loadMoreProducts}
+                onChange={setSelectedGetProductIds}
+              />
+            </>
+          )}
+
+          <p className={styles.help}>
+            Saving a product-scope discount replaces its existing product
+            and variant assignments with the selections above.
+          </p>
+        </section>
+      )}
+
+      {/* Eligibility and limits */}
       <section className={styles.formSection}>
-        <h2 className={styles.sectionTitle}>Eligibility and limits</h2>
-        <p className={styles.sectionDescription}>Leave assignment fields blank to use no restriction for that category. Enter IDs on separate lines or separated by commas.</p>
+        <h2 className={styles.sectionTitle}>
+          Eligibility and limits
+        </h2>
+
+        <p className={styles.sectionDescription}>
+          Configure the discount code, eligible customers and segments,
+          dates, and usage limits.
+        </p>
+
         <div className={styles.formGrid}>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="discount-code">Discount code</label>
-            <input id="discount-code" className={styles.input} value={form.code} disabled={form.isAutomatic} placeholder="e.g. WELCOME10" onChange={(event) => setField("code", event.target.value.toUpperCase().replace(/\s/g, ""))} />
-            <span className={styles.help}>Automatic discounts do not send a code to the API.</span>
+            <label
+              className={styles.label}
+              htmlFor="discount-code"
+            >
+              Discount code
+            </label>
+
+            <input
+              id="discount-code"
+              className={styles.input}
+              value={form.code}
+              disabled={form.isAutomatic}
+              placeholder="e.g. WELCOME10"
+              onChange={(event) =>
+                setField(
+                  "code",
+                  event.target.value.toUpperCase().replace(/\s/g, ""),
+                )
+              }
+            />
+
+            <span className={styles.help}>
+              Automatic discounts do not send a code to the API.
+            </span>
           </div>
+
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="discount-priority">Priority</label>
-            <input id="discount-priority" className={styles.input} type="number" step="1" value={form.priority} onChange={(event) => setField("priority", event.target.value)} />
+            <label
+              className={styles.label}
+              htmlFor="discount-priority"
+            >
+              Priority
+            </label>
+
+            <input
+              id="discount-priority"
+              className={styles.input}
+              type="number"
+              step="1"
+              value={form.priority}
+              onChange={(event) =>
+                setField("priority", event.target.value)
+              }
+            />
           </div>
+
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="minimum-subtotal">Minimum subtotal</label>
-            <input id="minimum-subtotal" className={styles.input} type="number" min="0" step="0.01" value={form.minSubtotal} onChange={(event) => setField("minSubtotal", event.target.value)} />
+            <label
+              className={styles.label}
+              htmlFor="minimum-subtotal"
+            >
+              Minimum subtotal
+            </label>
+
+            <input
+              id="minimum-subtotal"
+              className={styles.input}
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.minSubtotal}
+              onChange={(event) =>
+                setField("minSubtotal", event.target.value)
+              }
+            />
           </div>
+
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="minimum-quantity">Minimum quantity</label>
-            <input id="minimum-quantity" className={styles.input} type="number" min="0" step="1" value={form.minQuantity} onChange={(event) => setField("minQuantity", event.target.value)} />
+            <label
+              className={styles.label}
+              htmlFor="minimum-quantity"
+            >
+              Minimum quantity
+            </label>
+
+            <input
+              id="minimum-quantity"
+              className={styles.input}
+              type="number"
+              min="1"
+              step="1"
+              value={form.minQuantity}
+              onChange={(event) =>
+                setField("minQuantity", event.target.value)
+              }
+            />
           </div>
+
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="usage-limit">Total usage limit</label>
-            <input id="usage-limit" className={styles.input} type="number" min="0" step="1" value={form.usageLimit} onChange={(event) => setField("usageLimit", event.target.value)} />
+            <label
+              className={styles.label}
+              htmlFor="usage-limit"
+            >
+              Total usage limit
+            </label>
+
+            <input
+              id="usage-limit"
+              className={styles.input}
+              type="number"
+              min="1"
+              step="1"
+              value={form.usageLimit}
+              onChange={(event) =>
+                setField("usageLimit", event.target.value)
+              }
+            />
           </div>
+
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="per-customer-limit">Usage limit per customer</label>
-            <input id="per-customer-limit" className={styles.input} type="number" min="0" step="1" value={form.perCustomerUsageLimit} onChange={(event) => setField("perCustomerUsageLimit", event.target.value)} />
+            <label
+              className={styles.label}
+              htmlFor="per-customer-limit"
+            >
+              Usage limit per customer
+            </label>
+
+            <input
+              id="per-customer-limit"
+              className={styles.input}
+              type="number"
+              min="1"
+              step="1"
+              value={form.perCustomerUsageLimit}
+              onChange={(event) =>
+                setField(
+                  "perCustomerUsageLimit",
+                  event.target.value,
+                )
+              }
+            />
           </div>
+
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="starts-at">Starts at</label>
-            <input id="starts-at" className={styles.input} type="datetime-local" value={form.startsAt} onChange={(event) => setField("startsAt", event.target.value)} />
+            <label
+              className={styles.label}
+              htmlFor="starts-at"
+            >
+              Starts at
+            </label>
+
+            <input
+              id="starts-at"
+              className={styles.input}
+              type="datetime-local"
+              value={form.startsAt}
+              onChange={(event) =>
+                setField("startsAt", event.target.value)
+              }
+            />
           </div>
+
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="ends-at">Ends at</label>
-            <input id="ends-at" className={styles.input} type="datetime-local" value={form.endsAt} onChange={(event) => setField("endsAt", event.target.value)} />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="products">Product IDs</label>
-            <textarea id="products" className={styles.textarea} value={form.productIds} placeholder="One product ID per line" onChange={(event) => setField("productIds", event.target.value)} />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="variants">Variant IDs</label>
-            <textarea id="variants" className={styles.textarea} value={form.variantIds} placeholder="One variant ID per line" onChange={(event) => setField("variantIds", event.target.value)} />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="customers">Customer IDs</label>
-            <textarea id="customers" className={styles.textarea} value={form.customerIds} placeholder="One customer ID per line" onChange={(event) => setField("customerIds", event.target.value)} />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="segments">Customer segment IDs</label>
-            <textarea id="segments" className={styles.textarea} value={form.segmentIds} placeholder="One segment ID per line" onChange={(event) => setField("segmentIds", event.target.value)} />
-            <span className={styles.help}>Segment restrictions are sent as segmentIds; the backend decides eligibility.</span>
+            <label
+              className={styles.label}
+              htmlFor="ends-at"
+            >
+              Ends at
+            </label>
+
+            <input
+              id="ends-at"
+              className={styles.input}
+              type="datetime-local"
+              value={form.endsAt}
+              onChange={(event) =>
+                setField("endsAt", event.target.value)
+              }
+            />
           </div>
         </div>
+
+        <CustomerPicker
+          selectedIds={selectedCustomerIds}
+          onChange={setSelectedCustomerIds}
+          initialOptions={initialCustomerOptions}
+          disabled={isSaving}
+        />
+
+        <SegmentPicker
+          selectedIds={selectedSegmentIds}
+          onChange={setSelectedSegmentIds}
+          initialOptions={initialSegmentOptions}
+          disabled={isSaving}
+        />
+
+        <p className={styles.help}>
+          Leave both customer and segment selections empty to avoid
+          restricting eligibility by those assignments. The backend
+          remains responsible for evaluating discount eligibility.
+        </p>
       </section>
 
+      {/* Status and combinations */}
       <section className={styles.formSection}>
-        <h2 className={styles.sectionTitle}>Status and combinations</h2>
-        <p className={styles.sectionDescription}>Only enable combinations when the business rules allow both discounts to combine.</p>
+        <h2 className={styles.sectionTitle}>
+          Status and combinations
+        </h2>
+
+        <p className={styles.sectionDescription}>
+          Only enable combinations when both discounts should be allowed
+          to combine.
+        </p>
+
         <div className={styles.checkboxGrid}>
           <label className={styles.checkboxRow}>
-            <input type="checkbox" checked={form.isAutomatic} onChange={(event) => setField("isAutomatic", event.target.checked)} />
-            <span><strong>Automatic discount</strong><br />Apply without customers entering a code.</span>
+            <input
+              type="checkbox"
+              checked={form.isAutomatic}
+              onChange={(event) =>
+                setField("isAutomatic", event.target.checked)
+              }
+            />
+
+            <span>
+              <strong>Automatic discount</strong>
+              <br />
+              Apply without customers entering a code.
+            </span>
           </label>
+
           <label className={styles.checkboxRow}>
-            <input type="checkbox" checked={form.isActive} onChange={(event) => setField("isActive", event.target.checked)} />
-            <span><strong>Active</strong><br />Allow this discount to be considered by checkout.</span>
+            <input
+              type="checkbox"
+              checked={form.isActive}
+              onChange={(event) =>
+                setField("isActive", event.target.checked)
+              }
+            />
+
+            <span>
+              <strong>Active</strong>
+              <br />
+              Allow this discount to be considered by checkout.
+            </span>
           </label>
+
           <label className={styles.checkboxRow}>
-            <input type="checkbox" checked={form.combineWithProductDiscounts} onChange={(event) => setField("combineWithProductDiscounts", event.target.checked)} />
+            <input
+              type="checkbox"
+              checked={form.combineWithProductDiscounts}
+              onChange={(event) =>
+                setField(
+                  "combineWithProductDiscounts",
+                  event.target.checked,
+                )
+              }
+            />
+
             <span>Can combine with product discounts</span>
           </label>
+
           <label className={styles.checkboxRow}>
-            <input type="checkbox" checked={form.combineWithOrderDiscounts} onChange={(event) => setField("combineWithOrderDiscounts", event.target.checked)} />
+            <input
+              type="checkbox"
+              checked={form.combineWithOrderDiscounts}
+              onChange={(event) =>
+                setField(
+                  "combineWithOrderDiscounts",
+                  event.target.checked,
+                )
+              }
+            />
+
             <span>Can combine with order discounts</span>
           </label>
+
           <label className={styles.checkboxRow}>
-            <input type="checkbox" checked={form.combineWithShippingDiscounts} onChange={(event) => setField("combineWithShippingDiscounts", event.target.checked)} />
+            <input
+              type="checkbox"
+              checked={form.combineWithShippingDiscounts}
+              onChange={(event) =>
+                setField(
+                  "combineWithShippingDiscounts",
+                  event.target.checked,
+                )
+              }
+            />
+
             <span>Can combine with shipping discounts</span>
           </label>
         </div>
       </section>
 
+      {/* Actions */}
       <div className={styles.formFooter}>
-        <Link className={styles.secondaryButton} href="/dashboard/discounts">Cancel</Link>
-        <button className={styles.button} type="submit" disabled={isPending}>
-          {isPending ? "Saving…" : mode === "create" ? "Create discount" : "Save changes"}
+        <Link
+          className={styles.secondaryButton}
+          href="/dashboard/discounts"
+        >
+          Cancel
+        </Link>
+
+        <button
+          className={styles.button}
+          type="submit"
+          disabled={isSaving}
+        >
+          {isSaving
+            ? "Saving…"
+            : mode === "create"
+              ? "Create discount"
+              : "Save changes"}
         </button>
       </div>
     </form>

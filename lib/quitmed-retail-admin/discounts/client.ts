@@ -1,6 +1,6 @@
 import "server-only";
-import { Discount, DiscountPayload } from "../discounts/types";
 
+import type { Discount, DiscountPayload } from "./types";
 
 const API_BASE = (
   process.env.QUITHERO_API_BASE_URL ??

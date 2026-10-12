@@ -1,7 +1,7 @@
 import Link from "next/link";
+import { getDiscount } from "../../../../lib/quitmed-retail-admin/discounts/client";
+import type { Discount, DiscountRelation } from "../../../../lib/quitmed-retail-admin/discounts/types";
 import styles from "../discounts-components/discounts.module.css";
-import { Discount, DiscountRelation } from "@/lib/quitmed-retail-admin/discounts/types";
-import { getDiscount } from "@/lib/quitmed-retail-admin/discounts/client";
 
 export const dynamic = "force-dynamic";
 

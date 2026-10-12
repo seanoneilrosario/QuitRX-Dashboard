@@ -62,6 +62,9 @@ function records(
     "productTypes",
     "collections",
     "tags",
+    "customers",
+    "segments",
+    "customerSegments",
   ]) {
     const result = records(
       wrapper[key],

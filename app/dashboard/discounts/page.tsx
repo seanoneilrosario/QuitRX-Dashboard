@@ -1,8 +1,8 @@
 import Link from "next/link";
+import { listDiscounts } from "../../../lib/quitmed-retail-admin/discounts/client";
+import type { Discount } from "../../../lib/quitmed-retail-admin/discounts/types";
 import styles from "./discounts-components/discounts.module.css";
-import { listDiscounts } from "@/lib/quitmed-retail-admin/discounts/client";
 import DiscountsTable from "./discounts-components/DiscountsTable";
-import { Discount } from "@/lib/quitmed-retail-admin/discounts/types";
 
 export const dynamic = "force-dynamic";
 

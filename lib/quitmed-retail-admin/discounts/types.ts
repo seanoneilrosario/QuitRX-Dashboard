@@ -1,3 +1,4 @@
+
 export type DiscountMethod =
   | "PERCENTAGE"
   | "FIXED_AMOUNT"
@@ -5,7 +6,26 @@ export type DiscountMethod =
   | "FREE_SHIPPING";
 
 export type DiscountScope = "ORDER" | "PRODUCT" | "SHIPPING";
-export type BuyXGetYBenefit = "FREE" | "PERCENTAGE" | "FIXED_AMOUNT";
+
+export type BuyXGetYBenefit =
+  | "FREE"
+  | "PERCENTAGE"
+  | "FIXED_AMOUNT";
+
+export type DiscountProductRole =
+  | "APPLIES_TO"
+  | "BUY_X"
+  | "GET_Y";
+
+export type DiscountProductAssignment = {
+  productId: string;
+  role?: DiscountProductRole;
+};
+
+export type DiscountVariantAssignment = {
+  variantId: string;
+  role?: DiscountProductRole;
+};
 
 export interface DiscountRelation {
   id?: string;
@@ -18,10 +38,28 @@ export interface DiscountRelation {
   firstName?: string | null;
   lastName?: string | null;
   email?: string | null;
-  product?: { id?: string; title?: string | null; name?: string | null };
-  variant?: { id?: string; name?: string | null; sku?: string | null; price?: string | number | null };
-  customer?: { id?: string; firstName?: string | null; lastName?: string | null; email?: string | null };
-  segment?: { id?: string; name?: string | null; isActive?: boolean };
+  product?: {
+    id?: string;
+    title?: string | null;
+    name?: string | null;
+  };
+  variant?: {
+    id?: string;
+    name?: string | null;
+    sku?: string | null;
+    price?: string | number | null;
+  };
+  customer?: {
+    id?: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  };
+  segment?: {
+    id?: string;
+    name?: string | null;
+    isActive?: boolean;
+  };
 }
 
 export interface Discount {
@@ -56,14 +94,10 @@ export interface Discount {
   variants?: DiscountRelation[];
   customers?: DiscountRelation[];
   segments?: DiscountRelation[];
+  productAssignments?: DiscountProductAssignment[];
+  variantAssignments?: DiscountVariantAssignment[];
 }
 
-/**
- * Payload expected by the discounts API.
- * The API accepts customerIds and segmentIds (confirmed by the live API).
- * productIds and variantIds are included for product/variant targeting and should
- * match the names used by your Discounts DTO/service.
- */
 export interface DiscountPayload {
   name: string;
   description?: string | null;
@@ -88,8 +122,8 @@ export interface DiscountPayload {
   combineWithProductDiscounts: boolean;
   combineWithOrderDiscounts: boolean;
   combineWithShippingDiscounts: boolean;
-  productIds?: string[];
-  variantIds?: string[];
+  productAssignments?: DiscountProductAssignment[];
+  variantAssignments?: DiscountVariantAssignment[];
   customerIds?: string[];
   segmentIds?: string[];
 }

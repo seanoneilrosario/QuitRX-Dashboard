@@ -22,6 +22,7 @@ import {
 
 import {
   searchDiscountProductOptionsAction,
+  searchDiscountVariantOptionsAction,
 } from "@/lib/quitmed-retail-admin/discounts/product-actions";
 
 import type {
@@ -187,6 +188,106 @@ function productIdsForRole(
   );
 }
 
+function variantAssignmentsForRole(
+  discount: Discount | undefined,
+  role: "APPLIES_TO" | "BUY_X" | "GET_Y",
+): string[] {
+  const assignments = [
+    ...(discount?.variants ?? []),
+    ...(discount?.variantAssignments ?? []),
+  ] as unknown as Array<Record<string, unknown>>;
+
+  return Array.from(
+    new Set(
+      assignments
+        .filter(
+          (item) => (item.role ?? "APPLIES_TO") === role,
+        )
+        .map((item) => {
+          if (typeof item.variantId === "string") {
+            return item.variantId;
+          }
+
+          const variant = item.variant;
+
+          if (
+            variant &&
+            typeof variant === "object" &&
+            "id" in variant &&
+            typeof variant.id === "string"
+          ) {
+            return variant.id;
+          }
+
+          return "";
+        })
+        .filter(Boolean),
+    ),
+  );
+}
+
+function initialVariantOptions(
+  discount?: Discount,
+): ProductOption[] {
+  const assignments = [
+    ...(discount?.variants ?? []),
+    ...(discount?.variantAssignments ?? []),
+  ] as unknown as Array<Record<string, unknown>>;
+
+  const options = new Map<string, ProductOption>();
+
+  for (const assignment of assignments) {
+    const variant =
+      assignment.variant &&
+      typeof assignment.variant === "object"
+        ? (assignment.variant as Record<string, unknown>)
+        : {};
+
+    const product =
+      variant.product &&
+      typeof variant.product === "object"
+        ? (variant.product as Record<string, unknown>)
+        : {};
+
+    const id =
+      typeof assignment.variantId === "string"
+        ? assignment.variantId
+        : typeof variant.id === "string"
+          ? variant.id
+          : "";
+
+    if (!id) continue;
+
+    const productName =
+      typeof product.name === "string"
+        ? product.name
+        : "";
+
+    const variantName =
+      typeof variant.name === "string"
+        ? variant.name
+        : `Variant ${id}`;
+
+    const sku =
+      typeof variant.sku === "string"
+        ? variant.sku
+        : "";
+
+    options.set(id, {
+      id,
+      label: [
+        productName,
+        variantName,
+        sku ? `SKU: ${sku}` : "",
+      ]
+        .filter(Boolean)
+        .join(" — "),
+    });
+  }
+
+  return Array.from(options.values());
+}
+
 function hasProductOrVariantAssignments(
   discount?: Discount,
 ): boolean {
@@ -350,6 +451,63 @@ export default function DiscountForm({
     string | null
   >(null);
 
+  const [variantOptions, setVariantOptions] =
+    useState<ProductOption[]>([]);
+
+  const [knownVariantOptions, setKnownVariantOptions] =
+    useState<ProductOption[]>(() =>
+      initialVariantOptions(initialDiscount),
+    );
+
+  const [variantSearch, setVariantSearch] = useState("");
+  const [variantPage, setVariantPage] = useState(1);
+  const [variantHasMore, setVariantHasMore] = useState(false);
+
+  const [loadingMoreVariants, setLoadingMoreVariants] =
+    useState(false);
+
+  const [variantsLoading, setVariantsLoading] =
+    useState(true);
+
+  const [variantOptionsError, setVariantOptionsError] =
+    useState<string | null>(null);
+
+  const [selectedVariantIds, setSelectedVariantIds] =
+    useState<string[]>(() =>
+      variantAssignmentsForRole(initialDiscount, "APPLIES_TO"),
+    );
+
+  const [selectedBuyVariantIds, setSelectedBuyVariantIds] =
+    useState<string[]>(() =>
+      variantAssignmentsForRole(initialDiscount, "BUY_X"),
+    );
+
+  const [selectedGetVariantIds, setSelectedGetVariantIds] =
+    useState<string[]>(() =>
+      variantAssignmentsForRole(initialDiscount, "GET_Y"),
+    );
+
+  const [targetingMode, setTargetingMode] = useState<
+    "PRODUCTS" | "VARIANTS"
+  >(() => {
+    const hasProducts =
+      (initialDiscount?.products?.length ?? 0) > 0 ||
+      (initialDiscount?.productAssignments?.length ?? 0) > 0;
+
+    const hasVariants =
+      (initialDiscount?.variants?.length ?? 0) > 0 ||
+      (initialDiscount?.variantAssignments?.length ?? 0) > 0;
+
+    if (hasProducts && !hasVariants) return "PRODUCTS";
+
+    return "VARIANTS";
+  });
+
+  const selectableVariantOptions = useMemo(
+    () => mergeProductOptions(knownVariantOptions, variantOptions),
+    [knownVariantOptions, variantOptions],
+  );
+
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>(
     () => productIdsForRole(initialDiscount, "APPLIES_TO"),
   );
@@ -464,6 +622,103 @@ export default function DiscountForm({
       window.clearTimeout(timer);
     };
   }, [productSearch]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setVariantsLoading(true);
+    setVariantOptionsError(null);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await searchDiscountVariantOptionsAction(
+          variantSearch,
+          1,
+        );
+
+        if (cancelled) return;
+
+        if (!result.success) {
+          setVariantOptionsError(
+            result.message ?? "Unable to load variants.",
+          );
+
+          setVariantOptions([]);
+          setVariantHasMore(false);
+          return;
+        }
+
+        setVariantOptions(result.data);
+
+        setKnownVariantOptions((current) =>
+          mergeProductOptions(current, result.data),
+        );
+
+        setVariantPage(result.page);
+        setVariantHasMore(result.hasMore);
+      } catch (error) {
+        if (!cancelled) {
+          setVariantOptionsError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load variants.",
+          );
+
+          setVariantOptions([]);
+          setVariantHasMore(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setVariantsLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [variantSearch]);
+
+  async function loadMoreVariants() {
+    if (!variantHasMore || loadingMoreVariants) return;
+
+    setLoadingMoreVariants(true);
+    setVariantOptionsError(null);
+
+    try {
+      const result = await searchDiscountVariantOptionsAction(
+        variantSearch,
+        variantPage + 1,
+      );
+
+      if (!result.success) {
+        setVariantOptionsError(
+          result.message ?? "Unable to load more variants.",
+        );
+        return;
+      }
+
+      setVariantOptions((current) =>
+        mergeProductOptions(current, result.data),
+      );
+
+      setKnownVariantOptions((current) =>
+        mergeProductOptions(current, result.data),
+      );
+
+      setVariantPage(result.page);
+      setVariantHasMore(result.hasMore);
+    } catch (error) {
+      setVariantOptionsError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load more variants.",
+      );
+    } finally {
+      setLoadingMoreVariants(false);
+    }
+  }
 
   async function loadMoreProducts() {
     if (
@@ -604,33 +859,52 @@ export default function DiscountForm({
 
     if (form.scope === "PRODUCT") {
       if (isBuyXGetY) {
-        payload.productAssignments = [
-          ...selectedBuyProductIds.map((productId) => ({
-            productId,
-            role: "BUY_X" as const,
-          })),
-          ...selectedGetProductIds.map((productId) => ({
-            productId,
-            role: "GET_Y" as const,
-          })),
-        ];
-      } else if (applyToAllProducts) {
-        // An empty assignment list means the discount is not
-        // restricted to specific products.
-        payload.productAssignments = [];
-      } else {
-        payload.productAssignments = selectedProductIds.map(
-          (productId) => ({
-            productId,
-            role: "APPLIES_TO" as const,
-          }),
-        );
-      }
+        if (targetingMode === "VARIANTS") {
+          payload.productAssignments = [];
 
-      // This form manages product targeting, not variant targeting.
-      // Saving a product-scope discount clears existing variant
-      // assignments for that discount.
-      payload.variantAssignments = [];
+          payload.variantAssignments = [
+            ...selectedBuyVariantIds.map((variantId) => ({
+              variantId,
+              role: "BUY_X" as const,
+            })),
+            ...selectedGetVariantIds.map((variantId) => ({
+              variantId,
+              role: "GET_Y" as const,
+            })),
+          ];
+        } else {
+          payload.productAssignments = [
+            ...selectedBuyProductIds.map((productId) => ({
+              productId,
+              role: "BUY_X" as const,
+            })),
+            ...selectedGetProductIds.map((productId) => ({
+              productId,
+              role: "GET_Y" as const,
+            })),
+          ];
+
+          payload.variantAssignments = [];
+        }
+      } else if (targetingMode === "VARIANTS") {
+        payload.productAssignments = [];
+
+        payload.variantAssignments = applyToAllProducts
+          ? []
+          : selectedVariantIds.map((variantId) => ({
+              variantId,
+              role: "APPLIES_TO" as const,
+            }));
+      } else {
+        payload.productAssignments = applyToAllProducts
+          ? []
+          : selectedProductIds.map((productId) => ({
+              productId,
+              role: "APPLIES_TO" as const,
+            }));
+
+        payload.variantAssignments = [];
+      }
     }
 
     return payload;
@@ -727,38 +1001,74 @@ export default function DiscountForm({
     }
 
     if (form.scope === "PRODUCT") {
-      if (productsLoading) {
-        setError(
-          "Wait for the product list to finish loading.",
-        );
-        return;
-      }
+      if (targetingMode === "VARIANTS") {
+        if (variantsLoading) {
+          setError("Wait for the variant list to finish loading.");
+          return;
+        }
 
-      if (productOptionsError) {
-        setError(
-          "Products could not be loaded. Refresh the page and try again.",
-        );
-        return;
+        if (variantOptionsError) {
+          setError(
+            "Variants could not be loaded. Refresh the page and try again.",
+          );
+          return;
+        }
+      } else {
+        if (productsLoading) {
+          setError("Wait for the product list to finish loading.");
+          return;
+        }
+
+        if (productOptionsError) {
+          setError(
+            "Products could not be loaded. Refresh the page and try again.",
+          );
+          return;
+        }
       }
 
       if (isBuyXGetY) {
-        if (selectedBuyProductIds.length === 0) {
-          setError("Select at least one Buy product.");
+        const buySelection =
+          targetingMode === "VARIANTS"
+            ? selectedBuyVariantIds
+            : selectedBuyProductIds;
+
+        const getSelection =
+          targetingMode === "VARIANTS"
+            ? selectedGetVariantIds
+            : selectedGetProductIds;
+
+        if (buySelection.length === 0) {
+          setError(
+            targetingMode === "VARIANTS"
+              ? "Select at least one Buy variant."
+              : "Select at least one Buy product.",
+          );
           return;
         }
 
-        if (selectedGetProductIds.length === 0) {
-          setError("Select at least one Get product.");
+        if (getSelection.length === 0) {
+          setError(
+            targetingMode === "VARIANTS"
+              ? "Select at least one Get variant."
+              : "Select at least one Get product.",
+          );
           return;
         }
-      } else if (
-        !applyToAllProducts &&
-        selectedProductIds.length === 0
-      ) {
-        setError(
-          "Select at least one product, or enable Apply to all products.",
-        );
-        return;
+      } else if (!applyToAllProducts) {
+        const selection =
+          targetingMode === "VARIANTS"
+            ? selectedVariantIds
+            : selectedProductIds;
+
+        if (selection.length === 0) {
+          setError(
+            targetingMode === "VARIANTS"
+              ? "Select at least one variant, or enable Apply to all products."
+              : "Select at least one product, or enable Apply to all products.",
+          );
+          return;
+        }
       }
     }
 
@@ -1079,17 +1389,73 @@ export default function DiscountForm({
           </h2>
 
           <p className={styles.sectionDescription}>
-            Choose which products this discount targets.
+            Choose whether this discount targets entire products or specific variants.
           </p>
 
-          {productsLoading && (
-            <p className={styles.help}>Loading products…</p>
+          <div className={styles.formGrid}>
+            <label className={styles.checkboxRow}>
+              <input
+                type="radio"
+                name="discount-targeting-mode"
+                checked={targetingMode === "VARIANTS"}
+                disabled={productControlsDisabled}
+                onChange={() => {
+                  setTargetingMode("VARIANTS");
+                  setApplyToAllProducts(false);
+                }}
+              />
+              <span>
+                <strong>Specific variants</strong>
+                <br />
+                Select individual product variants for this discount.
+              </span>
+            </label>
+
+            <label className={styles.checkboxRow}>
+              <input
+                type="radio"
+                name="discount-targeting-mode"
+                checked={targetingMode === "PRODUCTS"}
+                disabled={productControlsDisabled}
+                onChange={() => {
+                  setTargetingMode("PRODUCTS");
+                  setApplyToAllProducts(false);
+                }}
+              />
+              <span>
+                <strong>Entire products</strong>
+                <br />
+                Select products instead of individual variants.
+              </span>
+            </label>
+          </div>
+
+          {targetingMode === "VARIANTS" && (
+            <>
+              {variantsLoading && (
+                <p className={styles.help}>Loading variants…</p>
+              )}
+
+              {variantOptionsError && (
+                <div className={styles.error} role="alert">
+                  {variantOptionsError}
+                </div>
+              )}
+            </>
           )}
 
-          {productOptionsError && (
-            <div className={styles.error} role="alert">
-              {productOptionsError}
-            </div>
+          {targetingMode === "PRODUCTS" && (
+            <>
+              {productsLoading && (
+                <p className={styles.help}>Loading products…</p>
+              )}
+
+              {productOptionsError && (
+                <div className={styles.error} role="alert">
+                  {productOptionsError}
+                </div>
+              )}
+            </>
           )}
 
           {!isBuyXGetY && (
@@ -1105,6 +1471,7 @@ export default function DiscountForm({
 
                   if (checked) {
                     setSelectedProductIds([]);
+                    setSelectedVariantIds([]);
                   }
                 }}
               />
@@ -1112,34 +1479,95 @@ export default function DiscountForm({
               <span>
                 <strong>Apply to all products</strong>
                 <br />
-                When enabled, no specific product restriction is applied.
+                When enabled, no specific product or variant restriction is applied.
               </span>
             </label>
           )}
 
-          {!isBuyXGetY && !applyToAllProducts && (
-            <ProductPicker
-              id="discount-products"
-              label="Eligible products"
-              selectedIds={selectedProductIds}
-              options={productOptions}
-              knownOptions={knownProductOptions}
-              search={productSearch}
-              onSearchChange={setProductSearch}
-              disabled={productControlsDisabled}
-              isLoading={productsLoading}
-              hasMore={productHasMore}
-              loadingMore={loadingMoreProducts}
-              error={productOptionsError}
-              onLoadMore={loadMoreProducts}
-              onChange={(ids) => {
-                setSelectedProductIds(ids);
-                setApplyToAllProducts(false);
-              }}
-            />
+          {/* Regular percentage and fixed discounts */}
+          {!isBuyXGetY &&
+            !applyToAllProducts &&
+            targetingMode === "VARIANTS" && (
+              <ProductPicker
+                id="discount-variants"
+                label="Eligible variants"
+                selectedIds={selectedVariantIds}
+                options={variantOptions}
+                knownOptions={selectableVariantOptions}
+                search={variantSearch}
+                onSearchChange={setVariantSearch}
+                disabled={productControlsDisabled}
+                isLoading={variantsLoading}
+                hasMore={variantHasMore}
+                loadingMore={loadingMoreVariants}
+                error={variantOptionsError}
+                onLoadMore={loadMoreVariants}
+                onChange={setSelectedVariantIds}
+              />
+            )}
+
+          {!isBuyXGetY &&
+            !applyToAllProducts &&
+            targetingMode === "PRODUCTS" && (
+              <ProductPicker
+                id="discount-products"
+                label="Eligible products"
+                selectedIds={selectedProductIds}
+                options={productOptions}
+                knownOptions={knownProductOptions}
+                search={productSearch}
+                onSearchChange={setProductSearch}
+                disabled={productControlsDisabled}
+                isLoading={productsLoading}
+                hasMore={productHasMore}
+                loadingMore={loadingMoreProducts}
+                error={productOptionsError}
+                onLoadMore={loadMoreProducts}
+                onChange={setSelectedProductIds}
+              />
+            )}
+
+          {/* Buy X Get Y targeting specific variants */}
+          {isBuyXGetY && targetingMode === "VARIANTS" && (
+            <>
+              <ProductPicker
+                id="buy-variants"
+                label="Buy variants"
+                selectedIds={selectedBuyVariantIds}
+                options={variantOptions}
+                knownOptions={selectableVariantOptions}
+                search={variantSearch}
+                onSearchChange={setVariantSearch}
+                disabled={productControlsDisabled}
+                isLoading={variantsLoading}
+                hasMore={variantHasMore}
+                loadingMore={loadingMoreVariants}
+                error={variantOptionsError}
+                onLoadMore={loadMoreVariants}
+                onChange={setSelectedBuyVariantIds}
+              />
+
+              <ProductPicker
+                id="get-variants"
+                label="Get variants"
+                selectedIds={selectedGetVariantIds}
+                options={variantOptions}
+                knownOptions={selectableVariantOptions}
+                search={variantSearch}
+                onSearchChange={setVariantSearch}
+                disabled={productControlsDisabled}
+                isLoading={variantsLoading}
+                hasMore={variantHasMore}
+                loadingMore={loadingMoreVariants}
+                error={variantOptionsError}
+                onLoadMore={loadMoreVariants}
+                onChange={setSelectedGetVariantIds}
+              />
+            </>
           )}
 
-          {isBuyXGetY && (
+          {/* Buy X Get Y targeting entire products */}
+          {isBuyXGetY && targetingMode === "PRODUCTS" && (
             <>
               <ProductPicker
                 id="buy-products"
@@ -1178,8 +1606,8 @@ export default function DiscountForm({
           )}
 
           <p className={styles.help}>
-            Saving a product-scope discount replaces its existing product
-            and variant assignments with the selections above.
+            Saving a product-scope discount replaces its existing product and
+            variant assignments with the selections above.
           </p>
         </section>
       )}

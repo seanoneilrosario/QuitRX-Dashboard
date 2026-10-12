@@ -94,8 +94,15 @@ export interface Discount {
   variants?: DiscountRelation[];
   customers?: DiscountRelation[];
   segments?: DiscountRelation[];
-  productAssignments?: DiscountProductAssignment[];
-  variantAssignments?: DiscountVariantAssignment[];
+  productAssignments?: {
+    productId: string;
+    role?: "APPLIES_TO" | "BUY_X" | "GET_Y";
+  }[];
+
+  variantAssignments?: {
+    variantId: string;
+    role?: "APPLIES_TO" | "BUY_X" | "GET_Y";
+  }[];
 }
 
 export interface DiscountPayload {
@@ -122,8 +129,15 @@ export interface DiscountPayload {
   combineWithProductDiscounts: boolean;
   combineWithOrderDiscounts: boolean;
   combineWithShippingDiscounts: boolean;
-  productAssignments?: DiscountProductAssignment[];
-  variantAssignments?: DiscountVariantAssignment[];
+  productAssignments?: {
+    productId: string;
+    role?: "APPLIES_TO" | "BUY_X" | "GET_Y";
+  }[];
+
+  variantAssignments?: {
+    variantId: string;
+    role?: "APPLIES_TO" | "BUY_X" | "GET_Y";
+  }[];
   customerIds?: string[];
   segmentIds?: string[];
 }

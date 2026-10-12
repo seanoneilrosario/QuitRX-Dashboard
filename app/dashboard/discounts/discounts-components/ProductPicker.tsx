@@ -45,6 +45,12 @@ export default function ProductPicker({
   const [pendingProductId, setPendingProductId] = useState("");
   const [isOpen, setIsOpen] = useState(false);
 
+  const itemNoun = label.toLowerCase().includes("variant")
+    ? "variant"
+    : "product";
+
+  const itemNounPlural = `${itemNoun}s`;
+
   function getProductLabel(productId: string) {
     return (
       [...options, ...knownOptions].find(
@@ -94,7 +100,7 @@ export default function ProductPicker({
             aria-controls={`${id}-options`}
             aria-autocomplete="list"
             autoComplete="off"
-            placeholder="Search or select a product..."
+            placeholder={`Search or select a ${itemNoun}...`}
             value={search}
             disabled={disabled}
             onFocus={() => setIsOpen(true)}
@@ -114,7 +120,7 @@ export default function ProductPicker({
             >
               {isLoading ? (
                 <p className={styles.pickerMessage}>
-                  Searching products…
+                  Searching {itemNounPlural}…
                 </p>
               ) : error ? (
                 <p className={styles.pickerMessage} role="alert">
@@ -122,7 +128,7 @@ export default function ProductPicker({
                 </p>
               ) : options.length === 0 ? (
                 <p className={styles.pickerMessage}>
-                  No products found.
+                  No {itemNounPlural} found.
                 </p>
               ) : (
                 options.map((product) => (
@@ -156,7 +162,7 @@ export default function ProductPicker({
                 >
                   {loadingMore
                     ? "Loading more…"
-                    : "Load more products"}
+                    : `Load more ${itemNounPlural}`}
                 </button>
               )}
             </div>
@@ -174,7 +180,7 @@ export default function ProductPicker({
           }
           onClick={addSelectedProduct}
         >
-          Add product
+          Add {itemNoun}
         </button>
       </div>
 

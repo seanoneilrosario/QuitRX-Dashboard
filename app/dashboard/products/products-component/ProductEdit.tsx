@@ -172,9 +172,16 @@ export default function ProductEdit({
                 );
 
                 const attributeValues =
-                Array.isArray(attribute.values)
+                  Array.isArray(attribute.values)
                     ? (attribute.values as RetailRecord[])
                     : [];
+
+                const isMultiSelect =
+                  text(attribute.type) === "MULTI_SELECT";
+
+                const selectedValueIds = currentValues
+                  .map((item) => text(item.attributeValueId))
+                  .filter(Boolean);
 
                 return (
                 <div
@@ -198,30 +205,50 @@ export default function ProductEdit({
                     </small>
                     )}
 
-                    <select
-                    name={`attribute_${attributeId}`}
-                    defaultValue={
-                        text(
-                        currentValues[0]
-                            ?.attributeValueId,
-                        )
-                    }
-                    >
-                    <option value="">
-                        No value
-                    </option>
+                    {isMultiSelect ? (
+                      <div className={style.multiSelectOptions}>
+                        {attributeValues.map((value) => {
+                          const valueId = text(value.id);
 
-                    {attributeValues.map(
-                        (value) => (
-                        <option
+                          return (
+                            <label
+                              key={valueId}
+                              className={style.multiSelectOption}
+                            >
+                              <input
+                                className={style.multiSelectCheckbox}
+                                type="checkbox"
+                                name={`attribute_${attributeId}`}
+                                value={valueId}
+                                defaultChecked={selectedValueIds.includes(
+                                  valueId,
+                                )}
+                                disabled={saving}
+                              />
+
+                              <span>{text(value.value)}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      // Keep your existing single-select dropdown here.
+                      <select
+                        name={`attribute_${attributeId}`}
+                        defaultValue={selectedValueIds[0] ?? ""}
+                        disabled={saving}
+                      >
+                        <option value="">No value</option>
+                        {attributeValues.map((value) => (
+                          <option
                             key={text(value.id)}
                             value={text(value.id)}
-                        >
+                          >
                             {text(value.value)}
-                        </option>
-                        ),
+                          </option>
+                        ))}
+                      </select>
                     )}
-                    </select>
                 </div>
                 );
             })}

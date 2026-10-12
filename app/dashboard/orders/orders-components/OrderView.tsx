@@ -4,6 +4,7 @@ import type { Order } from "../../../../lib/quitmed-retail-admin/orders/client";
 
 import style from "../../../components/dashboard.module.css";
 import OrderDeleteButton from "./OrderDeleteButton";
+import OrderCancelButton from "./OrderCancelButton";
 
 function displayValue(value: unknown, fallback = "—") {
   if (value === null || value === undefined) {
@@ -100,6 +101,12 @@ export default function OrderView({
     0,
   );
 
+  const isCancelled =
+    String(order.status ?? "").toUpperCase() === "CANCELLED";
+
+  const isDelivered =
+    String(order.shipmentStatus ?? "").toUpperCase() === "DELIVERED";
+
   return (
     <>
       <div
@@ -127,7 +134,14 @@ export default function OrderView({
           >
             ← Back to orders
           </Link>
-          <OrderDeleteButton orderId={order.id} />
+
+          {!isDelivered && !isCancelled && (
+            <OrderCancelButton orderId={order.id} />
+          )}
+
+          {isCancelled && (
+            <OrderDeleteButton orderId={order.id} />
+          )}
         </div>
       </div>
 

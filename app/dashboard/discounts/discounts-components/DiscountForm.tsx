@@ -776,6 +776,25 @@ export default function DiscountForm({
     }));
   }
 
+  function handleScopeChange(scope: DiscountScope) {
+    setForm((current) => ({
+      ...current,
+      scope,
+      combineWithProductDiscounts:
+        scope === "PRODUCT"
+          ? false
+          : current.combineWithProductDiscounts,
+      combineWithOrderDiscounts:
+        scope === "ORDER"
+          ? false
+          : current.combineWithOrderDiscounts,
+      combineWithShippingDiscounts:
+        scope === "SHIPPING"
+          ? false
+          : current.combineWithShippingDiscounts,
+    }));
+  }
+
   function handleMethodChange(method: DiscountMethod) {
     setForm((current) => ({
       ...current,
@@ -841,12 +860,15 @@ export default function DiscountForm({
       priority: optionalInteger(form.priority) ?? 0,
 
       combineWithProductDiscounts:
+        form.scope !== "PRODUCT" &&
         form.combineWithProductDiscounts,
 
       combineWithOrderDiscounts:
+        form.scope !== "ORDER" &&
         form.combineWithOrderDiscounts,
 
       combineWithShippingDiscounts:
+        form.scope !== "SHIPPING" &&
         form.combineWithShippingDiscounts,
 
       customerIds: selectedCustomerIds,
@@ -1211,8 +1233,7 @@ export default function DiscountForm({
               className={styles.select}
               value={form.scope}
               onChange={(event) =>
-                setField(
-                  "scope",
+                handleScopeChange(
                   event.target.value as DiscountScope,
                 )
               }
@@ -1862,50 +1883,53 @@ export default function DiscountForm({
             </span>
           </label>
 
-          <label className={styles.checkboxRow}>
-            <input
-              type="checkbox"
-              checked={form.combineWithProductDiscounts}
-              onChange={(event) =>
-                setField(
-                  "combineWithProductDiscounts",
-                  event.target.checked,
-                )
-              }
-            />
+          {form.scope !== "PRODUCT" && (
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={form.combineWithProductDiscounts}
+                onChange={(event) =>
+                  setField(
+                    "combineWithProductDiscounts",
+                    event.target.checked,
+                  )
+                }
+              />
+              <span>Can combine with product discounts</span>
+            </label>
+          )}
 
-            <span>Can combine with product discounts</span>
-          </label>
+          {form.scope !== "ORDER" && (
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={form.combineWithOrderDiscounts}
+                onChange={(event) =>
+                  setField(
+                    "combineWithOrderDiscounts",
+                    event.target.checked,
+                  )
+                }
+              />
+              <span>Can combine with order discounts</span>
+            </label>
+          )}
 
-          <label className={styles.checkboxRow}>
-            <input
-              type="checkbox"
-              checked={form.combineWithOrderDiscounts}
-              onChange={(event) =>
-                setField(
-                  "combineWithOrderDiscounts",
-                  event.target.checked,
-                )
-              }
-            />
-
-            <span>Can combine with order discounts</span>
-          </label>
-
-          <label className={styles.checkboxRow}>
-            <input
-              type="checkbox"
-              checked={form.combineWithShippingDiscounts}
-              onChange={(event) =>
-                setField(
-                  "combineWithShippingDiscounts",
-                  event.target.checked,
-                )
-              }
-            />
-
-            <span>Can combine with shipping discounts</span>
-          </label>
+          {form.scope !== "SHIPPING" && (
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={form.combineWithShippingDiscounts}
+                onChange={(event) =>
+                  setField(
+                    "combineWithShippingDiscounts",
+                    event.target.checked,
+                  )
+                }
+              />
+              <span>Can combine with shipping discounts</span>
+            </label>
+          )}
         </div>
       </section>
 

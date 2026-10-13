@@ -66,11 +66,31 @@ export type ProductBulkAttributeAssignment = {
   attributeId: string;
   attributeValueId: string;
 };
+export type ProductBulkTagAssignment = {
+  id: string;
+  productId: string;
+  tagId: string;
+  tagName: string;
+};
+export type ProductBulkTagOption = { id: string; name: string };
 export type ProductBulkAttributeData = {
   attributes: ProductBulkAttribute[];
   assignments: ProductBulkAttributeAssignment[];
-  /** Tag labels read from the same selected-product detail requests used for attributes. */
+  tagAssignments: ProductBulkTagAssignment[];
+  availableTagOptions: ProductBulkTagOption[];
+  availableVendors: ReferenceOption[];
+  availableProductTypes: ReferenceOption[];
   tagNamesByProductId: Record<string, string[]>;
+};
+export type ProductBulkAttributeDataOptions = {
+  includeAttributes?: boolean;
+  includeTags?: boolean;
+  /** Resolve only these tag names; avoid downloading the whole tag catalog. */
+  tagNames?: string[];
+  /** Resolve only these vendor names/IDs; avoid downloading every brand page. */
+  vendorNames?: string[];
+  /** Resolve only these product-type names/IDs; avoid downloading every type page. */
+  productTypeNames?: string[];
 };
 
 function isRecord(value: unknown): value is ApiRecord {
@@ -133,48 +153,6 @@ function fieldString(value: unknown): string {
 }
 
 
-function productTagRows(product: ApiRecord): unknown[] {
-  if (Array.isArray(product.tags) && product.tags.length > 0) return product.tags;
-  if (Array.isArray(product.productTags)) return product.productTags;
-  if (Array.isArray(product.tags)) return product.tags;
-  return [];
-}
-
-function productTagNames(product: ApiRecord): string[] {
-  return [...new Set(productTagRows(product).flatMap((value) => {
-    if (typeof value === "string") {
-      const name = value.trim();
-      return name ? [name] : [];
-    }
-    if (!isRecord(value)) return [];
-
-    const linkedTag = record(value.tag);
-    const name = fieldString(
-      linkedTag.name ?? value.name ?? value.tagName ?? value.value,
-    ).trim();
-    return name ? [name] : [];
-  }))];
-}
-
-function existingProductTags(product: ApiRecord): ExistingProductTag[] {
-  return productTagRows(product).flatMap((value) => {
-    if (!isRecord(value)) return [];
-    const linkedTag = record(value.tag);
-    const id = fieldString(value.id).trim();
-    const tagId = fieldString(value.tagId ?? linkedTag.id).trim();
-    return id && tagId ? [{ id, tagId }] : [];
-  });
-}
-
-function tagOptionsFrom(value: unknown): TagOption[] {
-  return recordsFrom(value, ["tags", "items", "results"]).flatMap((tag) => {
-    const nested = record(tag.tag);
-    const id = fieldString(tag.id ?? nested.id).trim();
-    const name = fieldString(tag.name ?? nested.name).trim();
-    return id && name ? [{ id, name }] : [];
-  });
-}
-
 function slugify(value: string): string {
   return value
     .normalize("NFKD")
@@ -183,34 +161,6 @@ function slugify(value: string): string {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-async function loadAllTagOptions(): Promise<TagOption[]> {
-  const all: TagOption[] = [];
-
-  // The tags endpoint can be paginated. Load all pages before deciding a tag
-  // is new, avoiding duplicate creation when it exists beyond page one.
-  for (let page = 1; page <= 100; page += 1) {
-    const response = await retailRequest<unknown>(
-      `/tags?page=${page}&limit=100`,
-      { cache: "no-store" },
-    );
-    const pageTags = tagOptionsFrom(response);
-    all.push(...pageTags);
-
-    const wrapper = isRecord(response) ? response : {};
-    const unwrapped = isRecord(wrapper.data) ? wrapper.data : wrapper;
-    const pagination = isRecord(unwrapped.pagination)
-      ? unwrapped.pagination
-      : isRecord(wrapper.pagination)
-        ? wrapper.pagination
-        : {};
-    const totalPages = Number(pagination.totalPages) || 1;
-
-    if (page >= totalPages || pageTags.length === 0) break;
-  }
-
-  return [...new Map(all.map((tag) => [tag.id, tag])).values()];
 }
 
 async function ensureTagsExist(
@@ -247,19 +197,8 @@ async function ensureTagsExist(
       byName.set(name.toLowerCase(), savedTag);
       createdNames.push(savedName);
     } catch (createError) {
-      // A tag may have been created concurrently. Re-read the list and accept
-      // it if the same name now exists; otherwise surface the real API error.
-      const refreshed = await loadAllTagOptions();
-      const existing = refreshed.find(
-        (tag) => tag.name.toLowerCase() === name.toLowerCase(),
-      );
-
-      if (existing) {
-        byName.set(existing.name.toLowerCase(), existing);
-        byName.set(name.toLowerCase(), existing);
-        continue;
-      }
-
+      // Do not re-download the entire tag catalog after a failed create.
+      // Surface the API error so the user can correct it or safely retry.
       throw new Error(
         `Unable to create tag "${name}": ${createError instanceof Error ? createError.message : "Unknown API error."}`,
       );
@@ -276,14 +215,13 @@ async function replaceProductTags(
   productId: string,
   tagNamesValue: string,
   availableTags: TagOption[],
+  currentTagAssignments: ProductBulkTagAssignment[],
 ): Promise<void> {
-  const productResponse = await retailRequest<unknown>(
-    `/products/${encodeURIComponent(productId)}`,
-    { cache: "no-store" },
-  );
-
-  const product = unwrapRecord(productResponse);
-  const existing = existingProductTags(product);
+  // Reuse the tag rows returned by the narrow metadata endpoint instead of
+  // fetching the full product record just to get its tag relationships.
+  const existing: ExistingProductTag[] = currentTagAssignments
+    .filter((tag) => tag.productId === productId)
+    .map(({ id, tagId }) => ({ id, tagId }));
   const requestedNames = [
     ...new Set(
       tagNamesValue
@@ -333,41 +271,6 @@ async function replaceProductTags(
         }),
       ),
   ]);
-}
-
-async function referenceOptions(path: string, collectionKeys: string[]): Promise<ReferenceOption[]> {
-  const all: ReferenceOption[] = [];
-
-  // Product setup pages load these reference lists too. Fetch pages explicitly
-  // so large vendor/type catalogs can be resolved by their human-readable names.
-  for (let page = 1; page <= 100; page += 1) {
-    const separator = path.includes("?") ? "&" : "?";
-    const response = await retailRequest<unknown>(
-      `${path}${separator}page=${page}&limit=100`,
-      { cache: "no-store" },
-    );
-    const data = recordsFrom(response, collectionKeys);
-
-    all.push(
-      ...data.flatMap((item) => {
-        const id = fieldString(item.id).trim();
-        const name = fieldString(item.name).trim();
-        return id && name ? [{ id, name }] : [];
-      }),
-    );
-
-    const wrapper = isRecord(response) ? response : {};
-    const unwrapped = isRecord(wrapper.data) ? wrapper.data : wrapper;
-    const pagination = isRecord(unwrapped.pagination)
-      ? unwrapped.pagination
-      : isRecord(wrapper.pagination)
-        ? wrapper.pagination
-        : {};
-    const totalPages = Number(pagination.totalPages) || 1;
-    if (page >= totalPages || data.length === 0) break;
-  }
-
-  return [...new Map(all.map((item) => [item.id, item])).values()];
 }
 
 function resolveReferenceId(
@@ -471,83 +374,103 @@ function normalizeAttributeAssignments(
   });
 }
 
-function attributeAssignmentsFromProduct(
-  response: unknown,
-  productId: string,
-): ProductBulkAttributeAssignment[] {
-  const product = unwrapRecord(response);
-  // The Retail API does not expose GET /product-attributes. Read the relation
-  // included by GET /products/:id instead. Keep multiple keys for API versions
-  // that name this relation differently.
-  for (const key of ["productAttributes", "attributes", "attributeAssignments"]) {
-    if (Array.isArray(product[key])) {
-      return normalizeAttributeAssignments(
-        (product[key] as unknown[]).filter(isRecord),
-        productId,
-      );
-    }
-  }
-  throw new Error(
-    `The product details response for ${productId} did not include product attribute assignments. The Retail API must return the product's productAttributes/attributes relation to bulk-edit attributes safely.`,
-  );
-}
-
-/** Load custom attribute definitions and current value assignments for selected products. */
+/**
+ * Load only selected products' bulk-edit metadata from a narrowly scoped API
+ * endpoint. Flags let the save flow request only the relation type it changes.
+ */
 export async function getProductBulkAttributeData(
   productIds: string[],
+  options: ProductBulkAttributeDataOptions = {},
 ): Promise<ProductBulkAttributeData> {
   const ids = [...new Set(productIds.map((id) => String(id).trim()).filter(Boolean))];
-  if (ids.length === 0) {
-    return { attributes: [], assignments: [], tagNamesByProductId: {} };
-  }
-  if (ids.length > 50) throw new Error("Load attributes for at most 50 selected products.");
+  const tagNames = [...new Set((options.tagNames ?? []).map((name) => name.trim()).filter(Boolean))];
+  const vendorNames = [...new Set((options.vendorNames ?? []).map((name) => name.trim()).filter(Boolean))];
+  const productTypeNames = [...new Set((options.productTypeNames ?? []).map((name) => name.trim()).filter(Boolean))];
+  const emptyData: ProductBulkAttributeData = {
+    attributes: [],
+    assignments: [],
+    tagAssignments: [],
+    availableTagOptions: [],
+    availableVendors: [],
+    availableProductTypes: [],
+    tagNamesByProductId: {},
+  };
 
-  async function loadSelectedProductDetails(): Promise<Array<{ id: string; response: unknown }>> {
-    const loaded: Array<{ id: string; response: unknown } | undefined> = new Array(ids.length);
-    let nextIndex = 0;
+  if (ids.length > 50) throw new Error("Load metadata for at most 50 selected products.");
 
-    async function worker(): Promise<void> {
-      while (true) {
-        const index = nextIndex++;
-        if (index >= ids.length) return;
-        const id = ids[index];
-        const response = await retailRequest<unknown>(
-          `/products/${encodeURIComponent(id)}`,
-          { cache: "no-store" },
-        );
-        loaded[index] = { id, response };
+  const includeAttributes = options.includeAttributes ?? true;
+  const includeTags = options.includeTags ?? true;
+  const needsReferences = vendorNames.length > 0 || productTypeNames.length > 0;
+  if (ids.length === 0 && !needsReferences) return emptyData;
+  if (!includeAttributes && !includeTags && !needsReferences) return emptyData;
+
+  const response = await retailRequest<unknown>("/products/bulk-edit-data", {
+    method: "POST",
+    body: JSON.stringify({
+      productIds: ids,
+      includeAttributes,
+      includeTags,
+      ...(tagNames.length > 0 ? { tagNames } : {}),
+      ...(vendorNames.length > 0 ? { vendorNames } : {}),
+      ...(productTypeNames.length > 0 ? { productTypeNames } : {}),
+    }),
+    cache: "no-store",
+  });
+  const payload = unwrapRecord(response);
+
+  const attributes = includeAttributes
+    ? normalizeAttributeDefinitions(recordsFrom(payload, ["attributes", "items", "results"]))
+    : [];
+  const assignments = includeAttributes
+    ? normalizeAttributeAssignments(recordsFrom(payload, ["assignments"]))
+    : [];
+  const tagAssignments: ProductBulkTagAssignment[] = includeTags
+    ? recordsFrom(payload, ["tagAssignments"]).flatMap((item) => {
+        const id = fieldString(item.id).trim();
+        const productId = fieldString(item.productId).trim();
+        const tagId = fieldString(item.tagId).trim();
+        const tagName = fieldString(item.tagName).trim();
+        return id && productId && tagId
+          ? [{ id, productId, tagId, tagName }]
+          : [];
+      })
+    : [];
+
+  const availableTagOptions: ProductBulkTagOption[] = recordsFrom(payload, ["availableTagOptions", "matchingTags"]).flatMap((tag) => {
+    const id = fieldString(tag.id).trim();
+    const name = fieldString(tag.name).trim();
+    return id && name ? [{ id, name }] : [];
+  });
+  const availableVendors: ReferenceOption[] = recordsFrom(payload, ["availableVendors", "vendors"]).flatMap((item) => {
+    const id = fieldString(item.id).trim();
+    const name = fieldString(item.name).trim();
+    return id && name ? [{ id, name }] : [];
+  });
+  const availableProductTypes: ReferenceOption[] = recordsFrom(payload, ["availableProductTypes", "productTypes"]).flatMap((item) => {
+    const id = fieldString(item.id).trim();
+    const name = fieldString(item.name).trim();
+    return id && name ? [{ id, name }] : [];
+  });
+
+  const tagNamesByProductId: Record<string, string[]> = {};
+  if (includeTags) {
+    for (const id of ids) tagNamesByProductId[id] = [];
+    for (const assignment of tagAssignments) {
+      const name = assignment.tagName.trim();
+      if (!name || !tagNamesByProductId[assignment.productId]) continue;
+      if (!tagNamesByProductId[assignment.productId].includes(name)) {
+        tagNamesByProductId[assignment.productId].push(name);
       }
     }
-
-    // At most two detail reads at a time, even if all 50 visible products are selected.
-    await Promise.all(
-      Array.from({ length: Math.min(2, ids.length) }, () => worker()),
-    );
-
-    return loaded.filter(
-      (item): item is { id: string; response: unknown } => item !== undefined,
-    );
   }
 
-  const [attributeRecords, productDetails] = await Promise.all([
-    loadAllRecords("/attributes", ["attributes", "items", "results"]),
-    loadSelectedProductDetails(),
-  ]);
-
-  const assignments = productDetails.flatMap(({ id, response }) =>
-    attributeAssignmentsFromProduct(response, id),
-  );
-
-  const tagNamesByProductId = Object.fromEntries(
-    productDetails.map(({ id, response }) => [
-      id,
-      productTagNames(unwrapRecord(response)),
-    ]),
-  );
-
   return {
-    attributes: normalizeAttributeDefinitions(attributeRecords),
+    attributes,
     assignments,
+    tagAssignments,
+    availableTagOptions,
+    availableVendors,
+    availableProductTypes,
     tagNamesByProductId,
   };
 }
@@ -719,7 +642,11 @@ export async function bulkUpdateProducts(
   const attributeProductIds = normalized
     .filter((item) => Object.keys(item.changes).some((key) => key.startsWith("attribute:")))
     .map((item) => item.id);
+  const tagProductIds = normalized
+    .filter((item) => Object.prototype.hasOwnProperty.call(item.changes, "tags"))
+    .map((item) => item.id);
   const needsAttributes = changedAttributeIds.length > 0;
+  const metadataProductIds = [...new Set([...attributeProductIds, ...tagProductIds])];
 
   const requestedTagNames = needsTags
     ? [...new Set(normalized.flatMap((item) => {
@@ -729,23 +656,35 @@ export async function bulkUpdateProducts(
           : [];
       }))]
     : [];
+  const requestedVendorNames = needsVendors
+    ? [...new Set(normalized.flatMap((item) => typeof item.changes.vendor === "string" ? [item.changes.vendor.trim()] : []).filter(Boolean))]
+    : [];
+  const requestedProductTypeNames = needsProductTypes
+    ? [...new Set(normalized.flatMap((item) => typeof item.changes.productType === "string" ? [item.changes.productType.trim()] : []).filter(Boolean))]
+    : [];
 
-  const [initialTags, availableVendors, availableProductTypes, attributeData] = await Promise.all([
-    needsTags && requestedTagNames.length > 0
-      ? loadAllTagOptions()
-      : Promise.resolve([] as TagOption[]),
-    needsVendors
-      ? referenceOptions("/brands", ["brands", "items", "results"])
-      : Promise.resolve([] as ReferenceOption[]),
-    needsProductTypes
-      ? referenceOptions("/product-type", ["productTypes", "product-types", "items", "results"])
-      : Promise.resolve([] as ReferenceOption[]),
-    needsAttributes
-      ? getProductBulkAttributeData(attributeProductIds)
-      : Promise.resolve({ attributes: [], assignments: [], tagNamesByProductId: {} } as ProductBulkAttributeData),
-  ]);
+  const needsMetadata = needsAttributes || needsTags || needsVendors || needsProductTypes;
+  const attributeData = needsMetadata
+    ? await getProductBulkAttributeData(metadataProductIds, {
+        includeAttributes: needsAttributes,
+        includeTags: needsTags,
+        ...(requestedTagNames.length > 0 ? { tagNames: requestedTagNames } : {}),
+        ...(requestedVendorNames.length > 0 ? { vendorNames: requestedVendorNames } : {}),
+        ...(requestedProductTypeNames.length > 0 ? { productTypeNames: requestedProductTypeNames } : {}),
+      })
+    : {
+        attributes: [],
+        assignments: [],
+        tagAssignments: [],
+        availableTagOptions: [],
+        availableVendors: [],
+        availableProductTypes: [],
+        tagNamesByProductId: {},
+      } as ProductBulkAttributeData;
+  const availableVendors = attributeData.availableVendors;
+  const availableProductTypes = attributeData.availableProductTypes;
 
-  let availableTags = initialTags;
+  let availableTags = needsTags ? attributeData.availableTagOptions : [];
   let createdTagNames: string[] = [];
 
   if (needsTags) {
@@ -789,7 +728,7 @@ export async function bulkUpdateProducts(
         }
 
         if (typeof tags === "string") {
-          await replaceProductTags(item.id, tags, availableTags);
+          await replaceProductTags(item.id, tags, availableTags, attributeData.tagAssignments);
         }
 
         const pendingAttributeChanges: PendingProductAttributeChange[] = [];

@@ -296,6 +296,12 @@ export default function Products({
     setBulkResult("");
     setFailures([]);
     setDrafts({});
+    setBulkAttributes([]);
+    setBulkAttributeAssignments([]);
+    setBulkProductTagNames({});
+    // Show the editor immediately; selected-product metadata loads in parallel
+    // through one targeted API request.
+    setBulkEditorOpen(true);
 
     try {
       const data = await getProductBulkAttributeData(
@@ -304,7 +310,6 @@ export default function Products({
       setBulkAttributes(data.attributes);
       setBulkAttributeAssignments(data.assignments);
       setBulkProductTagNames(data.tagNamesByProductId);
-      setBulkEditorOpen(true);
     } catch (loadError) {
       // Keep the standard product fields usable if the attribute endpoints are unavailable.
       setBulkAttributes([]);
@@ -437,7 +442,7 @@ export default function Products({
     );
     const value = drafts[id]?.[column.key] ?? initialValue;
     const commonProps = {
-      disabled: saving,
+      disabled: saving || (loadingBulkData && column.key === "tags"),
       value,
       "aria-label": `${column.label} for ${text(product.name, "product")}`,
       onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -489,7 +494,7 @@ export default function Products({
               <button
                 key={option.id}
                 type="button"
-                disabled={saving}
+                disabled={saving || loadingBulkData}
                 className={`${bulkStyles.multiOption} ${isSelected ? bulkStyles.multiOptionSelected : ""}`}
                 aria-pressed={isSelected}
                 onClick={() => {
@@ -634,7 +639,7 @@ export default function Products({
                   setBulkResult("");
                   setFailures([]);
                 }}
-                disabled={saving}
+                disabled={saving || loadingBulkData}
               >
                 Clear selection
               </button>
@@ -653,16 +658,21 @@ export default function Products({
                 <p className={bulkStyles.helperText}>
                   Product ID is excluded and cannot be changed. Vendor and product type are resolved by name. Tags are comma-separated names and missing tags are created automatically. Custom attributes are included as their own columns; multi-select values use comma-separated names.
                 </p>
+                {loadingBulkData && (
+                  <p className={bulkStyles.helperText} role="status" aria-live="polite">
+                    Loading selected products’ tags and custom attribute values… You can edit standard fields while these load.
+                  </p>
+                )}
               </div>
               <div className={bulkStyles.editorButtons}>
-                <button type="button" className={styles.secondary} onClick={cancelBulkEdit} disabled={saving}>
+                <button type="button" className={styles.secondary} onClick={cancelBulkEdit} disabled={saving || loadingBulkData}>
                   Cancel
                 </button>
                 <button
                   type="button"
                   className={styles.primary}
                   onClick={saveBulkEdit}
-                  disabled={saving || changesForSelectedCount === 0}
+                  disabled={saving || loadingBulkData || changesForSelectedCount === 0}
                 >
                   {saving ? "Saving changes…" : `Save ${changesForSelectedCount} change${changesForSelectedCount === 1 ? "" : "s"}`}
                 </button>
@@ -713,7 +723,7 @@ export default function Products({
                 type="button"
                 className={styles.primary}
                 onClick={saveBulkEdit}
-                disabled={saving || changesForSelectedCount === 0}
+                disabled={saving || loadingBulkData || changesForSelectedCount === 0}
               >
                 {saving ? "Saving changes…" : "Save changes"}
               </button>

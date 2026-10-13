@@ -1,4 +1,3 @@
-
 "use server";
 
 import { revalidatePath } from "next/cache";
@@ -13,6 +12,14 @@ type ProductAttributeInput = {
   attributeId: string;
   attributeValueId: string;
 };
+
+type ProductStatus = "ACTIVE" | "DRAFT" | "ARCHIVED";
+
+const ALLOWED_PRODUCT_STATUSES: ProductStatus[] = [
+  "ACTIVE",
+  "DRAFT",
+  "ARCHIVED",
+];
 
 function parseJson<T>(
   value: FormDataEntryValue | null,
@@ -66,7 +73,35 @@ export async function updateProductEditAction(
   }
 
   /*
-   * 1. Update product descriptions.
+   * 1. Read and validate product status.
+   *
+   * If the field is absent, preserve the existing status.
+   */
+  const rawStatus = formData.get("status");
+  let status: ProductStatus | undefined;
+
+  if (rawStatus !== null) {
+    if (typeof rawStatus !== "string") {
+      throw new Error("Invalid product status.");
+    }
+
+    const normalizedStatus = rawStatus.trim().toUpperCase();
+
+    if (
+      !ALLOWED_PRODUCT_STATUSES.includes(
+        normalizedStatus as ProductStatus,
+      )
+    ) {
+      throw new Error(
+        "Invalid product status. Choose Active, Draft, or Archived.",
+      );
+    }
+
+    status = normalizedStatus as ProductStatus;
+  }
+
+  /*
+   * 2. Update product descriptions and status.
    */
   const description = String(
     formData.get("description") ?? "",
@@ -76,20 +111,26 @@ export async function updateProductEditAction(
     formData.get("shortDescription") ?? "",
   );
 
+  const productUpdate: Record<string, unknown> = {
+    description: description || null,
+    shortDescription: shortDescription || null,
+  };
+
+  if (status !== undefined) {
+    productUpdate.status = status;
+  }
+
   await retailRequest(
     `/products/${encodeURIComponent(productId)}`,
     {
       method: "PATCH",
-      body: JSON.stringify({
-        description: description || null,
-        shortDescription: shortDescription || null,
-      }),
+      body: JSON.stringify(productUpdate),
       cache: "no-store",
     },
   );
 
   /*
-   * 2. Read selected existing tags and new tag names.
+   * 3. Read selected existing tags and new tag names.
    */
   const rawSelectedTagIds = parseJson<unknown>(
     formData.get("tagIds"),
@@ -148,8 +189,7 @@ export async function updateProductEditAction(
   );
 
   /*
-   * 3. Create new tags, or reuse an existing tag with
-   *    the same slug. POST /tags returns the tag record.
+   * 4. Create new tags.
    */
   const createdTagIds: string[] = [];
 
@@ -186,8 +226,7 @@ export async function updateProductEditAction(
   }
 
   /*
-   * 4. Combine selected existing tags and newly created
-   *    or reused tags.
+   * 5. Combine selected existing tags and newly created tags.
    */
   const finalTagIds = [
     ...new Set([
@@ -205,7 +244,7 @@ export async function updateProductEditAction(
   );
 
   /*
-   * 5. Remove only relationships for deselected tags.
+   * 6. Remove relationships for deselected tags.
    */
   for (const relation of existingProductTags) {
     if (finalTagIdSet.has(relation.tagId)) {
@@ -222,7 +261,7 @@ export async function updateProductEditAction(
   }
 
   /*
-   * 6. Attach selected tags that are not already linked.
+   * 7. Attach selected tags that are not already linked.
    */
   for (const tagId of finalTagIds) {
     if (existingTagIdSet.has(tagId)) {
@@ -240,7 +279,7 @@ export async function updateProductEditAction(
   }
 
   /*
-   * 7. Collect selected metafield values.
+   * 8. Collect selected metafield values.
    */
   const attributes: ProductAttributeInput[] = [];
 
@@ -270,7 +309,7 @@ export async function updateProductEditAction(
   }
 
   /*
-   * 8. Replace product metafield selections.
+   * 9. Replace product metafield selections.
    */
   await retailRequest(
     `/products/${encodeURIComponent(productId)}/attributes`,
@@ -282,7 +321,7 @@ export async function updateProductEditAction(
   );
 
   /*
-   * 9. Refresh dashboard data.
+   * 10. Refresh dashboard data.
    */
   revalidatePath("/dashboard/products/edit");
   revalidatePath("/dashboard/products");

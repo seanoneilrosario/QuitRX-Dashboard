@@ -129,16 +129,29 @@ export default function ProductEdit({
             </section>
 
             <section className={style.formCard}>
-                <h2>Tags</h2>
+              <h2>Product status</h2>
 
-                <p>
-                    Add tags to help organise and manage this product.
-                </p>
+              <p>
+                Control whether this product is active, saved as a draft,
+                or archived.
+              </p>
 
-                <TagPicker
-                    tags={tags}
-                    productTags={productTags}
-                />
+              <div className={style.formGrid}>
+                <label>
+                  Status
+
+                  <select
+                    name="status"
+                    defaultValue={text(product.status, "DRAFT").toUpperCase()}
+                    disabled={saving}
+                    required
+                  >
+                    <option value="ACTIVE">Active</option>
+                    <option value="DRAFT">Draft</option>
+                    <option value="ARCHIVED">Archived</option>
+                  </select>
+                </label>
+              </div>
             </section>
 
             <section

@@ -5,7 +5,36 @@ import type { RetailRecord } from "@/lib/quitmed-retail-admin/collections/client
 
 type Props = {
   item: RetailRecord;
+  returnTo?: string;
 };
+
+function safeProductsReturnTo(
+  value: unknown,
+): string {
+  const fallback = "/dashboard/products";
+
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  try {
+    const url = new URL(
+      value,
+      "https://dashboard.invalid",
+    );
+
+    if (
+      url.origin !== "https://dashboard.invalid" ||
+      url.pathname !== "/dashboard/products"
+    ) {
+      return fallback;
+    }
+
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return fallback;
+  }
+}
 
 function text(
   value: unknown,
@@ -72,7 +101,9 @@ function tagName(tag: unknown): string {
 
 export default function ProductView({
   item,
+  returnTo,
 }: Props) {
+  const backHref = safeProductsReturnTo(returnTo);
   const brand = nested(item, "brand");
   const productType = nested(
     item,
@@ -189,7 +220,7 @@ export default function ProductView({
         >
           <Link
             className={styles.secondary}
-            href="/dashboard/products"
+            href={backHref}
           >
             Back to products
           </Link>

@@ -141,6 +141,21 @@ export default function Products({
   status,
   error,
 }: Props) {
+
+  const returnParams = new URLSearchParams();
+
+  returnParams.set("page", String(pagination.page));
+
+  if (query) {
+    returnParams.set("q", query);
+  }
+
+  if (status) {
+    returnParams.set("status", status);
+  }
+
+  const returnTo = `/dashboard/products?${returnParams.toString()}`;
+
   return (
     <>
       <header className={styles.pageHeader}>
@@ -315,19 +330,19 @@ export default function Products({
                           >
 
                             <Link
-                                href={`/dashboard/products/view?id=${encodeURIComponent(
-                                    text(product.id, ""),
-                                )}`}
-                                >
-                                View
+                              href={`/dashboard/products/view?id=${encodeURIComponent(
+                                text(product.id, ""),
+                              )}&returnTo=${encodeURIComponent(returnTo)}`}
+                            >
+                              View
                             </Link>
 
                             <Link
-                                href={`/dashboard/products/edit?id=${encodeURIComponent(
-                                    text(product.id, ""),
-                                )}`}
-                                >
-                                Edit
+                              href={`/dashboard/products/edit?id=${encodeURIComponent(
+                                text(product.id, ""),
+                              )}&returnTo=${encodeURIComponent(returnTo)}`}
+                            >
+                              Edit
                             </Link>
                           </div>
                         </td>

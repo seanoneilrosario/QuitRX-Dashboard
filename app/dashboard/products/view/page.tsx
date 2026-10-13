@@ -10,12 +10,44 @@ import { normalizeRichText } from "@/lib/quitmed-retail-admin/products/utils";
 type Props = {
   searchParams: Promise<{
     id?: string;
+    returnTo?: string;
   }>;
 };
 
 type ProductResponse = {
   data?: RetailRecord;
 };
+
+function safeProductsReturnTo(value?: string): string {
+  const fallback = "/dashboard/products";
+
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/dashboard/products") ||
+    value.startsWith("//") ||
+    value.includes("\\")
+  ) {
+    return fallback;
+  }
+
+  try {
+    const url = new URL(
+      value,
+      "https://dashboard.invalid",
+    );
+
+    if (
+      url.origin !== "https://dashboard.invalid" ||
+      url.pathname !== "/dashboard/products"
+    ) {
+      return fallback;
+    }
+
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return fallback;
+  }
+}
 
 async function getProduct(
   id: string,
@@ -58,6 +90,9 @@ export default async function ProductViewPage({
 }: Props) {
   const params = await searchParams;
   const id = params.id?.trim() ?? "";
+  const returnTo = safeProductsReturnTo(
+    params.returnTo,
+  );
 
   if (!id) {
     return (
@@ -69,7 +104,7 @@ export default async function ProductViewPage({
         </span>
 
         <Link
-          href="/dashboard/products"
+          href={returnTo}
           className={styles.primary}
         >
           Back to products
@@ -81,7 +116,12 @@ export default async function ProductViewPage({
   try {
     const product = await getProduct(id);
 
-    return <ProductView item={product} />;
+    return (
+      <ProductView
+        item={product}
+        returnTo={returnTo}
+      />
+    );
   } catch (error) {
     return (
       <>
@@ -98,7 +138,7 @@ export default async function ProductViewPage({
         </div>
 
         <Link
-          href="/dashboard/products"
+          href={returnTo}
           className={styles.primary}
         >
           Back to products

@@ -9,6 +9,7 @@ import ProductEdit from "../products-component/ProductEdit";
 type ProductEditPageProps = {
   searchParams: Promise<{
     id?: string;
+    returnTo?: string;
   }>;
 };
 
@@ -75,10 +76,39 @@ function getRecords(value: unknown): RetailRecord[] {
   return [];
 }
 
+function safeProductsReturnTo(value?: string): string {
+  const fallback = "/dashboard/products";
+
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/dashboard/products") ||
+    value.startsWith("//") ||
+    value.includes("\\")
+  ) {
+    return fallback;
+  }
+
+  try {
+    const url = new URL(value, "https://dashboard.invalid");
+
+    if (
+      url.origin !== "https://dashboard.invalid" ||
+      url.pathname !== "/dashboard/products"
+    ) {
+      return fallback;
+    }
+
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
 export default async function ProductEditPage({
   searchParams,
 }: ProductEditPageProps) {
   const params = await searchParams;
+  const returnTo = safeProductsReturnTo(params.returnTo);
 
   if (!params.id) {
     notFound();
@@ -118,7 +148,7 @@ export default async function ProductEditPage({
           </div>
 
           <Link
-            href="/dashboard/products"
+            href={returnTo}
             className={style.secondary}
           >
             Back to products

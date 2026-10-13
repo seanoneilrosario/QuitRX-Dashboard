@@ -17,7 +17,8 @@ export type ProductBulkField =
   | "seoDescription"
   | "productType"
   | "vendor"
-  | "tags";
+  | "tags"
+  | `attribute:${string}`;
 
 export type ProductBulkChanges = Partial<Record<ProductBulkField, string>>;
 
@@ -51,6 +52,26 @@ type ApiRecord = Record<string, unknown>;
 type ExistingProductTag = { id: string; tagId: string };
 type TagOption = { id: string; name: string };
 type ReferenceOption = { id: string; name: string };
+export type ProductBulkAttributeValue = { id: string; value: string };
+export type ProductBulkAttribute = {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  values: ProductBulkAttributeValue[];
+};
+export type ProductBulkAttributeAssignment = {
+  id: string;
+  productId: string;
+  attributeId: string;
+  attributeValueId: string;
+};
+export type ProductBulkAttributeData = {
+  attributes: ProductBulkAttribute[];
+  assignments: ProductBulkAttributeAssignment[];
+  /** Tag labels read from the same selected-product detail requests used for attributes. */
+  tagNamesByProductId: Record<string, string[]>;
+};
 
 function isRecord(value: unknown): value is ApiRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -112,10 +133,31 @@ function fieldString(value: unknown): string {
 }
 
 
-function existingProductTags(product: ApiRecord): ExistingProductTag[] {
-  if (!Array.isArray(product.tags)) return [];
+function productTagRows(product: ApiRecord): unknown[] {
+  if (Array.isArray(product.tags) && product.tags.length > 0) return product.tags;
+  if (Array.isArray(product.productTags)) return product.productTags;
+  if (Array.isArray(product.tags)) return product.tags;
+  return [];
+}
 
-  return product.tags.flatMap((value) => {
+function productTagNames(product: ApiRecord): string[] {
+  return [...new Set(productTagRows(product).flatMap((value) => {
+    if (typeof value === "string") {
+      const name = value.trim();
+      return name ? [name] : [];
+    }
+    if (!isRecord(value)) return [];
+
+    const linkedTag = record(value.tag);
+    const name = fieldString(
+      linkedTag.name ?? value.name ?? value.tagName ?? value.value,
+    ).trim();
+    return name ? [name] : [];
+  }))];
+}
+
+function existingProductTags(product: ApiRecord): ExistingProductTag[] {
+  return productTagRows(product).flatMap((value) => {
     if (!isRecord(value)) return [];
     const linkedTag = record(value.tag);
     const id = fieldString(value.id).trim();
@@ -346,6 +388,240 @@ function resolveReferenceId(
   return match.id;
 }
 
+async function loadAllRecords(path: string, collectionKeys: string[]): Promise<ApiRecord[]> {
+  // The attributes endpoint is a non-paginated reference endpoint. Its DTO
+  // rejects `page` and `limit`, so request it without query parameters.
+  if (path === "/attributes") {
+    const response = await retailRequest<unknown>(path, { cache: "no-store" });
+    const attributeRecords = recordsFrom(response, collectionKeys);
+    return [...new Map(attributeRecords.flatMap((item) => {
+      const id = fieldString(item.id).trim();
+      return id ? [[id, item] as const] : [];
+    })).values()];
+  }
+
+  const all: ApiRecord[] = [];
+
+  for (let page = 1; page <= 100; page += 1) {
+    const separator = path.includes("?") ? "&" : "?";
+    const response = await retailRequest<unknown>(
+      `${path}${separator}page=${page}&limit=100`,
+      { cache: "no-store" },
+    );
+    const pageRecords = recordsFrom(response, collectionKeys);
+    all.push(...pageRecords);
+
+    const wrapper = isRecord(response) ? response : {};
+    const unwrapped = isRecord(wrapper.data) ? wrapper.data : wrapper;
+    const pagination = isRecord(unwrapped.pagination)
+      ? unwrapped.pagination
+      : isRecord(wrapper.pagination)
+        ? wrapper.pagination
+        : {};
+    const totalPages = Number(pagination.totalPages) || 1;
+    if (page >= totalPages || pageRecords.length === 0) break;
+  }
+
+  return [...new Map(all.flatMap((item) => {
+    const id = fieldString(item.id).trim();
+    return id ? [[id, item] as const] : [];
+  })).values()];
+}
+
+function normalizeAttributeDefinitions(records: ApiRecord[]): ProductBulkAttribute[] {
+  return records.flatMap((attribute) => {
+    const id = fieldString(attribute.id).trim();
+    const name = fieldString(attribute.name).trim();
+    if (!id || !name) return [];
+
+    const values = recordsFrom(attribute, ["values"]).flatMap((value) => {
+      const valueId = fieldString(value.id).trim();
+      const label = fieldString(value.value ?? value.name).trim();
+      return valueId && label ? [{ id: valueId, value: label }] : [];
+    });
+
+    return [{
+      id,
+      name,
+      description: fieldString(attribute.description),
+      type: fieldString(attribute.type).toUpperCase(),
+      values,
+    }];
+  });
+}
+
+function normalizeAttributeAssignments(
+  records: ApiRecord[],
+  fallbackProductId = "",
+): ProductBulkAttributeAssignment[] {
+  return records.flatMap((item) => {
+    const product = record(item.product);
+    const attribute = record(item.attribute);
+    const attributeValue = record(item.attributeValue);
+    const valueAttribute = record(attributeValue.attribute);
+    const productId = fieldString(item.productId ?? product.id ?? fallbackProductId).trim();
+    const attributeId = fieldString(
+      item.attributeId ?? attribute.id ?? attributeValue.attributeId ?? valueAttribute.id,
+    ).trim();
+    const attributeValueId = fieldString(item.attributeValueId ?? attributeValue.id).trim();
+    const id = fieldString(item.id).trim();
+    return id && productId && attributeId && attributeValueId
+      ? [{ id, productId, attributeId, attributeValueId }]
+      : [];
+  });
+}
+
+function attributeAssignmentsFromProduct(
+  response: unknown,
+  productId: string,
+): ProductBulkAttributeAssignment[] {
+  const product = unwrapRecord(response);
+  // The Retail API does not expose GET /product-attributes. Read the relation
+  // included by GET /products/:id instead. Keep multiple keys for API versions
+  // that name this relation differently.
+  for (const key of ["productAttributes", "attributes", "attributeAssignments"]) {
+    if (Array.isArray(product[key])) {
+      return normalizeAttributeAssignments(
+        (product[key] as unknown[]).filter(isRecord),
+        productId,
+      );
+    }
+  }
+  throw new Error(
+    `The product details response for ${productId} did not include product attribute assignments. The Retail API must return the product's productAttributes/attributes relation to bulk-edit attributes safely.`,
+  );
+}
+
+/** Load custom attribute definitions and current value assignments for selected products. */
+export async function getProductBulkAttributeData(
+  productIds: string[],
+): Promise<ProductBulkAttributeData> {
+  const ids = [...new Set(productIds.map((id) => String(id).trim()).filter(Boolean))];
+  if (ids.length === 0) {
+    return { attributes: [], assignments: [], tagNamesByProductId: {} };
+  }
+  if (ids.length > 50) throw new Error("Load attributes for at most 50 selected products.");
+
+  async function loadSelectedProductDetails(): Promise<Array<{ id: string; response: unknown }>> {
+    const loaded: Array<{ id: string; response: unknown } | undefined> = new Array(ids.length);
+    let nextIndex = 0;
+
+    async function worker(): Promise<void> {
+      while (true) {
+        const index = nextIndex++;
+        if (index >= ids.length) return;
+        const id = ids[index];
+        const response = await retailRequest<unknown>(
+          `/products/${encodeURIComponent(id)}`,
+          { cache: "no-store" },
+        );
+        loaded[index] = { id, response };
+      }
+    }
+
+    // At most two detail reads at a time, even if all 50 visible products are selected.
+    await Promise.all(
+      Array.from({ length: Math.min(2, ids.length) }, () => worker()),
+    );
+
+    return loaded.filter(
+      (item): item is { id: string; response: unknown } => item !== undefined,
+    );
+  }
+
+  const [attributeRecords, productDetails] = await Promise.all([
+    loadAllRecords("/attributes", ["attributes", "items", "results"]),
+    loadSelectedProductDetails(),
+  ]);
+
+  const assignments = productDetails.flatMap(({ id, response }) =>
+    attributeAssignmentsFromProduct(response, id),
+  );
+
+  const tagNamesByProductId = Object.fromEntries(
+    productDetails.map(({ id, response }) => [
+      id,
+      productTagNames(unwrapRecord(response)),
+    ]),
+  );
+
+  return {
+    attributes: normalizeAttributeDefinitions(attributeRecords),
+    assignments,
+    tagNamesByProductId,
+  };
+}
+
+type PendingProductAttributeChange = {
+  attribute: ProductBulkAttribute;
+  rawValue: string;
+};
+
+/**
+ * Replace the selected product's complete attribute assignment list through
+ * PUT /products/:productId/attributes, matching the NestJS ProductsController.
+ */
+async function replaceProductAttributes(
+  productId: string,
+  changes: PendingProductAttributeChange[],
+  currentAssignments: ProductBulkAttributeAssignment[],
+): Promise<void> {
+  const assignments = new Map<string, { attributeId: string; attributeValueId: string }>();
+
+  // Start with the product's existing assignments so editing one attribute
+  // doesn't remove other attributes that weren't changed in the grid.
+  for (const item of currentAssignments) {
+    if (item.productId !== productId) continue;
+    assignments.set(`${item.attributeId}:${item.attributeValueId}`, {
+      attributeId: item.attributeId,
+      attributeValueId: item.attributeValueId,
+    });
+  }
+
+  // Apply all changed attributes in memory, then send a single replacement
+  // request because the API's replaceProductAttributes method deletes and
+  // recreates the product's full assignment list.
+  for (const change of changes) {
+    const { attribute, rawValue } = change;
+    const requestedLabels = [...new Set(
+      rawValue.split(",").map((value) => value.trim()).filter(Boolean),
+    )];
+
+    if (attribute.type !== "MULTI_SELECT" && requestedLabels.length > 1) {
+      throw new Error(`Attribute "${attribute.name}" accepts only one value.`);
+    }
+
+    const selectedValueIds = requestedLabels.map((requested) => {
+      const match = attribute.values.find((option) =>
+        option.id === requested || option.value.toLowerCase() === requested.toLowerCase(),
+      );
+      if (!match) {
+        throw new Error(`Unknown value "${requested}" for attribute "${attribute.name}".`);
+      }
+      return match.id;
+    });
+
+    for (const [key, assignment] of assignments.entries()) {
+      if (assignment.attributeId === attribute.id) assignments.delete(key);
+    }
+
+    for (const attributeValueId of selectedValueIds) {
+      assignments.set(`${attribute.id}:${attributeValueId}`, {
+        attributeId: attribute.id,
+        attributeValueId,
+      });
+    }
+  }
+
+  await retailRequest(
+    `/products/${encodeURIComponent(productId)}/attributes`,
+    {
+      method: "PUT",
+      body: JSON.stringify([...assignments.values()]),
+    },
+  );
+}
+
 function validateChanges(input: unknown): ProductBulkChanges {
   if (!isRecord(input)) {
     throw new Error("Invalid bulk-edit changes were supplied.");
@@ -360,7 +636,8 @@ function validateChanges(input: unknown): ProductBulkChanges {
 
   for (const [rawKey, rawValue] of entries) {
     // Explicitly reject ID or any field not enabled in this editor.
-    if (!EDITABLE_FIELDS.has(rawKey as ProductBulkField)) {
+    const isAttributeField = rawKey.startsWith("attribute:") && rawKey.slice("attribute:".length).trim().length > 0;
+    if (!EDITABLE_FIELDS.has(rawKey as ProductBulkField) && !isAttributeField) {
       throw new Error(`The field "${rawKey}" cannot be edited in bulk.`);
     }
 
@@ -434,32 +711,44 @@ export async function bulkUpdateProducts(
   const needsProductTypes = normalized.some((item) =>
     Object.prototype.hasOwnProperty.call(item.changes, "productType"),
   );
+  const changedAttributeIds = [...new Set(normalized.flatMap((item) =>
+    Object.keys(item.changes)
+      .filter((key) => key.startsWith("attribute:"))
+      .map((key) => key.slice("attribute:".length)),
+  ))];
+  const attributeProductIds = normalized
+    .filter((item) => Object.keys(item.changes).some((key) => key.startsWith("attribute:")))
+    .map((item) => item.id);
+  const needsAttributes = changedAttributeIds.length > 0;
 
-  const [initialTags, availableVendors, availableProductTypes] = await Promise.all([
-    needsTags ? loadAllTagOptions() : Promise.resolve([] as TagOption[]),
+  const requestedTagNames = needsTags
+    ? [...new Set(normalized.flatMap((item) => {
+        const raw = item.changes.tags;
+        return typeof raw === "string"
+          ? raw.split(",").map((name) => name.trim()).filter(Boolean)
+          : [];
+      }))]
+    : [];
+
+  const [initialTags, availableVendors, availableProductTypes, attributeData] = await Promise.all([
+    needsTags && requestedTagNames.length > 0
+      ? loadAllTagOptions()
+      : Promise.resolve([] as TagOption[]),
     needsVendors
       ? referenceOptions("/brands", ["brands", "items", "results"])
       : Promise.resolve([] as ReferenceOption[]),
     needsProductTypes
       ? referenceOptions("/product-type", ["productTypes", "product-types", "items", "results"])
       : Promise.resolve([] as ReferenceOption[]),
+    needsAttributes
+      ? getProductBulkAttributeData(attributeProductIds)
+      : Promise.resolve({ attributes: [], assignments: [], tagNamesByProductId: {} } as ProductBulkAttributeData),
   ]);
 
   let availableTags = initialTags;
   let createdTagNames: string[] = [];
 
   if (needsTags) {
-    const requestedTagNames = [
-      ...new Set(
-        normalized.flatMap((item) => {
-          const raw = item.changes.tags;
-          return typeof raw === "string"
-            ? raw.split(",").map((name) => name.trim()).filter(Boolean)
-            : [];
-        }),
-      ),
-    ];
-
     const ensured = await ensureTagsExist(requestedTagNames, availableTags);
     availableTags = ensured.tags;
     createdTagNames = ensured.createdNames;
@@ -473,9 +762,12 @@ export async function bulkUpdateProducts(
     while (nextIndex < normalized.length) {
       const item = normalized[nextIndex++];
       const { tags, vendor, productType, ...otherFields } = item.changes;
+      const attributeChanges = Object.fromEntries(
+        Object.entries(otherFields).filter(([key]) => key.startsWith("attribute:")),
+      );
       const productFields: Record<string, string> = {};
       for (const [key, value] of Object.entries(otherFields)) {
-        if (typeof value === "string") productFields[key] = value;
+        if (!key.startsWith("attribute:") && typeof value === "string") productFields[key] = value;
       }
 
       try {
@@ -500,6 +792,18 @@ export async function bulkUpdateProducts(
           await replaceProductTags(item.id, tags, availableTags);
         }
 
+        const pendingAttributeChanges: PendingProductAttributeChange[] = [];
+        for (const [key, value] of Object.entries(attributeChanges)) {
+          if (typeof value !== "string") continue;
+          const attributeId = key.slice("attribute:".length);
+          const attribute = attributeData.attributes.find((candidate) => candidate.id === attributeId);
+          if (!attribute) throw new Error(`Attribute "${attributeId}" is no longer available. Refresh and try again.`);
+          pendingAttributeChanges.push({ attribute, rawValue: value });
+        }
+        if (pendingAttributeChanges.length > 0) {
+          await replaceProductAttributes(item.id, pendingAttributeChanges, attributeData.assignments);
+        }
+
         successIds.push(item.id);
       } catch (error) {
         failures.push({
@@ -513,9 +817,9 @@ export async function bulkUpdateProducts(
     }
   }
 
-  // Limit concurrency so bulk edits don't overwhelm the retail API.
+  // Keep API write concurrency deliberately low to avoid bursts against Retail API.
   await Promise.all(
-    Array.from({ length: Math.min(5, normalized.length) }, () => worker()),
+    Array.from({ length: Math.min(2, normalized.length) }, () => worker()),
   );
 
   if (successIds.length > 0 || createdTagNames.length > 0) {

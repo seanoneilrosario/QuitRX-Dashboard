@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import styles from "@/app/components/dashboard.module.css";
@@ -9,6 +9,9 @@ import bulkStyles from "./products-bulk-editor.module.css";
 import type { RetailRecord } from "@/lib/quitmed-retail-admin/collections/client";
 import {
   bulkUpdateProducts,
+  getProductBulkAttributeData,
+  type ProductBulkAttribute,
+  type ProductBulkAttributeAssignment,
   type ProductBulkField,
   type ProductBulkUpdate,
 } from "@/lib/quitmed-retail-admin/products/products-bulk-actions";
@@ -31,8 +34,9 @@ type Props = {
 type ProductFieldColumn = {
   key: ProductBulkField;
   label: string;
-  editor: "text" | "textarea" | "status" | "tags";
+  editor: "text" | "textarea" | "status" | "tags" | "attribute-single" | "attribute-multi";
   hint?: string;
+  attribute?: ProductBulkAttribute;
 };
 
 type ProductDrafts = Record<string, Partial<Record<ProductBulkField, string>>>;
@@ -50,7 +54,7 @@ const PRODUCT_COLUMNS: ProductFieldColumn[] = [
   { key: "imageId", label: "Primary image ID", editor: "text" },
   { key: "seoTitle", label: "SEO title", editor: "text" },
   { key: "seoDescription", label: "SEO description", editor: "textarea" },
-  { key: "tags", label: "Tags", editor: "tags", hint: "Comma-separated existing tag names" },
+  { key: "tags", label: "Tags", editor: "tags", hint: "Comma-separated names; missing tags are created automatically" },
 ];
 
 const ALLOWED_STATUSES = ["ACTIVE", "DRAFT", "ARCHIVED"] as const;
@@ -88,14 +92,40 @@ function tagNames(value: unknown): string {
 function originalFieldValue(
   product: RetailRecord,
   field: ProductBulkField,
+  attributes: ProductBulkAttribute[] = [],
+  assignments: ProductBulkAttributeAssignment[] = [],
+  tagNamesByProductId: Record<string, string[]> = {},
 ): string {
+  if (field.startsWith("attribute:")) {
+    const attributeId = field.slice("attribute:".length);
+    const productId = text(product.id, "");
+    const attribute = attributes.find((item) => item.id === attributeId);
+    const selected = assignments.filter(
+      (item) => item.productId === productId && item.attributeId === attributeId,
+    );
+    if (!attribute) return "";
+    if (attribute.type === "MULTI_SELECT") {
+      // Store selected value IDs in the grid draft so the editor can use a
+      // real multi-select control instead of accepting arbitrary free text.
+      return selected.map((item) => item.attributeValueId).filter(Boolean).join(",");
+    }
+    return selected[0]?.attributeValueId ?? "";
+  }
+
   switch (field) {
     case "vendor":
       return text(nested(product, "brand")?.name ?? product.brandName ?? product.brandId, "");
     case "productType":
       return text(nested(product, "productType")?.name ?? product.productTypeName ?? product.productTypeId, "");
-    case "tags":
+    case "tags": {
+      const productId = text(product.id, "");
+      // Prefer tags read from the selected product's detail response. The
+      // paginated product list may omit the tags relation altogether.
+      if (Object.prototype.hasOwnProperty.call(tagNamesByProductId, productId)) {
+        return tagNamesByProductId[productId].join(", ");
+      }
       return tagNames(product.tags);
+    }
     case "status":
       return text(product.status, "DRAFT").toUpperCase();
     default:
@@ -164,8 +194,20 @@ export default function Products({
 }: Props) {
   const router = useRouter();
   const selectAllRef = useRef<HTMLInputElement>(null);
+
+  // Preserve the current product-list state when opening a product. The view
+  // and edit pages can send the user back to the same filtered/paginated list.
+  const returnToParams = new URLSearchParams();
+  if (pagination.page > 1) returnToParams.set("page", String(pagination.page));
+  if (query) returnToParams.set("q", query);
+  if (status) returnToParams.set("status", status);
+  const returnTo = `/dashboard/products${returnToParams.toString() ? `?${returnToParams.toString()}` : ""}`;
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
+  const [loadingBulkData, setLoadingBulkData] = useState(false);
+  const [bulkAttributes, setBulkAttributes] = useState<ProductBulkAttribute[]>([]);
+  const [bulkAttributeAssignments, setBulkAttributeAssignments] = useState<ProductBulkAttributeAssignment[]>([]);
+  const [bulkProductTagNames, setBulkProductTagNames] = useState<Record<string, string[]>>({});
   const [drafts, setDrafts] = useState<ProductDrafts>({});
   const [saving, setSaving] = useState(false);
   const [bulkError, setBulkError] = useState("");
@@ -195,6 +237,19 @@ export default function Products({
     (total, product) => total + Object.keys(drafts[text(product.id, "")] ?? {}).length,
     0,
   );
+  const editorColumns = useMemo<ProductFieldColumn[]>(
+    () => [
+      ...PRODUCT_COLUMNS,
+      ...bulkAttributes.map((attribute) => ({
+        key: `attribute:${attribute.id}` as ProductBulkField,
+        label: attribute.name,
+        editor: attribute.type === "MULTI_SELECT" ? "attribute-multi" as const : "attribute-single" as const,
+        hint: attribute.description || (attribute.type === "MULTI_SELECT" ? "Choose one or more existing values" : "Choose one existing value"),
+        attribute,
+      })),
+    ],
+    [bulkAttributes],
+  );
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -207,6 +262,9 @@ export default function Products({
   useEffect(() => {
     setSelectedIds([]);
     setBulkEditorOpen(false);
+    setBulkAttributes([]);
+    setBulkAttributeAssignments([]);
+    setBulkProductTagNames({});
     setDrafts({});
     setBulkError("");
     setBulkResult("");
@@ -231,10 +289,46 @@ export default function Products({
     setBulkError("");
   }
 
+  async function openBulkEditor() {
+    if (selectedProducts.length === 0) return;
+    setLoadingBulkData(true);
+    setBulkError("");
+    setBulkResult("");
+    setFailures([]);
+    setDrafts({});
+
+    try {
+      const data = await getProductBulkAttributeData(
+        selectedProducts.map((product) => text(product.id, "")).filter(Boolean),
+      );
+      setBulkAttributes(data.attributes);
+      setBulkAttributeAssignments(data.assignments);
+      setBulkProductTagNames(data.tagNamesByProductId);
+      setBulkEditorOpen(true);
+    } catch (loadError) {
+      // Keep the standard product fields usable if the attribute endpoints are unavailable.
+      setBulkAttributes([]);
+      setBulkAttributeAssignments([]);
+      setBulkProductTagNames({});
+      setBulkEditorOpen(true);
+      setBulkError(
+        `Product attributes could not be loaded, so only standard fields are available: ${loadError instanceof Error ? loadError.message : "Unknown API error."}`,
+      );
+    } finally {
+      setLoadingBulkData(false);
+    }
+  }
+
   function changeCell(productId: string, field: ProductBulkField, value: string) {
     const product = products.find((item) => text(item.id, "") === productId);
     if (!product) return;
-    const initialValue = originalFieldValue(product, field);
+    const initialValue = originalFieldValue(
+      product,
+      field,
+      bulkAttributes,
+      bulkAttributeAssignments,
+      bulkProductTagNames,
+    );
 
     setDrafts((current) => {
       const next = { ...current };
@@ -265,6 +359,7 @@ export default function Products({
     if (hasChanges && !window.confirm("Discard your unsaved bulk edits?")) return;
     setDrafts({});
     setBulkEditorOpen(false);
+    setBulkProductTagNames({});
     setBulkError("");
     setBulkResult("");
     setFailures([]);
@@ -333,13 +428,19 @@ export default function Products({
 
   function renderEditorCell(product: RetailRecord, column: ProductFieldColumn) {
     const id = text(product.id, "");
-    const initialValue = originalFieldValue(product, column.key);
+    const initialValue = originalFieldValue(
+      product,
+      column.key,
+      bulkAttributes,
+      bulkAttributeAssignments,
+      bulkProductTagNames,
+    );
     const value = drafts[id]?.[column.key] ?? initialValue;
     const commonProps = {
       disabled: saving,
       value,
       "aria-label": `${column.label} for ${text(product.name, "product")}`,
-      onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
         changeCell(id, column.key, event.target.value),
     };
 
@@ -356,6 +457,65 @@ export default function Products({
             </option>
           ))}
         </select>
+      );
+    }
+
+    if (column.editor === "attribute-single") {
+      return (
+        <select {...commonProps} className={bulkStyles.cellInput}>
+          <option value="">No value</option>
+          {(column.attribute?.values ?? []).map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.value}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (column.editor === "attribute-multi") {
+      const selectedValueIds = value ? value.split(",").filter(Boolean) : [];
+      const options = column.attribute?.values ?? [];
+      return (
+        <div
+          className={bulkStyles.multiOptionList}
+          role="group"
+          aria-label={`${column.label} for ${text(product.name, "product")}`}
+          aria-describedby={`${id}-${column.key.replace(/[^a-zA-Z0-9_-]/g, "-")}-hint`}
+        >
+          {options.length ? options.map((option) => {
+            const isSelected = selectedValueIds.includes(option.id);
+            return (
+              <button
+                key={option.id}
+                type="button"
+                disabled={saving}
+                className={`${bulkStyles.multiOption} ${isSelected ? bulkStyles.multiOptionSelected : ""}`}
+                aria-pressed={isSelected}
+                onClick={() => {
+                  const nextSelected = isSelected
+                    ? selectedValueIds.filter((selectedId) => selectedId !== option.id)
+                    : [...selectedValueIds, option.id];
+                  changeCell(id, column.key, nextSelected.join(","));
+                }}
+                title={isSelected ? `Unselect ${option.value}` : `Select ${option.value}`}
+              >
+                <span className={bulkStyles.radioIndicator} aria-hidden="true">
+                  {isSelected ? <span className={bulkStyles.radioIndicatorDot} /> : null}
+                </span>
+                <span className={bulkStyles.multiOptionLabel}>{option.value}</span>
+              </button>
+            );
+          }) : (
+            <span className={bulkStyles.noAttributeOptions}>No existing values configured.</span>
+          )}
+          <span
+            id={`${id}-${column.key.replace(/[^a-zA-Z0-9_-]/g, "-")}-hint`}
+            className={bulkStyles.multiOptionHint}
+          >
+            Click to select; click again to unselect. You can select multiple values.
+          </span>
+        </div>
       );
     }
 
@@ -453,13 +613,11 @@ export default function Products({
                 type="button"
                 className={styles.primary}
                 onClick={() => {
-                  setBulkEditorOpen(true);
-                  setBulkError("");
-                  setBulkResult("");
+                  void openBulkEditor();
                 }}
-                disabled={saving}
+                disabled={saving || loadingBulkData}
               >
-                Bulk edit
+                {loadingBulkData ? "Loading editor…" : "Bulk edit"}
               </button>
               <button
                 type="button"
@@ -469,6 +627,9 @@ export default function Products({
                   setSelectedIds([]);
                   setDrafts({});
                   setBulkEditorOpen(false);
+                  setBulkAttributes([]);
+                  setBulkAttributeAssignments([]);
+                  setBulkProductTagNames({});
                   setBulkError("");
                   setBulkResult("");
                   setFailures([]);
@@ -490,7 +651,7 @@ export default function Products({
                   Editing {selectedProducts.length} selected product{selectedProducts.length === 1 ? "" : "s"} from page {pagination.page}. Edit each cell like a spreadsheet, then save your changes.
                 </p>
                 <p className={bulkStyles.helperText}>
-                  Product ID is excluded and cannot be changed. Vendor and product type are edited by their existing IDs. Tags are comma-separated names of tags already created in Products → Tags.
+                  Product ID is excluded and cannot be changed. Vendor and product type are resolved by name. Tags are comma-separated names and missing tags are created automatically. Custom attributes are included as their own columns; multi-select values use comma-separated names.
                 </p>
               </div>
               <div className={bulkStyles.editorButtons}>
@@ -512,7 +673,7 @@ export default function Products({
               <table className={bulkStyles.grid}>
                 <thead>
                   <tr>
-                    {PRODUCT_COLUMNS.map((column, index) => (
+                    {editorColumns.map((column, index) => (
                       <th
                         key={column.key}
                         className={index === 0 ? bulkStyles.stickyProductColumn : undefined}
@@ -529,7 +690,7 @@ export default function Products({
                     const id = text(product.id, "");
                     return (
                       <tr key={id}>
-                        {PRODUCT_COLUMNS.map((column, index) => {
+                        {editorColumns.map((column, index) => {
                           const changed = Object.prototype.hasOwnProperty.call(drafts[id] ?? {}, column.key);
                           return (
                             <td
@@ -611,8 +772,16 @@ export default function Products({
                       <td><ProductStatus value={product.status} /></td>
                       <td>
                         <div className={styles.actions}>
-                          <Link href={`/dashboard/products/view?id=${encodeURIComponent(id)}`}>View</Link>
-                          <Link href={`/dashboard/products/edit?id=${encodeURIComponent(id)}`}>Edit</Link>
+                          <Link
+                            href={`/dashboard/products/view?id=${encodeURIComponent(id)}&returnTo=${encodeURIComponent(returnTo)}`}
+                          >
+                            View
+                          </Link>
+                          <Link
+                            href={`/dashboard/products/edit?id=${encodeURIComponent(id)}&returnTo=${encodeURIComponent(returnTo)}`}
+                          >
+                            Edit
+                          </Link>
                         </div>
                       </td>
                     </tr>

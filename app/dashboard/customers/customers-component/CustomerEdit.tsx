@@ -16,6 +16,7 @@ import type { RetailRecord } from "@/lib/quitmed-retail-admin/collections/client
 
 type CustomerEditProps = {
   customer: RetailRecord;
+  returnTo: string;
 };
 
 function inputValue(
@@ -77,6 +78,7 @@ function booleanInputValue(
 
 export default function CustomerEdit({
   customer,
+  returnTo,
 }: CustomerEditProps) {
   const [
     submitting,
@@ -113,10 +115,13 @@ export default function CustomerEdit({
         formData,
       );
 
+      const viewParams = new URLSearchParams({
+        id: String(customer.id),
+        returnTo,
+      });
+
       window.location.href =
-        `/dashboard/customers/view?id=${encodeURIComponent(
-          String(customer.id),
-        )}`;
+        `/dashboard/customers/view?${viewParams.toString()}`;
     } catch (err) {
       setError(
         err instanceof Error
@@ -626,9 +631,10 @@ export default function CustomerEdit({
           className={style.formActions}
         >
           <Link
-            href={`/dashboard/customers/view?id=${encodeURIComponent(
-              customerId,
-            )}`}
+            href={`/dashboard/customers/view?${new URLSearchParams({
+              id: customerId,
+              returnTo,
+            }).toString()}`}
           >
             Cancel
           </Link>

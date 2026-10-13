@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import CustomerEdit from "../customers-component/CustomerEdit";
 
-import style from "../../../components/dashboard.module.css"
+import styles from "../../../components/dashboard.module.css";
 
 import {
   getCustomer,
@@ -11,30 +11,66 @@ import {
 type CustomerEditPageProps = {
   searchParams: Promise<{
     id?: string;
+    returnTo?: string;
   }>;
 };
+
+const CUSTOMERS_PATH = "/dashboard/customers";
+
+function getSafeReturnTo(
+  value?: string,
+): string {
+  const fallback = CUSTOMERS_PATH;
+  const candidate = value?.trim();
+
+  if (
+    !candidate ||
+    !candidate.startsWith("/") ||
+    candidate.startsWith("//")
+  ) {
+    return fallback;
+  }
+
+  try {
+    const url = new URL(
+      candidate,
+      "http://dashboard.local",
+    );
+
+    // Only permit returning to the customers list.
+    // Preserve its query parameters.
+    if (
+      url.origin !== "http://dashboard.local" ||
+      url.pathname !== CUSTOMERS_PATH
+    ) {
+      return fallback;
+    }
+
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return fallback;
+  }
+}
 
 export default async function CustomerEditPage({
   searchParams,
 }: CustomerEditPageProps) {
-  const params =
-    await searchParams;
+  const params = await searchParams;
 
-  if (!params.id) {
+  const customerId = params.id?.trim() ?? "";
+  const returnTo = getSafeReturnTo(params.returnTo);
+
+  if (!customerId) {
     return (
-      <div className={style.pageHeader}>
+      <div className={styles.pageHeader}>
         <div>
-          <h1>
-            Customer ID is required
-          </h1>
+          <h1>Customer ID is required</h1>
 
           <p>
             No customer ID was provided.
           </p>
 
-          <Link
-            href="/dashboard/customers"
-          >
+          <Link href={returnTo}>
             ← Back to customers
           </Link>
         </div>
@@ -46,10 +82,7 @@ export default async function CustomerEditPage({
   let error: string | null = null;
 
   try {
-    customer =
-      await getCustomer(
-        params.id,
-      );
+    customer = await getCustomer(customerId);
   } catch (err) {
     error =
       err instanceof Error
@@ -59,16 +92,14 @@ export default async function CustomerEditPage({
 
   if (error) {
     return (
-      <div className={style.emptyState}>
+      <div className={styles.emptyState}>
         <strong>
           Failed to load customer
         </strong>
 
         <span>{error}</span>
 
-        <Link
-          href="/dashboard/customers"
-        >
+        <Link href={returnTo}>
           ← Back to customers
         </Link>
       </div>
@@ -77,14 +108,12 @@ export default async function CustomerEditPage({
 
   if (!customer) {
     return (
-      <div className={style.emptyState}>
+      <div className={styles.emptyState}>
         <strong>
           Customer not found
         </strong>
 
-        <Link
-          href="/dashboard/customers"
-        >
+        <Link href={returnTo}>
           ← Back to customers
         </Link>
       </div>
@@ -94,6 +123,7 @@ export default async function CustomerEditPage({
   return (
     <CustomerEdit
       customer={customer}
+      returnTo={returnTo}
     />
   );
 }

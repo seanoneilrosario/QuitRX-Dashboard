@@ -1,0 +1,200 @@
+.editor {
+  margin: 1.25rem 0 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 12px;
+  background: var(--card, #fff);
+  color: var(--foreground, #1f2937);
+}
+
+.selectionToolbar,
+.editorButtons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.selectionToolbar {
+  margin-top: 0.75rem;
+}
+
+.editorHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.editorHeader h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.08rem;
+  font-weight: 700;
+}
+
+.editorHeader p {
+  margin: 0.25rem 0;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.helperText {
+  max-width: 72rem;
+}
+
+.gridScroller {
+  /* Keep the spreadsheet inside the viewport so the editor gets its own
+     vertical scroll area instead of growing past the screen. */
+  width: 100%;
+  max-width: 100%;
+  max-height: min(68vh, 720px);
+  overflow-x: auto;
+  overflow-y: auto;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 8px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+.grid {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+}
+
+.grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-width: 13rem;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border, #d9dee7);
+  border-right: 1px solid var(--border, #d9dee7);
+  background: var(--muted, #f8fafc);
+  text-align: left;
+  vertical-align: bottom;
+  white-space: normal;
+  font-weight: 650;
+}
+
+.grid thead th small {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.7rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.grid tbody td {
+  min-width: 13rem;
+  padding: 0.35rem;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  border-right: 1px solid var(--border, #e5e7eb);
+  background: var(--card, #fff);
+  vertical-align: top;
+}
+
+.grid tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.grid th:last-child,
+.grid td:last-child {
+  border-right: 0;
+}
+
+.grid .stickyProductColumn {
+  position: sticky;
+  left: 0;
+  min-width: 14rem;
+  width: 14rem;
+  z-index: 1;
+  box-shadow: 2px 0 3px rgb(15 23 42 / 5%);
+}
+
+.grid thead .stickyProductColumn {
+  z-index: 3;
+  background: var(--muted, #f8fafc);
+}
+
+.cellInput {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 12rem;
+  min-height: 2.25rem;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.4;
+}
+
+.cellInput:hover {
+  border-color: var(--border, #cbd5e1);
+}
+
+.cellInput:focus {
+  border-color: var(--primary, #2563eb);
+  outline: 2px solid rgb(37 99 235 / 12%);
+  background: var(--card, #fff);
+}
+
+.cellInput:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.cellTextarea {
+  min-height: 4.9rem;
+  resize: vertical;
+  white-space: pre-wrap;
+}
+
+.changedCell {
+  background: #fffbeb !important;
+}
+
+.changedCell .cellInput {
+  border-color: #f59e0b;
+  background: #fffdf5;
+}
+
+.editorFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-top: 0.85rem;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 760px) {
+  .editor {
+    padding: 0.75rem;
+  }
+
+  .editorHeader {
+    flex-direction: column;
+  }
+
+  .editorButtons {
+    justify-content: flex-start;
+  }
+
+  .editorFooter {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

@@ -1,3 +1,4 @@
+
 import Link from "next/link";
 
 import styles from "@/app/components/dashboard.module.css";
@@ -11,7 +12,11 @@ type Props = {
   items: RetailRecord[];
   pagination: RetailPagination;
   query: string;
+  returnTo: string;
 };
+
+const CUSTOMERS_PATH = "/dashboard/customers";
+const CUSTOMER_VIEW_PATH = `${CUSTOMERS_PATH}/view`;
 
 function text(
   value: unknown,
@@ -23,27 +28,20 @@ function text(
     : fallback;
 }
 
-function money(
-  value: unknown,
-): string {
+function money(value: unknown): string {
   const amount = Number(value);
 
   if (!Number.isFinite(amount)) {
     return "—";
   }
 
-  return new Intl.NumberFormat(
-    "en-AU",
-    {
-      style: "currency",
-      currency: "AUD",
-    },
-  ).format(amount);
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+  }).format(amount);
 }
 
-function fullName(
-  customer: RetailRecord,
-): string {
+function fullName(customer: RetailRecord): string {
   const name = [
     text(customer.firstName, ""),
     text(customer.lastName, ""),
@@ -54,25 +52,15 @@ function fullName(
   return name || "Unnamed customer";
 }
 
-function statusClass(
-  value: unknown,
-): string {
-  const status = text(
-    value,
-    "",
-  ).toLowerCase();
+function statusClass(value: unknown): string {
+  const status = text(value, "").toLowerCase();
 
-  return /pending|draft|inactive|disabled|low/.test(
-    status,
-  )
+  return /pending|draft|inactive|disabled|low/.test(status)
     ? styles.warning
     : "";
 }
 
-function href(
-  page: number,
-  query: string,
-): string {
+function listHref(page: number, query: string): string {
   const params = new URLSearchParams();
 
   if (query) {
@@ -80,65 +68,54 @@ function href(
   }
 
   if (page > 1) {
-    params.set(
-      "page",
-      String(page),
-    );
+    params.set("page", String(page));
   }
 
-  const search =
-    params.toString();
+  const search = params.toString();
 
   return search
-    ? `/dashboard/customers?${search}`
-    : "/dashboard/customers";
+    ? `${CUSTOMERS_PATH}?${search}`
+    : CUSTOMERS_PATH;
+}
+
+function customerViewHref(
+  id: string,
+  returnTo: string,
+): string {
+  const params = new URLSearchParams({
+    id,
+    returnTo,
+  });
+
+  return `${CUSTOMER_VIEW_PATH}?${params.toString()}`;
 }
 
 export default function Customers({
   items,
   pagination,
   query,
+  returnTo,
 }: Props) {
   return (
     <>
-      <header
-        className={
-          styles.pageHeader
-        }
-      >
+      <header className={styles.pageHeader}>
         <div>
-          <p
-            className={
-              styles.eyebrow
-            }
-          >
+          <p className={styles.eyebrow}>
             QuitRX operations
           </p>
 
           <h1>Customers</h1>
 
           <p>
-            Search customer accounts,
-            purchase history and
+            Search customer accounts, purchase history and
             prescription information.
           </p>
         </div>
       </header>
 
-      <div
-        className={
-          styles.toolbar
-        }
-      >
-        <form
-          className={
-            styles.search
-          }
-          method="get"
-        >
-          <span aria-hidden="true">
-            ⌕
-          </span>
+      <div className={styles.toolbar}>
+        <form className={styles.search} method="get">
+          <span aria-hidden="true">⌕</span>
 
           <input
             name="q"
@@ -147,22 +124,13 @@ export default function Customers({
             defaultValue={query}
           />
 
-          <button
-            type="submit"
-            className={
-              styles.primary
-            }
-          >
+          <button type="submit" className={styles.primary}>
             Search
           </button>
         </form>
       </div>
 
-      <div
-        className={
-          styles.tableWrap
-        }
-      >
+      <div className={styles.tableWrap}>
         <table>
           <thead>
             <tr>
@@ -176,99 +144,63 @@ export default function Customers({
           </thead>
 
           <tbody>
-            {items.map(
-              (
-                customer,
-                index,
-              ) => {
-                const id = text(
-                  customer.id,
-                  String(index),
-                );
+            {items.map((customer, index) => {
+              const id = text(customer.id, "");
 
-                return (
-                  <tr key={id}>
-                    <td>
-                      <strong>
-                        {fullName(
-                          customer,
-                        )}
-                      </strong>
+              const viewHref = id
+                ? customerViewHref(id, returnTo)
+                : null;
 
-                      <small>
-                        {text(
-                          customer.id,
-                        )}
-                      </small>
-                    </td>
+              return (
+                <tr key={id || `customer-${index}`}>
+                  <td>
+                    <strong>{fullName(customer)}</strong>
 
-                    <td>
-                      {text(
-                        customer.email,
+                    <small>{text(customer.id)}</small>
+                  </td>
+
+                  <td>
+                    {text(customer.email)}
+
+                    <small>{text(customer.phone)}</small>
+                  </td>
+
+                  <td>
+                    {text(customer.numberOfOrders, "0")}
+                  </td>
+
+                  <td>{money(customer.totalSpent)}</td>
+
+                  <td>
+                    <span
+                      className={`${styles.status} ${statusClass(
+                        customer.state,
+                      )}`}
+                    >
+                      {text(customer.state, "ACTIVE").replaceAll(
+                        "_",
+                        " ",
                       )}
+                    </span>
+                  </td>
 
-                      <small>
-                        {text(
-                          customer.phone,
-                        )}
-                      </small>
-                    </td>
-
-                    <td>
-                      {text(
-                        customer.numberOfOrders,
-                        "0",
-                      )}
-                    </td>
-
-                    <td>
-                      {money(
-                        customer.totalSpent,
-                      )}
-                    </td>
-
-                    <td>
-                      <span
-                        className={`${styles.status} ${statusClass(
-                          customer.state,
-                        )}`}
-                      >
-                        {text(
-                          customer.state,
-                          "ACTIVE",
-                        ).replaceAll(
-                          "_",
-                          " ",
-                        )}
-                      </span>
-                    </td>
-
-                    <td>
-                      <Link
-                        href={`/dashboard/customers/view?id=${encodeURIComponent(
-                          id,
-                        )}`}
-                      >
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              },
-            )}
+                  <td>
+                    {viewHref ? (
+                      <Link href={viewHref}>View</Link>
+                    ) : (
+                      <span>Unavailable</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {!items.length ? (
-        <div
-          className={
-            styles.notice
-          }
-        >
-          <strong>
-            No customers found
-          </strong>
+      {items.length === 0 && (
+        <div className={styles.notice}>
+          <strong>No customers found</strong>
 
           <span>
             {query
@@ -276,66 +208,44 @@ export default function Customers({
               : "There are no customers to display."}
           </span>
         </div>
-      ) : null}
+      )}
 
-      {pagination.totalPages >
-      1 ? (
+      {pagination.totalPages > 1 && (
         <nav
           aria-label="Customer pagination"
-          className={
-            styles.pagination
-          }
+          className={styles.pagination}
         >
           <div>
-            {pagination.page >
-            1 ? (
+            {pagination.page > 1 ? (
               <Link
-                href={href(
-                  pagination.page -
-                    1,
-                  query,
-                )}
+                href={listHref(pagination.page - 1, query)}
               >
                 Previous
               </Link>
             ) : (
-              <span>
-                Previous
-              </span>
+              <span>Previous</span>
             )}
           </div>
 
           <div>
             <span>
-              Page{" "}
-              {pagination.page}{" "}
-              of{" "}
-              {
-                pagination.totalPages
-              }
+              Page {pagination.page} of {pagination.totalPages}
             </span>
           </div>
 
           <div>
-            {pagination.page <
-            pagination.totalPages ? (
+            {pagination.page < pagination.totalPages ? (
               <Link
-                href={href(
-                  pagination.page +
-                    1,
-                  query,
-                )}
+                href={listHref(pagination.page + 1, query)}
               >
                 Next
               </Link>
             ) : (
-              <span>
-                Next
-              </span>
+              <span>Next</span>
             )}
           </div>
         </nav>
-      ) : null}
+      )}
     </>
   );
 }

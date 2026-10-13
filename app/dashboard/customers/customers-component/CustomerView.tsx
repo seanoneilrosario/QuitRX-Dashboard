@@ -1,16 +1,25 @@
 "use client";
 
 import Link from "next/link";
+
 import { useState, type ReactNode } from "react";
+
 import { useRouter } from "next/navigation";
 
 import style from "../../../components/dashboard.module.css";
+
 import type { RetailRecord } from "@/lib/quitmed-retail-admin/collections/client";
 
-import { createCustomerAddressAction, deleteCustomerAction, setDefaultAddressAction } from "../../../../lib/quitmed-retail-admin/customers/customer-actions";
+import {
+  createCustomerAddressAction,
+  deleteCustomerAction,
+  setDefaultAddressAction,
+} from "../../../../lib/quitmed-retail-admin/customers/customer-actions";
 
 type CustomerViewProps = {
   customer: RetailRecord;
+
+  returnTo: string;
 };
 
 function displayValue(input: unknown, fallback = "—"): string {
@@ -35,6 +44,7 @@ function displayMoney(amount: unknown, currencyCode: unknown): string {
 
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
+
     currency,
   }).format(numericAmount);
 }
@@ -56,8 +66,11 @@ function displayDate(input: unknown): string {
 
   return new Intl.DateTimeFormat("en-AU", {
     day: "numeric",
+
     month: "long",
+
     year: "numeric",
+
     timeZone: "UTC",
   }).format(date);
 }
@@ -75,10 +88,15 @@ function displayDateTime(input: unknown): string {
 
   return new Intl.DateTimeFormat("en-AU", {
     day: "numeric",
+
     month: "long",
+
     year: "numeric",
+
     hour: "numeric",
+
     minute: "2-digit",
+
     timeZone: "UTC",
   }).format(date);
 }
@@ -93,9 +111,11 @@ function displayTags(tags: unknown): string {
 
 function DetailRow({
   label,
+
   children,
 }: {
   label: string;
+
   children: ReactNode;
 }) {
   return (
@@ -106,7 +126,11 @@ function DetailRow({
   );
 }
 
-export default function CustomerView({ customer }: CustomerViewProps) {
+export default function CustomerView({
+  customer,
+
+  returnTo,
+}: CustomerViewProps) {
   const firstName = displayValue(customer.firstName, "");
 
   const lastName = displayValue(customer.lastName, "");
@@ -125,28 +149,24 @@ export default function CustomerView({ customer }: CustomerViewProps) {
 
   const router = useRouter();
 
-  const [isAddingAddress, setIsAddingAddress] =
+  const [isAddingAddress, setIsAddingAddress] = useState(false);
+
+  const [isAddingAddressSubmitting, setIsAddingAddressSubmitting] =
     useState(false);
 
-  const [
-    isAddingAddressSubmitting,
-    setIsAddingAddressSubmitting,
-  ] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
 
-  const [addressError, setAddressError] =
-    useState<string | null>(null);
+  const [settingDefaultAddress, setSettingDefaultAddress] = useState<
+    string | null
+  >(null);
 
-  const [settingDefaultAddress, setSettingDefaultAddress] =
-    useState<string | null>(null);
-
-  async function handleSetDefaultAddress(
-    addressId: string,
-  ) {
+  async function handleSetDefaultAddress(addressId: string) {
     setSettingDefaultAddress(addressId);
 
     try {
       await setDefaultAddressAction(
         String(customer.id),
+
         addressId,
       );
 
@@ -154,6 +174,7 @@ export default function CustomerView({ customer }: CustomerViewProps) {
     } catch (error) {
       console.error(
         "Failed to set default address:",
+
         error,
       );
 
@@ -167,30 +188,26 @@ export default function CustomerView({ customer }: CustomerViewProps) {
     }
   }
 
-  async function handleAddAddress(
-    event: React.FormEvent<HTMLFormElement>,
-  ) {
+  async function handleAddAddress(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     setIsAddingAddressSubmitting(true);
+
     setAddressError(null);
 
     try {
-      const formData = new FormData(
-        event.currentTarget,
-      );
+      const formData = new FormData(event.currentTarget);
 
       await createCustomerAddressAction(
         String(customer.id),
+
         formData,
       );
 
       window.location.reload();
     } catch (error) {
       setAddressError(
-        error instanceof Error
-          ? error.message
-          : "Failed to add address.",
+        error instanceof Error ? error.message : "Failed to add address.",
       );
     } finally {
       setIsAddingAddressSubmitting(false);
@@ -207,20 +224,23 @@ export default function CustomerView({ customer }: CustomerViewProps) {
     }
 
     setIsDeleting(true);
+
     setDeleteError(null);
 
     const result = await deleteCustomerAction(String(customer.id));
 
     if (!result.success) {
       setDeleteError(result.error ?? "Failed to delete customer.");
+
       setIsDeleting(false);
+
       return;
     }
 
     setDeleteSuccess(true);
 
     setTimeout(() => {
-      router.push("/dashboard/customers");
+      router.push(returnTo);
     }, 1000);
   }
 
@@ -250,7 +270,9 @@ export default function CustomerView({ customer }: CustomerViewProps) {
         </div>
 
         <div className={style.customerHeaderActions}>
-          <Link className={style.primary} href="/dashboard/customers">← Back to customers</Link>
+          <Link className={style.primary} href={returnTo}>
+            ← Back to customers
+          </Link>
 
           <button
             type="button"
@@ -264,7 +286,7 @@ export default function CustomerView({ customer }: CustomerViewProps) {
           <Link
             href={`/dashboard/customers/edit?id=${encodeURIComponent(
               String(customer.id),
-            )}`}
+            )}&returnTo=${encodeURIComponent(returnTo)}`}
             className={style.primary}
           >
             Edit customer
@@ -273,6 +295,7 @@ export default function CustomerView({ customer }: CustomerViewProps) {
       </div>
 
       {/* Customer information */}
+
       <div className={`${style.detailGrid} ${style.customerDetailGrid}`}>
         <section className={`${style.card} ${style.customerCard}`}>
           <h2>Customer information</h2>
@@ -321,6 +344,7 @@ export default function CustomerView({ customer }: CustomerViewProps) {
         </section>
 
         {/* Prescription & purchases */}
+
         <section className={`${style.card} ${style.customerCard}`}>
           <h2>Prescription & purchases</h2>
 
@@ -368,6 +392,7 @@ export default function CustomerView({ customer }: CustomerViewProps) {
         </section>
 
         {/* Customer fields */}
+
         <section className={`${style.card} ${style.customerCard}`}>
           <h2>Customer fields</h2>
 
@@ -393,6 +418,7 @@ export default function CustomerView({ customer }: CustomerViewProps) {
         </section>
 
         {/* System information */}
+
         <section className={`${style.card} ${style.customerCard}`}>
           <h2>System information</h2>
 
@@ -409,6 +435,7 @@ export default function CustomerView({ customer }: CustomerViewProps) {
       </div>
 
       {/* Addresses */}
+
       <section
         className={`${style.card} ${style.addressSection} ${style.customerAddressSection}`}
       >
@@ -430,19 +457,18 @@ export default function CustomerView({ customer }: CustomerViewProps) {
             className={style.secondary}
             onClick={() => setIsAddingAddress(true)}
           >
-            + Add address
+            \+ Add address
           </button>
         </div>
 
         {/* Add address form */}
+
         {isAddingAddress && (
-          <form
-            className={style.addAddressForm}
-            onSubmit={handleAddAddress}
-          >
+          <form className={style.addAddressForm} onSubmit={handleAddAddress}>
             <div className={style.addAddressHeader}>
               <div>
                 <h3>Add address</h3>
+
                 <p>Enter the customer's address details.</p>
               </div>
             </div>
@@ -469,22 +495,12 @@ export default function CustomerView({ customer }: CustomerViewProps) {
 
               <label>
                 City
-                <input
-                  name="city"
-                  type="text"
-                  placeholder="City"
-                  required
-                />
+                <input name="city" type="text" placeholder="City" required />
               </label>
 
               <label>
                 State / Province
-                <input
-                  name="state"
-                  type="text"
-                  placeholder="State"
-                  required
-                />
+                <input name="state" type="text" placeholder="State" required />
               </label>
 
               <label>
@@ -510,10 +526,7 @@ export default function CustomerView({ customer }: CustomerViewProps) {
             </div>
 
             {addressError && (
-              <div
-                className={style.notice}
-                role="alert"
-              >
+              <div className={style.notice} role="alert">
                 {addressError}
               </div>
             )}
@@ -524,6 +537,7 @@ export default function CustomerView({ customer }: CustomerViewProps) {
                 className={style.secondary}
                 onClick={() => {
                   setIsAddingAddress(false);
+
                   setAddressError(null);
                 }}
                 disabled={isAddingAddressSubmitting}
@@ -536,21 +550,18 @@ export default function CustomerView({ customer }: CustomerViewProps) {
                 className={style.primary}
                 disabled={isAddingAddressSubmitting}
               >
-                {isAddingAddressSubmitting
-                  ? "Adding..."
-                  : "Add address"}
+                {isAddingAddressSubmitting ? "Adding..." : "Add address"}
               </button>
             </div>
           </form>
         )}
 
         {/* Existing addresses */}
+
         {addresses.length === 0 ? (
           !isAddingAddress && (
             <div className={style.addressEmpty}>
-              <span>
-                This customer does not have a saved address.
-              </span>
+              <span>This customer does not have a saved address.</span>
 
               <button
                 type="button"
@@ -566,28 +577,25 @@ export default function CustomerView({ customer }: CustomerViewProps) {
             {addresses.map((address, index) => {
               const addressId = displayValue(
                 address.id,
+
                 `address-${index}`,
               );
 
-              const addressName =
-                `${displayValue(
-                  address.firstName,
-                  "",
-                )} ${displayValue(
-                  address.lastName,
-                  "",
-                )}`.trim();
+              const addressName = `${displayValue(
+                address.firstName,
+
+                "",
+              )} ${displayValue(
+                address.lastName,
+
+                "",
+              )}`.trim();
 
               return (
-                <div
-                  key={addressId}
-                  className={style.addressCard}
-                >
+                <div key={addressId} className={style.addressCard}>
                   <div className={style.addressCardHeader}>
                     <div>
-                      <strong>
-                        {addressName || "Customer address"}
-                      </strong>
+                      <strong>{addressName || "Customer address"}</strong>
 
                       <span className={style.addressType}>
                         {address.isDefault
@@ -598,25 +606,19 @@ export default function CustomerView({ customer }: CustomerViewProps) {
 
                     <div className={style.addressCardActions}>
                       {address.isDefault === true ? (
-                        <span className={style.status}>
-                          Default
-                        </span>
+                        <span className={style.status}>Default</span>
                       ) : (
                         <button
                           type="button"
                           className={style.secondary}
                           onClick={() =>
-                            handleSetDefaultAddress(
-                              String(address.id),
-                            )
+                            handleSetDefaultAddress(String(address.id))
                           }
                           disabled={
-                            settingDefaultAddress ===
-                            String(address.id)
+                            settingDefaultAddress === String(address.id)
                           }
                         >
-                          {settingDefaultAddress ===
-                          String(address.id)
+                          {settingDefaultAddress === String(address.id)
                             ? "Setting..."
                             : "Make default"}
                         </button>
@@ -631,6 +633,7 @@ export default function CustomerView({ customer }: CustomerViewProps) {
                       String(address.address2).trim() !== "" && (
                         <>
                           <br />
+
                           {String(address.address2)}
                         </>
                       )}
@@ -667,7 +670,7 @@ export default function CustomerView({ customer }: CustomerViewProps) {
       </section>
 
       <div className={style.customerBackLink}>
-        <Link href="/dashboard/customers">← Back to customers</Link>
+        <Link href={returnTo}>← Back to customers</Link>
       </div>
     </>
   );

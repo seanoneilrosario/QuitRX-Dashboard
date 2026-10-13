@@ -15,6 +15,8 @@ type Props = {
   }>;
 };
 
+const COLLECTIONS_PATH = "/dashboard/collections";
+
 export default async function CollectionsPage({
   searchParams,
 }: Props) {
@@ -25,11 +27,22 @@ export default async function CollectionsPage({
     Number(params.page) || 1,
   );
 
-  const result =
-    await safeCollectionsPage(
-      page,
-      50,
-    );
+  const result = await safeCollectionsPage(
+    page,
+    50,
+  );
+
+  // Preserve the current list page when navigating
+  // to edit or view a collection.
+  const currentPage = Math.max(
+    1,
+    result.pagination.page || page,
+  );
+
+  const returnTo =
+    currentPage > 1
+      ? `${COLLECTIONS_PATH}?page=${currentPage}`
+      : COLLECTIONS_PATH;
 
   return (
     <>
@@ -49,10 +62,10 @@ export default async function CollectionsPage({
 
       <CollectionsTable
         data={result.data}
+        returnTo={returnTo}
       />
 
-      {!result.data.length &&
-      !result.error ? (
+      {!result.data.length && !result.error ? (
         <div className={styles.emptyState}>
           <strong>
             No collections found
@@ -65,8 +78,7 @@ export default async function CollectionsPage({
         </div>
       ) : null}
 
-      {result.pagination.totalPages >
-      1 ? (
+      {result.pagination.totalPages > 1 ? (
         <nav
           className={styles.pagination}
           aria-label="Collections pagination"
@@ -80,10 +92,9 @@ export default async function CollectionsPage({
           </span>
 
           <div>
-            {result.pagination.page >
-            1 ? (
+            {result.pagination.page > 1 ? (
               <Link
-                href={`/dashboard/collections?page=${
+                href={`${COLLECTIONS_PATH}?page=${
                   result.pagination.page - 1
                 }`}
               >
@@ -96,7 +107,7 @@ export default async function CollectionsPage({
             {result.pagination.page <
             result.pagination.totalPages ? (
               <Link
-                href={`/dashboard/collections?page=${
+                href={`${COLLECTIONS_PATH}?page=${
                   result.pagination.page + 1
                 }`}
               >

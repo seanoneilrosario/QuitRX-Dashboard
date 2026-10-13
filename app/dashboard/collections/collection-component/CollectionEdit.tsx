@@ -7,23 +7,12 @@ import type {
 } from "@/lib/quitmed-retail-admin/collections/client";
 
 import {
-  CollectionCreateForm
+  CollectionCreateForm,
 } from "@/app/dashboard/collections/collection-component/collection-create-fields";
 
 import CollectionDeleteButton from "./collection-delete-button";
 
 type Props = {
-  item?: RetailRecord;
-  products: RetailRecord[];
-  error?: string;
-};
-
-export default function CollectionEdit({
-  item,
-  products,
-  productPagination,
-  error,
-}: {
   item?: RetailRecord;
   products: RetailRecord[];
   productPagination: {
@@ -33,7 +22,16 @@ export default function CollectionEdit({
     totalPages: number;
   };
   error?: string;
-}) {
+  returnTo: string;
+};
+
+export default function CollectionEdit({
+  item,
+  products,
+  productPagination,
+  error,
+  returnTo,
+}: Props) {
   if (!item) {
     return (
       <>
@@ -52,8 +50,8 @@ export default function CollectionEdit({
           </div>
 
           <Link
+            href={returnTo}
             className={styles.primary}
-            href="/dashboard/collections"
           >
             Back to collections
           </Link>
@@ -71,6 +69,18 @@ export default function CollectionEdit({
       </>
     );
   }
+
+  const collectionId = String(item.id ?? "");
+
+  const collectionName =
+    typeof item.name === "string"
+      ? item.name
+      : "this collection";
+
+  const viewHref =
+    `/dashboard/collections/view?id=${encodeURIComponent(
+      collectionId,
+    )}&returnTo=${encodeURIComponent(returnTo)}`;
 
   return (
     <>
@@ -93,34 +103,24 @@ export default function CollectionEdit({
           </p>
         </div>
 
-        <div
-          className={
-            styles.collectionDeleteActions
-          }
-        >
+        <div className={styles.collectionDeleteActions}>
           <Link
+            href={returnTo}
             className={styles.secondary}
-            href="/dashboard/collections"
           >
             Back to collections
           </Link>
 
           <Link
+            href={viewHref}
             className={styles.primary}
-            href={`/dashboard/collections/view?id=${encodeURIComponent(
-              String(item.id ?? ""),
-            )}`}
           >
             View collection
           </Link>
 
           <CollectionDeleteButton
-            id={String(item.id)}
-            name={
-              typeof item.name === "string"
-                ? item.name
-                : "this collection"
-            }
+            id={collectionId}
+            name={collectionName}
           />
         </div>
       </header>

@@ -154,6 +154,19 @@ export default function ProductEdit({
               </div>
             </section>
 
+            <section className={style.formCard}>
+                <h2>Tags</h2>
+
+                <p>
+                    Add tags to help organise and manage this product.
+                </p>
+
+                <TagPicker
+                    tags={tags}
+                    productTags={productTags}
+                />
+            </section>
+
             <section
             className={style.formCard}
             >

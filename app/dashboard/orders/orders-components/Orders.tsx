@@ -123,14 +123,17 @@ export default function Orders({
   query,
   error,
 }: OrdersProps) {
+  const currentPage = Number(pagination.page) || 1;
+  const totalPages = Number(pagination.totalPages) || 0;
+
   const previousQuery =
-    pagination.page > 1
-      ? buildQuery(query, pagination.page - 1)
+    currentPage > 1
+      ? buildQuery(query, currentPage - 1)
       : null;
 
   const nextQuery =
-    pagination.page < pagination.totalPages
-      ? buildQuery(query, pagination.page + 1)
+    currentPage < totalPages
+      ? buildQuery(query, currentPage + 1)
       : null;
 
   return (
@@ -381,8 +384,7 @@ export default function Orders({
 
           <div>
             <p>
-              Page {pagination.page} of{" "}
-              {pagination.totalPages || 1}
+              Page {currentPage} of {totalPages || 1}
             </p>
           </div>
 

@@ -298,10 +298,11 @@ export default function CustomerEdit({
                 name="numberOfOrders"
                 type="number"
                 min="0"
+                readOnly
+                disabled
                 defaultValue={inputValue(
                   customer.numberOfOrders,
                 )}
-                disabled={submitting}
               />
             </label>
 
@@ -316,7 +317,8 @@ export default function CustomerEdit({
                 defaultValue={inputValue(
                   customer.totalSpent,
                 )}
-                disabled={submitting}
+                readOnly
+                disabled
               />
             </label>
 

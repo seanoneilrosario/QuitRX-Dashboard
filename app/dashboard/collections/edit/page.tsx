@@ -9,6 +9,7 @@ import {
 } from "@/lib/quitmed-retail-admin/collections/collections";
 
 import CollectionEdit from "../collection-component/CollectionEdit";
+import { loadCollectionProductsByIds } from "@/lib/quitmed-retail-admin/collections/actions";
 
 type Props = {
   searchParams: Promise<{
@@ -32,13 +33,8 @@ function getSafeReturnTo(value?: string): string {
   }
 
   try {
-    const url = new URL(
-      candidate,
-      "http://dashboard.local",
-    );
+    const url = new URL(candidate, "http://dashboard.local");
 
-    // Only allow navigation back to the collections list.
-    // Preserve its query parameters, such as the current page.
     if (
       url.origin !== "http://dashboard.local" ||
       url.pathname !== COLLECTIONS_PATH
@@ -67,25 +63,33 @@ export default async function CollectionEditPage({
 
         <span>No collection ID was provided.</span>
 
-        <Link
-          href={returnTo}
-          className={styles.primary}
-        >
+        <Link href={returnTo} className={styles.primary}>
           Back to collections
         </Link>
       </div>
     );
   }
 
-  const [
-    collection,
-    products,
+  const [collection, products, collectionProductIds] =
+    await Promise.all([
+      safeCollectionForEdit(id),
+      getCollectionEditProducts(1, 50),
+      getAllCollectionProductIds(id),
+    ]);
+
+  // Fetch the actual records for products assigned to this collection.
+  const selectedProductResult = await loadCollectionProductsByIds(
     collectionProductIds,
-  ] = await Promise.all([
-    safeCollectionForEdit(id),
-    getCollectionEditProducts(1, 50),
-    getAllCollectionProductIds(id),
-  ]);
+  );
+
+  const selectedProductDetails = selectedProductResult.data.map(
+    (product) => ({
+      id: product.id,
+      name: product.name || "Unnamed product",
+      slug: product.slug || "",
+      brand: "",
+    }),
+  );
 
   return (
     <CollectionEdit
@@ -94,6 +98,7 @@ export default async function CollectionEditPage({
         productIds: collectionProductIds,
       }}
       products={products.data}
+      selectedProductDetails={selectedProductDetails}
       productPagination={products.pagination}
       error={collection.error}
       returnTo={returnTo}

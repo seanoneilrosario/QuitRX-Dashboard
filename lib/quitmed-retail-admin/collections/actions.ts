@@ -9,7 +9,7 @@ import {
   retailRequest,
   RETAIL_CATALOG_TAG,
 } from "./client";
-import { getCollectionEditProducts } from "./collections";
+import { getCollectionEditProducts, safeCollectionPage } from "./collections";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
@@ -350,6 +350,19 @@ export async function createCollection(
       );
     }
 
+    if (body.type === "MANUAL" && body.productIds.length > 0) {
+      await retailRequest(
+        `/collections/${encodeURIComponent(collectionId)}/products/reorder`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            productIds: body.productIds,
+          }),
+          cache: "no-store",
+        },
+      );
+    }
+
     const imageFile =
       formData.get("_imageFile");
 
@@ -427,11 +440,28 @@ export async function createCollection(
 }
 
 export async function previewCollection(
-  match: "ALL" | "ANY",
+  match: 'ALL' | 'ANY',
   rules: CollectionRule[],
   page = 1,
   limit = 50,
+  sortBy:
+    | 'RELEVANCE'
+    | 'BEST_SELLING'
+    | 'TITLE_ASC'
+    | 'TITLE_DESC'
+    | 'PRICE_ASC'
+    | 'PRICE_DESC'
+    | 'NEWEST'
+    | 'OLDEST' = 'RELEVANCE',
 ) {
+  // In your existing retailRequest call, use:
+  body: JSON.stringify({
+    match,
+    rules,
+    page,
+    limit,
+    sortBy,
+  });
   try {
     const safePage = Math.max(
       1,
@@ -691,4 +721,36 @@ export async function deleteCollection(
   revalidatePath("/dashboard/collections");
 
   redirect("/dashboard/collections");
+}
+
+
+
+export async function loadCollectionProductsByIds(ids: string[]) {
+  const selectedIds = new Set(ids);
+
+  if (selectedIds.size === 0) {
+    return {
+      data: [],
+      missingIds: [],
+    };
+  }
+
+  const firstPage = await loadCollectionEditProducts(1, 100);
+  const allProducts = [...firstPage.data];
+
+  for (let page = 2; page <= firstPage.pagination.totalPages; page++) {
+    const result = await loadCollectionEditProducts(page, 100);
+    allProducts.push(...result.data);
+  }
+
+  const matchingProducts = allProducts.filter((product) =>
+    selectedIds.has(product.id),
+  );
+
+  const foundIds = new Set(matchingProducts.map((product) => product.id));
+
+  return {
+    data: matchingProducts,
+    missingIds: ids.filter((id) => !foundIds.has(id)),
+  };
 }

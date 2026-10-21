@@ -95,9 +95,8 @@ export default async function CollectionCreatePage() {
 
         <CollectionCreateForm
           products={products}
-          productPagination={
-            productPagination
-          }
+          selectedProductDetails={[]}
+          productPagination={productPagination}
         />
       </section>
     </>

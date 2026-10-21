@@ -1,9 +1,7 @@
+
 "use client";
 
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useEffect, useState } from "react";
 
 import {
   previewCollection,
@@ -20,11 +18,10 @@ import {
 
 import styles from "@/app/components/dashboard.module.css";
 
-export type DynamicRule =
-  Omit<CollectionRule, "value"> & {
-    id: number;
-    value: string;
-  };
+export type DynamicRule = Omit<CollectionRule, "value"> & {
+  id: number;
+  value: string;
+};
 
 type ProductOption = {
   id: string;
@@ -33,16 +30,23 @@ type ProductOption = {
   brand: string;
 };
 
+type PreviewSort =
+  | "RELEVANCE"
+  | "MANUAL"
+  | "BEST_SELLING"
+  | "TITLE_ASC"
+  | "TITLE_DESC"
+  | "PRICE_ASC"
+  | "PRICE_DESC"
+  | "NEWEST"
+  | "OLDEST";
+
 type Props = {
   rules: DynamicRule[];
   match: "ALL" | "ANY";
   pending: boolean;
-  onRulesChange: (
-    rules: DynamicRule[],
-  ) => void;
-  onMatchChange: (
-    match: "ALL" | "ANY",
-  ) => void;
+  onRulesChange: (rules: DynamicRule[]) => void;
+  onMatchChange: (match: "ALL" | "ANY") => void;
 };
 
 export default function DynamicRulesField({
@@ -52,51 +56,30 @@ export default function DynamicRulesField({
   onRulesChange,
   onMatchChange,
 }: Props) {
+  const [sortBy, setSortBy] =
+    useState<PreviewSort>("RELEVANCE");
+
+  const [draggedProductId, setDraggedProductId] =
+    useState<string | null>(null);
+
+  const [dragOverProductId, setDragOverProductId] =
+    useState<string | null>(null);
+
   const [nextRuleId, setNextRuleId] =
-    useState(
-      rules.length,
-    );
+    useState(rules.length);
 
-  const [
-    previewProducts,
-    setPreviewProducts,
-  ] = useState<ProductOption[]>(
-    [],
-  );
+  const [previewProducts, setPreviewProducts] =
+    useState<ProductOption[]>([]);
 
-  const [
-    previewCount,
-    setPreviewCount,
-  ] = useState(0);
+    
 
-  const [
-    previewPage,
-    setPreviewPage,
-  ] = useState(1);
-
-  const [
-    previewTotalPages,
-    setPreviewTotalPages,
-  ] = useState(1);
-
-  const [
-    previewLimit,
-  ] = useState(50);
-
-  const [
-    previewLoading,
-    setPreviewLoading,
-  ] = useState(false);
-
-  const [
-    loadingMorePreview,
-    setLoadingMorePreview,
-  ] = useState(false);
-
-  const [
-    previewError,
-    setPreviewError,
-  ] = useState("");
+  const [previewCount, setPreviewCount] = useState(0);
+  const [previewPage, setPreviewPage] = useState(1);
+  const [previewTotalPages, setPreviewTotalPages] = useState(1);
+  const [previewLimit] = useState(50);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [loadingMorePreview, setLoadingMorePreview] = useState(false);
+  const [previewError, setPreviewError] = useState("");
 
   function updateRule(
     id: number,
@@ -104,25 +87,13 @@ export default function DynamicRulesField({
   ) {
     onRulesChange(
       rules.map((rule) =>
-        rule.id === id
-          ? {
-              ...rule,
-              ...patch,
-            }
-          : rule,
+        rule.id === id ? { ...rule, ...patch } : rule,
       ),
     );
   }
 
-  function removeRule(
-    id: number,
-  ) {
-    onRulesChange(
-      rules.filter(
-        (rule) =>
-          rule.id !== id,
-      ),
-    );
+  function removeRule(id: number) {
+    onRulesChange(rules.filter((rule) => rule.id !== id));
   }
 
   function addRule() {
@@ -136,37 +107,42 @@ export default function DynamicRulesField({
       },
     ]);
 
-    setNextRuleId(
-      (current) =>
-        current + 1,
-    );
+    setNextRuleId((current) => current + 1);
+  }
+
+  function movePreviewProduct(
+    draggedId: string,
+    targetId: string,
+  ) {
+    setPreviewProducts((current) => {
+      const from = current.findIndex((p) => p.id === draggedId);
+      const to = current.findIndex((p) => p.id === targetId);
+
+      if (from < 0 || to < 0 || from === to) {
+        return current;
+      }
+
+      const reordered = [...current];
+      const [moved] = reordered.splice(from, 1);
+      reordered.splice(to, 0, moved);
+
+      return reordered;
+    });
   }
 
   useEffect(() => {
-    const normalizedRules =
-      rules.map(
-        ({
-          field,
-          operator,
-          value,
-        }) => ({
-          field,
-          operator,
-          value:
-            collectionRuleValue(
-              field,
-              value,
-            ),
-        }),
-      );
+    const normalizedRules = rules.map(
+      ({ field, operator, value }) => ({
+        field,
+        operator,
+        value: collectionRuleValue(field, value),
+      }),
+    );
 
     const valid =
       normalizedRules.length > 0 &&
-      normalizedRules.every(
-        (rule) =>
-          isValidCollectionRule(
-            rule,
-          ),
+      normalizedRules.every((rule) =>
+        isValidCollectionRule(rule),
       );
 
     if (!valid) {
@@ -182,197 +158,122 @@ export default function DynamicRulesField({
 
     let cancelled = false;
 
-    /*
-     * Whenever the rules or match
-     * changes, start again from
-     * page 1.
-     */
     setPreviewProducts([]);
     setPreviewCount(0);
     setPreviewPage(1);
     setPreviewTotalPages(1);
     setPreviewError("");
 
-    const timer =
-      window.setTimeout(
-        async () => {
-          setPreviewLoading(true);
+    const timer = window.setTimeout(async () => {
+      setPreviewLoading(true);
 
-          try {
-            const result =
-              await previewCollection(
-                match,
-                normalizedRules,
-                1,
-                previewLimit,
-              );
+      try {
+        // Manual order is applied locally. Fetch the default order
+        // from the API rather than sending MANUAL as a backend sort.
+        const apiSortBy =
+          sortBy === "MANUAL" ? "RELEVANCE" : sortBy;
 
-            if (cancelled) {
-              return;
-            }
+        const result = await previewCollection(
+          match,
+          normalizedRules,
+          1,
+          previewLimit,
+          apiSortBy,
+        );
 
-            setPreviewProducts(
-              result.data,
-            );
+        if (cancelled) return;
 
-            setPreviewCount(
-              result.count,
-            );
+        setPreviewProducts(result.data);
+        setPreviewCount(result.count);
+        setPreviewPage(result.pagination.page);
+        setPreviewTotalPages(result.pagination.totalPages);
+        setPreviewError(result.error ?? "");
+      } catch (error) {
+        if (cancelled) return;
 
-            setPreviewPage(
-              result.pagination.page,
-            );
+        setPreviewProducts([]);
+        setPreviewCount(0);
+        setPreviewPage(1);
+        setPreviewTotalPages(1);
 
-            setPreviewTotalPages(
-              result.pagination.totalPages,
-            );
-
-            setPreviewError(
-              result.error ??
-                "",
-            );
-          } catch (error) {
-            if (cancelled) {
-              return;
-            }
-
-            setPreviewProducts([]);
-            setPreviewCount(0);
-            setPreviewPage(1);
-            setPreviewTotalPages(1);
-
-            setPreviewError(
-              error instanceof Error
-                ? error.message
-                : "Unable to preview collection products.",
-            );
-          } finally {
-            if (!cancelled) {
-              setPreviewLoading(false);
-            }
-          }
-        },
-        350,
-      );
+        setPreviewError(
+          error instanceof Error
+            ? error.message
+            : "Unable to preview collection products.",
+        );
+      } finally {
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
+      }
+    }, 350);
 
     return () => {
       window.clearTimeout(timer);
       cancelled = true;
     };
-  }, [
-    rules,
-    match,
-    previewLimit,
-  ]);
+  }, [rules, match, previewLimit, sortBy]);
 
   async function handleLoadMorePreview() {
-    if (previewLoading) {
-      return;
-    }
-
-    if (loadingMorePreview) {
-      return;
-    }
-
     if (
-      previewPage >=
-      previewTotalPages
+      previewLoading ||
+      loadingMorePreview ||
+      previewPage >= previewTotalPages
     ) {
       return;
     }
 
-    const nextPage =
-      previewPage + 1;
-
-    const normalizedRules =
-      rules.map(
-        ({
-          field,
-          operator,
-          value,
-        }) => ({
-          field,
-          operator,
-          value:
-            collectionRuleValue(
-              field,
-              value,
-            ),
-        }),
-      );
+    const normalizedRules = rules.map(
+      ({ field, operator, value }) => ({
+        field,
+        operator,
+        value: collectionRuleValue(field, value),
+      }),
+    );
 
     if (
-      !normalizedRules.every(
-        (rule) =>
-          isValidCollectionRule(
-            rule,
-          ),
+      !normalizedRules.every((rule) =>
+        isValidCollectionRule(rule),
       )
     ) {
       return;
     }
 
-    setLoadingMorePreview(
-      true,
-    );
-
+    setLoadingMorePreview(true);
     setPreviewError("");
 
     try {
-      const result =
-        await previewCollection(
-          match,
-          normalizedRules,
-          nextPage,
-          previewLimit,
-        );
+      const apiSortBy =
+        sortBy === "MANUAL" ? "RELEVANCE" : sortBy;
+
+      const result = await previewCollection(
+        match,
+        normalizedRules,
+        previewPage + 1,
+        previewLimit,
+        apiSortBy,
+      );
 
       const nextProducts: ProductOption[] =
-        result.data.filter(
-          (product) =>
-            Boolean(product.id),
+        result.data.filter((product) => Boolean(product.id));
+
+      setPreviewProducts((current) => {
+        const existingIds = new Set(
+          current.map((product) => product.id),
         );
 
-      setPreviewProducts(
-        (current) => {
-          const existingIds =
-            new Set(
-              current.map(
-                (product) =>
-                  product.id,
-              ),
-            );
+        return [
+          ...current,
+          ...nextProducts.filter(
+            (product) => !existingIds.has(product.id),
+          ),
+        ];
+      });
 
-          const uniqueProducts =
-            nextProducts.filter(
-              (product) =>
-                !existingIds.has(
-                  product.id,
-                ),
-            );
-
-          return [
-            ...current,
-            ...uniqueProducts,
-          ];
-        },
-      );
-
-      setPreviewPage(
-        result.pagination.page,
-      );
-
-      setPreviewTotalPages(
-        result.pagination.totalPages,
-      );
-
-      setPreviewCount(
-        result.count,
-      );
-
-      setPreviewError(
-        result.error ?? "",
-      );
+      setPreviewPage(result.pagination.page);
+      setPreviewTotalPages(result.pagination.totalPages);
+      setPreviewCount(result.count);
+      setPreviewError(result.error ?? "");
     } catch (error) {
       setPreviewError(
         error instanceof Error
@@ -380,18 +281,29 @@ export default function DynamicRulesField({
           : "Unable to load more matching products.",
       );
     } finally {
-      setLoadingMorePreview(
-        false,
-      );
+      setLoadingMorePreview(false);
     }
   }
 
   return (
-    <section
-      className={
-        styles.collectionProducts
-      }
-    >
+    <section className={styles.collectionProducts}>
+      {/* Submit these values with the existing collection form. */}
+      <input
+        type="hidden"
+        name="sortBy"
+        value={sortBy}
+      />
+
+      <input
+        type="hidden"
+        name="manualProductIds"
+        value={JSON.stringify(
+          sortBy === "MANUAL"
+            ? previewProducts.map((product) => product.id)
+            : [],
+        )}
+      />
+
       <label>
         Products must match
 
@@ -399,239 +311,271 @@ export default function DynamicRulesField({
           value={match}
           onChange={(event) =>
             onMatchChange(
-              event.target
-                .value as
-                | "ALL"
-                | "ANY",
+              event.target.value as "ALL" | "ANY",
             )
           }
           disabled={pending}
         >
-          <option value="ALL">
-            All rules
-          </option>
-
-          <option value="ANY">
-            Any rule
-          </option>
+          <option value="ALL">All rules</option>
+          <option value="ANY">Any rule</option>
         </select>
       </label>
 
       <small>
-        Products will be selected
-        automatically from these
-        rules when the collection
-        is saved.
+        Products will be selected automatically from these rules
+        when the collection is saved.
       </small>
 
-      {previewLoading && (
-        <small>
-          Checking matching
-          products…
-        </small>
-      )}
+      <div className={styles.ruleList}>
+        {rules.map((rule) => (
+          <div className={styles.ruleRow} key={rule.id}>
+            <select
+              aria-label="Rule field"
+              value={rule.field}
+              onChange={(event) => {
+                const field =
+                  event.target.value as DynamicRule["field"];
 
-      {previewError && (
-        <p role="alert">
-          {previewError}
-        </p>
-      )}
+                const operators = collectionRuleOperators[field];
 
-      {!previewLoading &&
-        !previewError &&
-        previewCount > 0 && (
-          <small>
-            {previewCount} matching{" "}
-            {previewCount === 1
-              ? "product"
-              : "products"}
-          </small>
-        )}
+                const operator = operators.includes(rule.operator)
+                  ? rule.operator
+                  : operators[0];
 
-      <div
-        className={
-          styles.ruleList
-        }
-      >
-        {rules.map(
-          (rule) => (
-            <div
-              className={
-                styles.ruleRow
-              }
-              key={rule.id}
+                updateRule(rule.id, {
+                  field,
+                  operator,
+                  value: "",
+                });
+              }}
+              disabled={pending}
             >
-              <select
-                aria-label="Rule field"
-                value={rule.field}
-                onChange={(event) => {
-                  const field =
-                    event.target
-                      .value as DynamicRule["field"];
+              {Object.entries(collectionRuleLabels).map(
+                ([field, label]) => (
+                  <option key={field} value={field}>
+                    {label}
+                  </option>
+                ),
+              )}
+            </select>
 
-                  const operators =
-                    collectionRuleOperators[
-                      field
-                    ];
+            <select
+              aria-label="Rule operator"
+              value={rule.operator}
+              onChange={(event) =>
+                updateRule(rule.id, {
+                  operator:
+                    event.target.value as DynamicRule["operator"],
+                })
+              }
+              disabled={pending}
+            >
+              {collectionRuleOperators[rule.field].map(
+                (operator) => (
+                  <option key={operator} value={operator}>
+                    {{
+                      contains: "Contains",
+                      not_contains: "Does not contain",
+                      equals: "Equals",
+                      not_equals: "Not equals",
+                      greater_than: "Greater than",
+                      less_than: "Less than",
+                    }[operator]}
+                  </option>
+                ),
+              )}
+            </select>
 
-                  const operator =
-                    operators.includes(
-                      rule.operator,
-                    )
-                      ? rule.operator
-                      : operators[0];
+            <input
+              required
+              aria-label="Rule value"
+              type={
+                isNumericCollectionField(rule.field)
+                  ? "number"
+                  : "text"
+              }
+              step="any"
+              placeholder={
+                rule.field === "tags"
+                  ? rule.operator === "contains" ||
+                    rule.operator === "not_contains"
+                    ? "Part of a tag name"
+                    : "Exact tag name"
+                  : "Value"
+              }
+              value={rule.value}
+              onChange={(event) =>
+                updateRule(rule.id, {
+                  value: event.target.value,
+                })
+              }
+              disabled={pending}
+            />
 
-                  updateRule(
-                    rule.id,
-                    {
-                      field,
-                      operator,
-                      value: "",
-                    },
-                  );
-                }}
-                disabled={pending}
-              >
-                {Object.entries(
-                  collectionRuleLabels,
-                ).map(
-                  ([
-                    field,
-                    label,
-                  ]) => (
-                    <option
-                      key={field}
-                      value={field}
-                    >
-                      {label}
-                    </option>
-                  ),
-                )}
-              </select>
-
-              <select
-                aria-label="Rule operator"
-                value={rule.operator}
-                onChange={(event) =>
-                  updateRule(
-                    rule.id,
-                    {
-                      operator:
-                        event.target
-                          .value as DynamicRule["operator"],
-                    },
-                  )
-                }
-                disabled={pending}
-              >
-                {collectionRuleOperators[
-                  rule.field
-                ].map(
-                  (operator) => (
-                    <option
-                      key={operator}
-                      value={operator}
-                    >
-                      {
-                        {
-                          contains:
-                            "Contains",
-                          not_contains: "Does not contain",
-                          equals:
-                            "Equals",
-                          not_equals: "Not equals",
-                          greater_than:
-                            "Greater than",
-                          less_than:
-                            "Less than",
-                        }[
-                          operator
-                        ]
-                      }
-                    </option>
-                  ),
-                )}
-              </select>
-
-              <input
-                required
-                aria-label="Rule value"
-                type={
-                  isNumericCollectionField(
-                    rule.field,
-                  )
-                    ? "number"
-                    : "text"
-                }
-                step="any"
-                placeholder={
-                  rule.field ===
-                  "tags"
-                    ? rule.operator ===
-                      "contains" || 
-                      rule.operator === "not_contains"
-                      ? "Part of a tag name"
-                      : "Exact tag name"
-                    : "Value"
-                }
-                value={rule.value}
-                onChange={(event) =>
-                  updateRule(
-                    rule.id,
-                    {
-                      value:
-                        event.target
-                          .value,
-                    },
-                  )
-                }
-                disabled={pending}
-              />
-
-              <button
-                type="button"
-                onClick={() =>
-                  removeRule(
-                    rule.id,
-                  )
-                }
-                disabled={
-                  pending ||
-                  rules.length === 1
-                }
-              >
-                Remove
-              </button>
-            </div>
-          ),
-        )}
+            <button
+              type="button"
+              onClick={() => removeRule(rule.id)}
+              disabled={pending || rules.length === 1}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
       </div>
 
       <button
         type="button"
-        className={
-          styles.secondary
-        }
+        className={styles.secondary}
         disabled={pending}
         onClick={addRule}
       >
         + Add rule
       </button>
 
-      {previewProducts.length >
-        0 && (
+      {previewLoading && (
+        <small>Checking matching products…</small>
+      )}
+
+      {previewError && (
+        <p role="alert">{previewError}</p>
+      )}
+
+      {!previewLoading && !previewError && (
+        <small>
+          {previewCount} matching{" "}
+          {previewCount === 1 ? "product" : "products"}
+        </small>
+      )}
+
+      <div>
+        <label htmlFor="dynamic-preview-sort">
+          Sort matching products
+        </label>
+
+        <select
+          id="dynamic-preview-sort"
+          value={sortBy}
+          onChange={(event) =>
+            setSortBy(event.target.value as PreviewSort)
+          }
+          disabled={pending || previewLoading || loadingMorePreview}
+        >
+          <option value="RELEVANCE">Default (A–Z)</option>
+          <option value="MANUAL">Manual (drag and drop)</option>
+          <option value="BEST_SELLING">Best-selling</option>
+          <option value="TITLE_ASC">Title: A–Z</option>
+          <option value="TITLE_DESC">Title: Z–A</option>
+          <option value="PRICE_ASC">Price: low to high</option>
+          <option value="PRICE_DESC">Price: high to low</option>
+          <option value="NEWEST">Newest</option>
+          <option value="OLDEST">Oldest</option>
+        </select>
+      </div>
+
+      {sortBy === "MANUAL" && (
+        <small>
+          Drag products to change their order. Load more products
+          to include additional products in the preview.
+        </small>
+      )}
+
+      {previewProducts.length > 0 && (
         <>
           <div
-            className={
-              styles.productChoices
-            }
+            className={styles.productChoices}
             aria-label="Matching products"
+            style={{
+              maxHeight: sortBy === "MANUAL" ? 520 : undefined,
+              overflowY: sortBy === "MANUAL" ? "auto" : undefined,
+              padding: sortBy === "MANUAL" ? 8 : undefined,
+              border:
+                sortBy === "MANUAL"
+                  ? "1px solid #ddd"
+                  : undefined,
+              borderRadius: sortBy === "MANUAL" ? 8 : undefined,
+            }}
           >
-            {previewProducts.map(
-              (product) => (
-                <label
+            {previewProducts.map((product, index) =>
+                sortBy === "MANUAL" ? (
+                <div
                   key={product.id}
+                  draggable={!pending}
+                  onDragStart={(event) => {
+                    setDraggedProductId(product.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", product.id);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+
+                    if (
+                      draggedProductId &&
+                      draggedProductId !== product.id
+                    ) {
+                      setDragOverProductId(product.id);
+
+                      // Move the product immediately as the dragged item
+                      // crosses another product.
+                      movePreviewProduct(
+                        draggedProductId,
+                        product.id,
+                      );
+                    }
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDraggedProductId(null);
+                    setDragOverProductId(null);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedProductId(null);
+                    setDragOverProductId(null);
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "12px",
+                    marginBottom: 6,
+                    border: "1px solid #ddd",
+                    borderRadius: 6,
+                    background:
+                      dragOverProductId === product.id
+                        ? "#eef6ff"
+                        : "#fff",
+                    cursor: pending ? "default" : "grab",
+                    opacity:
+                      draggedProductId === product.id ? 0.45 : 1,
+                    transition: "background 120ms ease, opacity 120ms ease",
+                  }}
                 >
+                  <span
+                    style={{
+                      minWidth: 24,
+                      fontWeight: 600,
+                      color: "#666",
+                    }}
+                  >
+                    {index + 1}.
+                  </span>
+
+                  <span aria-hidden="true" style={{ cursor: "grab" }}>
+                    ⠿
+                  </span>
+
+                  <span>
+                    {product.name}
+
+                    <small style={{ display: "block" }}>
+                      {[product.brand, product.slug]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </small>
+                  </span>
+                </div>
+              ) : (
+                <label key={product.id}>
                   <input
                     type="checkbox"
                     checked
@@ -643,10 +587,7 @@ export default function DynamicRulesField({
                     {product.name}
 
                     <small>
-                      {[
-                        product.brand,
-                        product.slug,
-                      ]
+                      {[product.brand, product.slug]
                         .filter(Boolean)
                         .join(" · ")}
                     </small>
@@ -656,19 +597,15 @@ export default function DynamicRulesField({
             )}
           </div>
 
-          {previewPage <
-            previewTotalPages && (
+          {previewPage < previewTotalPages && (
             <div>
               <button
                 type="button"
-                className={
-                  styles.secondary
-                }
-                onClick={
-                  handleLoadMorePreview
-                }
+                className={styles.secondary}
+                onClick={handleLoadMorePreview}
                 disabled={
                   pending ||
+                  previewLoading ||
                   loadingMorePreview
                 }
               >
@@ -678,10 +615,7 @@ export default function DynamicRulesField({
               </button>
 
               <small style={{ marginLeft: 8 }}>
-                Showing{" "}
-                {previewProducts.length}{" "}
-                of{" "}
-                {previewCount}{" "}
+                Showing {previewProducts.length} of {previewCount}{" "}
                 matching products
               </small>
             </div>

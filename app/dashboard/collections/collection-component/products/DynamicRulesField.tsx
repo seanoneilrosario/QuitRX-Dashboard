@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   previewCollection,
@@ -71,6 +71,35 @@ export default function DynamicRulesField({
   const [previewProducts, setPreviewProducts] =
     useState<ProductOption[]>([]);
 
+  const previewListRef = useRef<HTMLDivElement | null>(null);
+
+  function handlePreviewDragOver(
+    event: React.DragEvent<HTMLDivElement>,
+  ) {
+    event.preventDefault();
+
+    if (!draggedProductId || sortBy !== "MANUAL") {
+      return;
+    }
+
+    const container = previewListRef.current;
+
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const pointerY = event.clientY;
+
+    // Start scrolling when the pointer is within 80px
+    // of the top or bottom edge of the list.
+    const edgeSize = 80;
+    const scrollSpeed = 18;
+
+    if (pointerY < rect.top + edgeSize) {
+      container.scrollTop -= scrollSpeed;
+    } else if (pointerY > rect.bottom - edgeSize) {
+      container.scrollTop += scrollSpeed;
+    }
+  }
     
 
   const [previewCount, setPreviewCount] = useState(0);
@@ -482,8 +511,10 @@ export default function DynamicRulesField({
       {previewProducts.length > 0 && (
         <>
           <div
+            ref={previewListRef}
             className={styles.productChoices}
             aria-label="Matching products"
+            onDragOver={handlePreviewDragOver}
             style={{
               maxHeight: sortBy === "MANUAL" ? 520 : undefined,
               overflowY: sortBy === "MANUAL" ? "auto" : undefined,
@@ -560,7 +591,16 @@ export default function DynamicRulesField({
                     {index + 1}.
                   </span>
 
-                  <span aria-hidden="true" style={{ cursor: "grab" }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      cursor: "grab",
+                      fontSize: 22,
+                      color: "#64748b",
+                      flexShrink: 0,
+                      userSelect: "none",
+                    }}
+                  >
                     ⠿
                   </span>
 

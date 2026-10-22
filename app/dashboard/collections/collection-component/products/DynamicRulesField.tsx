@@ -57,7 +57,7 @@ export default function DynamicRulesField({
   onMatchChange,
 }: Props) {
   const [sortBy, setSortBy] =
-    useState<PreviewSort>("RELEVANCE");
+    useState<PreviewSort>("MANUAL");
 
   const [draggedProductId, setDraggedProductId] =
     useState<string | null>(null);
@@ -72,6 +72,67 @@ export default function DynamicRulesField({
     useState<ProductOption[]>([]);
 
   const previewListRef = useRef<HTMLDivElement | null>(null);
+
+  async function loadAllMatchingProducts() {
+    const normalizedRules = rules.map(
+      ({ field, operator, value }) => ({
+        field,
+        operator,
+        value: collectionRuleValue(field, value),
+      }),
+    );
+
+    if (
+      normalizedRules.length === 0 ||
+      !normalizedRules.every(isValidCollectionRule)
+    ) {
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewError("");
+
+    try {
+      const allProducts: ProductOption[] = [];
+      const seenIds = new Set<string>();
+
+      let page = 1;
+      let totalPages = 1;
+
+      do {
+        const result = await previewCollection(
+          match,
+          normalizedRules,
+          page,
+          100,
+          sortBy === "MANUAL" ? "TITLE_ASC" : sortBy,
+        );
+
+        for (const product of result.data) {
+          if (product.id && !seenIds.has(product.id)) {
+            seenIds.add(product.id);
+            allProducts.push(product);
+          }
+        }
+
+        totalPages = result.pagination.totalPages;
+        page++;
+      } while (page <= totalPages);
+
+      setPreviewProducts(allProducts);
+      setPreviewCount(allProducts.length);
+      setPreviewPage(totalPages);
+      setPreviewTotalPages(totalPages);
+    } catch (error) {
+      setPreviewError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load all matching products.",
+      );
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
 
   function handlePreviewDragOver(
     event: React.DragEvent<HTMLDivElement>,
@@ -241,7 +302,7 @@ export default function DynamicRulesField({
       window.clearTimeout(timer);
       cancelled = true;
     };
-  }, [rules, match, previewLimit, sortBy]);
+  }, [rules, match, previewLimit]);
 
   async function handleLoadMorePreview() {
     if (
@@ -329,7 +390,7 @@ export default function DynamicRulesField({
         value={JSON.stringify(
           sortBy === "MANUAL"
             ? previewProducts.map((product) => product.id)
-            : [],
+            : []
         )}
       />
 
@@ -484,9 +545,15 @@ export default function DynamicRulesField({
         <select
           id="dynamic-preview-sort"
           value={sortBy}
-          onChange={(event) =>
-            setSortBy(event.target.value as PreviewSort)
-          }
+          onChange={async (event) => {
+            const nextSort = event.target.value as PreviewSort;
+
+            setSortBy(nextSort);
+
+            if (nextSort === "MANUAL") {
+              await loadAllMatchingProducts();
+            }
+          }}
           disabled={pending || previewLoading || loadingMorePreview}
         >
           <option value="RELEVANCE">Default (A–Z)</option>
@@ -516,7 +583,7 @@ export default function DynamicRulesField({
             aria-label="Matching products"
             onDragOver={handlePreviewDragOver}
             style={{
-              maxHeight: sortBy === "MANUAL" ? 520 : undefined,
+              maxHeight: sortBy === "MANUAL" ? 620 : undefined,
               overflowY: sortBy === "MANUAL" ? "auto" : undefined,
               padding: sortBy === "MANUAL" ? 8 : undefined,
               border:

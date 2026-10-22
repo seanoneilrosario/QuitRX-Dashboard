@@ -130,6 +130,12 @@ function buildCollectionPayload(
     "name",
   );
 
+  const manualProductIds =
+  parseJson<string[]>(
+    formData.get("manualProductIds"),
+    [],
+  );
+
   const slug =
     getString(formData, "slug") ||
     slugify(name);
@@ -282,8 +288,10 @@ export async function createCollection(
   formData: FormData,
 ): Promise<CollectionActionState> {
   try {
+    console.log("[Collection Save] Action started");
 
     const session = await auth();
+    console.log("[Collection Save] Session checked");
 
     const staffUser = session?.user as
       | {
@@ -306,20 +314,33 @@ export async function createCollection(
       formData,
       "_id",
     );
+    console.log("[Collection Save] Collection ID:", id);
 
     const editing = Boolean(id);
 
     const body =
       buildCollectionPayload(formData);
+    console.log("[Collection Save] Payload:", {
+      type: body.type,
+      productCount: body.productIds.length,
+      productIds: body.productIds,
+    });
 
     validateCollection(
       body,
       editing,
     );
+    console.log("[Collection Save] Validation passed");
 
+    console.log("[Collection Save] Before API request", {
+      id,
+      type: body.type,
+      rules: body.rules,
+    });
     const path = id
       ? `/collections/${encodeURIComponent(id)}`
       : "/collections";
+    console.log("[Collection Save] Request path:", path);
 
     const saved =
       await retailRequest<unknown>(
@@ -333,6 +354,7 @@ export async function createCollection(
           ),
         },
       );
+    console.log("[Collection Save] API response:", saved);
 
     const savedRecord =
       collectionRecord(saved);
@@ -350,17 +372,33 @@ export async function createCollection(
       );
     }
 
-    if (body.type === "MANUAL" && body.productIds.length > 0) {
-      await retailRequest(
-        `/collections/${encodeURIComponent(collectionId)}/products/reorder`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            productIds: body.productIds,
-          }),
-          cache: "no-store",
-        },
-      );
+    const manualProductIdsRaw = formData.get("manualProductIds");
+
+    const orderedProductIds =
+      body.type === "DYNAMIC"
+        ? parseJson<string[]>(manualProductIdsRaw, [])
+        : body.productIds;
+
+    console.log("[Collection Reorder Debug]", {
+      collectionId,
+      collectionType: body.type,
+      rules: body.rules,
+      match: body.match,
+      rawManualProductIdsType: typeof manualProductIdsRaw,
+      rawManualProductIdsLength:
+        typeof manualProductIdsRaw === "string"
+          ? manualProductIdsRaw.length
+          : null,
+      submittedCount: orderedProductIds.length,
+      uniqueCount: new Set(orderedProductIds).size,
+      duplicateIds: orderedProductIds.filter(
+        (id, index, ids) => ids.indexOf(id) !== index,
+      ),
+      submittedIds: orderedProductIds,
+    });
+
+    if (orderedProductIds.length > 0) {
+      await reorderCollectionProducts(collectionId, orderedProductIds);
     }
 
     const imageFile =
@@ -427,6 +465,8 @@ export async function createCollection(
     );
 
   } catch (error) {
+    console.error("[Collection Save] FAILED:", error);
+
     return {
       message:
         error instanceof Error
@@ -483,6 +523,7 @@ export async function previewCollection(
             rules,
             page: safePage,
             limit: safeLimit,
+            sortBy,
           }),
           cache: "no-store",
         },
@@ -753,4 +794,47 @@ export async function loadCollectionProductsByIds(ids: string[]) {
     data: matchingProducts,
     missingIds: ids.filter((id) => !foundIds.has(id)),
   };
+}
+
+
+
+export async function reorderCollectionProducts(
+  collectionId: string,
+  productIds: string[],
+) {
+  if (!collectionId) {
+    throw new Error('Collection ID is required.');
+  }
+
+  if (!Array.isArray(productIds)) {
+    throw new Error('Product IDs must be an array.');
+  }
+
+  if (new Set(productIds).size !== productIds.length) {
+    throw new Error('Duplicate product IDs are not allowed.');
+  }
+
+  const session = await auth();
+
+  const staffUser = session?.user as
+    | {
+        isStaff?: boolean;
+        accessToken?: string;
+      }
+    | undefined;
+
+  if (!staffUser?.isStaff || !staffUser.accessToken) {
+    throw new Error(
+      'You must be signed in as staff to reorder collection products.',
+    );
+  }
+
+  return retailRequest(
+    `/collections/${encodeURIComponent(collectionId)}/products/reorder`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ productIds }),
+      cache: 'no-store',
+    },
+  );
 }

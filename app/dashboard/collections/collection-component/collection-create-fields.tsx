@@ -334,12 +334,10 @@ function CollectionCreateFields({
 
 export function CollectionCreateForm({
   products,
-  selectedProductDetails,
   productPagination,
   initial,
 }: {
   products: ProductOption[];
-  selectedProductDetails: ProductOption[];
   productPagination?: {
     page: number;
     limit: number;
@@ -551,11 +549,9 @@ export function CollectionCreateForm({
           )}
         />
 
-        
         {type === "MANUAL" ? (
           <ManualProductsField
             products={products}
-            selectedProductDetails={selectedProductDetails}
             productPagination={productPagination}
             selected={selected}
             pending={pending}

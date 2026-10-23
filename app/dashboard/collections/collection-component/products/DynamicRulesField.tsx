@@ -3,9 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import {
-  previewCollection,
-} from "@/lib/quitmed-retail-admin/collections/actions";
+import { previewCollection } from "@/lib/quitmed-retail-admin/collections/actions";
 
 import {
   collectionRuleLabels,
@@ -42,127 +40,45 @@ type PreviewSort =
   | "OLDEST";
 
 type Props = {
+  // Reuse the catalogue products already fetched by the parent form.
+  products: ProductOption[];
   rules: DynamicRule[];
   match: "ALL" | "ANY";
   pending: boolean;
+  collectionId?: string;
+  initialSortBy?: PreviewSort;
   onRulesChange: (rules: DynamicRule[]) => void;
   onMatchChange: (match: "ALL" | "ANY") => void;
+  // Kept for compatibility with CollectionCreateForm; preview is fetched via API.
+  selectedProductDetails?: ProductOption[];
+  // Lets the parent prevent submission until all matching IDs are loaded.
+  onManualOrderReady?: (ready: boolean) => void;
 };
 
 export default function DynamicRulesField({
+  products,
   rules,
   match,
   pending,
+  collectionId,
+  initialSortBy = "MANUAL",
   onRulesChange,
   onMatchChange,
+  onManualOrderReady,
 }: Props) {
-  const [sortBy, setSortBy] =
-    useState<PreviewSort>("MANUAL");
+  const [sortBy, setSortBy] = useState<PreviewSort>(initialSortBy);
 
   const [draggedProductId, setDraggedProductId] =
     useState<string | null>(null);
-
   const [dragOverProductId, setDragOverProductId] =
     useState<string | null>(null);
-
-  const [nextRuleId, setNextRuleId] =
-    useState(rules.length);
+  const [nextRuleId, setNextRuleId] = useState(rules.length);
 
   const [previewProducts, setPreviewProducts] =
     useState<ProductOption[]>([]);
-
-  const previewListRef = useRef<HTMLDivElement | null>(null);
-
-  async function loadAllMatchingProducts() {
-    const normalizedRules = rules.map(
-      ({ field, operator, value }) => ({
-        field,
-        operator,
-        value: collectionRuleValue(field, value),
-      }),
-    );
-
-    if (
-      normalizedRules.length === 0 ||
-      !normalizedRules.every(isValidCollectionRule)
-    ) {
-      return;
-    }
-
-    setPreviewLoading(true);
-    setPreviewError("");
-
-    try {
-      const allProducts: ProductOption[] = [];
-      const seenIds = new Set<string>();
-
-      let page = 1;
-      let totalPages = 1;
-
-      do {
-        const result = await previewCollection(
-          match,
-          normalizedRules,
-          page,
-          100,
-          sortBy === "MANUAL" ? "TITLE_ASC" : sortBy,
-        );
-
-        for (const product of result.data) {
-          if (product.id && !seenIds.has(product.id)) {
-            seenIds.add(product.id);
-            allProducts.push(product);
-          }
-        }
-
-        totalPages = result.pagination.totalPages;
-        page++;
-      } while (page <= totalPages);
-
-      setPreviewProducts(allProducts);
-      setPreviewCount(allProducts.length);
-      setPreviewPage(totalPages);
-      setPreviewTotalPages(totalPages);
-    } catch (error) {
-      setPreviewError(
-        error instanceof Error
-          ? error.message
-          : "Unable to load all matching products.",
-      );
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
-
-  function handlePreviewDragOver(
-    event: React.DragEvent<HTMLDivElement>,
-  ) {
-    event.preventDefault();
-
-    if (!draggedProductId || sortBy !== "MANUAL") {
-      return;
-    }
-
-    const container = previewListRef.current;
-
-    if (!container) return;
-
-    const rect = container.getBoundingClientRect();
-    const pointerY = event.clientY;
-
-    // Start scrolling when the pointer is within 80px
-    // of the top or bottom edge of the list.
-    const edgeSize = 80;
-    const scrollSpeed = 18;
-
-    if (pointerY < rect.top + edgeSize) {
-      container.scrollTop -= scrollSpeed;
-    } else if (pointerY > rect.bottom - edgeSize) {
-      container.scrollTop += scrollSpeed;
-    }
-  }
-    
-
+  // All matching IDs are fetched across every API page for manual ordering.
+  const [allMatchingProductIds, setAllMatchingProductIds] =
+    useState<string[]>([]);
   const [previewCount, setPreviewCount] = useState(0);
   const [previewPage, setPreviewPage] = useState(1);
   const [previewTotalPages, setPreviewTotalPages] = useState(1);
@@ -171,10 +87,52 @@ export default function DynamicRulesField({
   const [loadingMorePreview, setLoadingMorePreview] = useState(false);
   const [previewError, setPreviewError] = useState("");
 
-  function updateRule(
-    id: number,
-    patch: Partial<DynamicRule>,
+  const previewListRef = useRef<HTMLDivElement | null>(null);
+
+  // The preview endpoint determines which products match the rules. Reuse the
+  // already-loaded catalogue only to fill in any missing display details.
+  function addCatalogueDetails(items: ProductOption[]): ProductOption[] {
+    const productsById = new Map(
+      products.map((product) => [product.id, product]),
+    );
+
+    return items.map((product) => {
+      const catalogueProduct = productsById.get(product.id);
+
+      if (!catalogueProduct) return product;
+
+      return {
+        ...catalogueProduct,
+        ...product,
+        name: product.name || catalogueProduct.name,
+        slug: product.slug || catalogueProduct.slug,
+        brand: product.brand || catalogueProduct.brand,
+      };
+    });
+  }
+
+  useEffect(() => {
+    setSortBy(initialSortBy);
+  }, [initialSortBy]);
+
+  function getNormalizedRules() {
+    return rules.map(({ field, operator, value }) => ({
+      field,
+      operator,
+      value: collectionRuleValue(field, value),
+    }));
+  }
+
+  function areRulesValid(
+    normalizedRules: ReturnType<typeof getNormalizedRules>,
   ) {
+    return (
+      normalizedRules.length > 0 &&
+      normalizedRules.every(isValidCollectionRule)
+    );
+  }
+
+  function updateRule(id: number, patch: Partial<DynamicRule>) {
     onRulesChange(
       rules.map((rule) =>
         rule.id === id ? { ...rule, ...patch } : rule,
@@ -200,13 +158,10 @@ export default function DynamicRulesField({
     setNextRuleId((current) => current + 1);
   }
 
-  function movePreviewProduct(
-    draggedId: string,
-    targetId: string,
-  ) {
+  function movePreviewProduct(draggedId: string, targetId: string) {
     setPreviewProducts((current) => {
-      const from = current.findIndex((p) => p.id === draggedId);
-      const to = current.findIndex((p) => p.id === targetId);
+      const from = current.findIndex((product) => product.id === draggedId);
+      const to = current.findIndex((product) => product.id === targetId);
 
       if (from < 0 || to < 0 || from === to) {
         return current;
@@ -220,77 +175,146 @@ export default function DynamicRulesField({
     });
   }
 
-  useEffect(() => {
-    const normalizedRules = rules.map(
-      ({ field, operator, value }) => ({
-        field,
-        operator,
-        value: collectionRuleValue(field, value),
-      }),
-    );
+  function handlePreviewDragOver(
+    event: React.DragEvent<HTMLDivElement>,
+  ) {
+    event.preventDefault();
 
-    const valid =
-      normalizedRules.length > 0 &&
-      normalizedRules.every((rule) =>
-        isValidCollectionRule(rule),
-      );
+    if (!draggedProductId || sortBy !== "MANUAL") {
+      return;
+    }
+
+    const container = previewListRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const edgeSize = 80;
+    const scrollSpeed = 18;
+
+    if (event.clientY < rect.top + edgeSize) {
+      container.scrollTop -= scrollSpeed;
+    } else if (event.clientY > rect.bottom - edgeSize) {
+      container.scrollTop += scrollSpeed;
+    }
+  }
+
+
+  useEffect(() => {
+    const normalizedRules = getNormalizedRules();
+    const valid = areRulesValid(normalizedRules);
 
     if (!valid) {
       setPreviewProducts([]);
+      setAllMatchingProductIds([]);
       setPreviewCount(0);
       setPreviewPage(1);
       setPreviewTotalPages(1);
       setPreviewError("");
       setPreviewLoading(false);
       setLoadingMorePreview(false);
+      onManualOrderReady?.(sortBy !== "MANUAL");
       return;
     }
 
     let cancelled = false;
 
     setPreviewProducts([]);
+    setAllMatchingProductIds([]);
     setPreviewCount(0);
     setPreviewPage(1);
     setPreviewTotalPages(1);
     setPreviewError("");
+    onManualOrderReady?.(sortBy !== "MANUAL");
 
     const timer = window.setTimeout(async () => {
       setPreviewLoading(true);
 
       try {
-        // Manual order is applied locally. Fetch the default order
-        // from the API rather than sending MANUAL as a backend sort.
-        const apiSortBy =
-          sortBy === "MANUAL" ? "RELEVANCE" : sortBy;
-
-        const result = await previewCollection(
+        const firstPage = await previewCollection(
           match,
           normalizedRules,
           1,
           previewLimit,
-          apiSortBy,
+          sortBy,
+          collectionId,
         );
 
+        if (firstPage.error) {
+          throw new Error(firstPage.error);
+        }
         if (cancelled) return;
 
-        setPreviewProducts(result.data);
-        setPreviewCount(result.count);
-        setPreviewPage(result.pagination.page);
-        setPreviewTotalPages(result.pagination.totalPages);
-        setPreviewError(result.error ?? "");
+        const firstPageIds = firstPage.data
+          .map((product) => product.id)
+          .filter(Boolean);
+
+        setPreviewProducts(addCatalogueDetails(firstPage.data));
+        setPreviewCount(firstPage.count);
+        setPreviewPage(firstPage.pagination.page);
+        setPreviewTotalPages(firstPage.pagination.totalPages);
+
+        // For manual sorting, retrieve every matching product ID before the
+        // form can submit. The visible preview can remain paginated.
+        if (sortBy === "MANUAL") {
+          const allIds = [...firstPageIds];
+
+          for (
+            let page = 2;
+            page <= firstPage.pagination.totalPages;
+            page += 1
+          ) {
+            const pageResult = await previewCollection(
+              match,
+              normalizedRules,
+              page,
+              previewLimit,
+              sortBy,
+              collectionId,
+            );
+
+            if (pageResult.error) {
+              throw new Error(pageResult.error);
+            }
+            if (cancelled) return;
+
+            allIds.push(
+              ...pageResult.data
+                .map((product) => product.id)
+                .filter(Boolean),
+            );
+          }
+
+          const uniqueIds = [...new Set(allIds)];
+
+          if (uniqueIds.length !== firstPage.count) {
+            throw new Error(
+              `Loaded ${uniqueIds.length} of ${firstPage.count} matching product IDs. Please try again before saving.`,
+            );
+          }
+
+          if (cancelled) return;
+          setAllMatchingProductIds(uniqueIds);
+          onManualOrderReady?.(true);
+        } else {
+          setAllMatchingProductIds(firstPageIds);
+          onManualOrderReady?.(true);
+        }
+
+        setPreviewError("");
       } catch (error) {
         if (cancelled) return;
 
         setPreviewProducts([]);
+        setAllMatchingProductIds([]);
         setPreviewCount(0);
         setPreviewPage(1);
         setPreviewTotalPages(1);
-
         setPreviewError(
           error instanceof Error
             ? error.message
             : "Unable to preview collection products.",
         );
+        onManualOrderReady?.(false);
       } finally {
         if (!cancelled) {
           setPreviewLoading(false);
@@ -302,7 +326,7 @@ export default function DynamicRulesField({
       window.clearTimeout(timer);
       cancelled = true;
     };
-  }, [rules, match, previewLimit]);
+  }, [rules, match, previewLimit, sortBy, collectionId]);
 
   async function handleLoadMorePreview() {
     if (
@@ -313,19 +337,9 @@ export default function DynamicRulesField({
       return;
     }
 
-    const normalizedRules = rules.map(
-      ({ field, operator, value }) => ({
-        field,
-        operator,
-        value: collectionRuleValue(field, value),
-      }),
-    );
+    const normalizedRules = getNormalizedRules();
 
-    if (
-      !normalizedRules.every((rule) =>
-        isValidCollectionRule(rule),
-      )
-    ) {
+    if (!areRulesValid(normalizedRules)) {
       return;
     }
 
@@ -333,19 +347,18 @@ export default function DynamicRulesField({
     setPreviewError("");
 
     try {
-      const apiSortBy =
-        sortBy === "MANUAL" ? "RELEVANCE" : sortBy;
-
       const result = await previewCollection(
         match,
         normalizedRules,
         previewPage + 1,
         previewLimit,
-        apiSortBy,
+        sortBy,
+        collectionId,
       );
 
-      const nextProducts: ProductOption[] =
-        result.data.filter((product) => Boolean(product.id));
+      const nextProducts = addCatalogueDetails(
+        result.data.filter((product) => Boolean(product.id)),
+      );
 
       setPreviewProducts((current) => {
         const existingIds = new Set(
@@ -377,32 +390,32 @@ export default function DynamicRulesField({
 
   return (
     <section className={styles.collectionProducts}>
-      {/* Submit these values with the existing collection form. */}
-      <input
-        type="hidden"
-        name="sortBy"
-        value={sortBy}
-      />
+      <input type="hidden" name="sortBy" value={sortBy} />
 
       <input
         type="hidden"
         name="manualProductIds"
         value={JSON.stringify(
           sortBy === "MANUAL"
-            ? previewProducts.map((product) => product.id)
-            : []
+            ? [
+                ...previewProducts
+                  .map((product) => product.id)
+                  .filter(Boolean),
+                ...allMatchingProductIds.filter(
+                  (id) =>
+                    !previewProducts.some((product) => product.id === id),
+                ),
+              ]
+            : [],
         )}
       />
 
       <label>
         Products must match
-
         <select
           value={match}
           onChange={(event) =>
-            onMatchChange(
-              event.target.value as "ALL" | "ANY",
-            )
+            onMatchChange(event.target.value as "ALL" | "ANY")
           }
           disabled={pending}
         >
@@ -412,8 +425,8 @@ export default function DynamicRulesField({
       </label>
 
       <small>
-        Products will be selected automatically from these rules
-        when the collection is saved.
+        Products will be selected automatically from these rules when the
+        collection is saved.
       </small>
 
       <div className={styles.ruleList}>
@@ -423,9 +436,7 @@ export default function DynamicRulesField({
               aria-label="Rule field"
               value={rule.field}
               onChange={(event) => {
-                const field =
-                  event.target.value as DynamicRule["field"];
-
+                const field = event.target.value as DynamicRule["field"];
                 const operators = collectionRuleOperators[field];
 
                 const operator = operators.includes(rule.operator)
@@ -454,35 +465,30 @@ export default function DynamicRulesField({
               value={rule.operator}
               onChange={(event) =>
                 updateRule(rule.id, {
-                  operator:
-                    event.target.value as DynamicRule["operator"],
+                  operator: event.target.value as DynamicRule["operator"],
                 })
               }
               disabled={pending}
             >
-              {collectionRuleOperators[rule.field].map(
-                (operator) => (
-                  <option key={operator} value={operator}>
-                    {{
-                      contains: "Contains",
-                      not_contains: "Does not contain",
-                      equals: "Equals",
-                      not_equals: "Not equals",
-                      greater_than: "Greater than",
-                      less_than: "Less than",
-                    }[operator]}
-                  </option>
-                ),
-              )}
+              {collectionRuleOperators[rule.field].map((operator) => (
+                <option key={operator} value={operator}>
+                  {{
+                    contains: "Contains",
+                    not_contains: "Does not contain",
+                    equals: "Equals",
+                    not_equals: "Not equals",
+                    greater_than: "Greater than",
+                    less_than: "Less than",
+                  }[operator]}
+                </option>
+              ))}
             </select>
 
             <input
               required
               aria-label="Rule value"
               type={
-                isNumericCollectionField(rule.field)
-                  ? "number"
-                  : "text"
+                isNumericCollectionField(rule.field) ? "number" : "text"
               }
               step="any"
               placeholder={
@@ -495,9 +501,7 @@ export default function DynamicRulesField({
               }
               value={rule.value}
               onChange={(event) =>
-                updateRule(rule.id, {
-                  value: event.target.value,
-                })
+                updateRule(rule.id, { value: event.target.value })
               }
               disabled={pending}
             />
@@ -523,12 +527,14 @@ export default function DynamicRulesField({
       </button>
 
       {previewLoading && (
-        <small>Checking matching products…</small>
+        <small>
+          {sortBy === "MANUAL"
+            ? "Loading matching products and preparing the complete manual order…"
+            : "Checking matching products…"}
+        </small>
       )}
 
-      {previewError && (
-        <p role="alert">{previewError}</p>
-      )}
+      {previewError && <p role="alert">{previewError}</p>}
 
       {!previewLoading && !previewError && (
         <small>
@@ -545,14 +551,8 @@ export default function DynamicRulesField({
         <select
           id="dynamic-preview-sort"
           value={sortBy}
-          onChange={async (event) => {
-            const nextSort = event.target.value as PreviewSort;
-
-            setSortBy(nextSort);
-
-            if (nextSort === "MANUAL") {
-              await loadAllMatchingProducts();
-            }
+          onChange={(event) => {
+            setSortBy(event.target.value as PreviewSort);
           }}
           disabled={pending || previewLoading || loadingMorePreview}
         >
@@ -570,8 +570,8 @@ export default function DynamicRulesField({
 
       {sortBy === "MANUAL" && (
         <small>
-          Drag products to change their order. Load more products
-          to include additional products in the preview.
+          Drag products to change their order. Load more products to include
+          additional products in the preview.
         </small>
       )}
 
@@ -586,18 +586,15 @@ export default function DynamicRulesField({
               maxHeight: sortBy === "MANUAL" ? 620 : undefined,
               overflowY: sortBy === "MANUAL" ? "auto" : undefined,
               padding: sortBy === "MANUAL" ? 8 : undefined,
-              border:
-                sortBy === "MANUAL"
-                  ? "1px solid #ddd"
-                  : undefined,
+              border: sortBy === "MANUAL" ? "1px solid #ddd" : undefined,
               borderRadius: sortBy === "MANUAL" ? 8 : undefined,
             }}
           >
             {previewProducts.map((product, index) =>
-                sortBy === "MANUAL" ? (
+              sortBy === "MANUAL" ? (
                 <div
                   key={product.id}
-                  draggable={!pending}
+                  draggable={!pending && !previewLoading && !loadingMorePreview}
                   onDragStart={(event) => {
                     setDraggedProductId(product.id);
                     event.dataTransfer.effectAllowed = "move";
@@ -612,13 +609,7 @@ export default function DynamicRulesField({
                       draggedProductId !== product.id
                     ) {
                       setDragOverProductId(product.id);
-
-                      // Move the product immediately as the dragged item
-                      // crosses another product.
-                      movePreviewProduct(
-                        draggedProductId,
-                        product.id,
-                      );
+                      movePreviewProduct(draggedProductId, product.id);
                     }
                   }}
                   onDrop={(event) => {
@@ -634,17 +625,14 @@ export default function DynamicRulesField({
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
-                    padding: "12px",
+                    padding: 12,
                     marginBottom: 6,
                     border: "1px solid #ddd",
                     borderRadius: 6,
                     background:
-                      dragOverProductId === product.id
-                        ? "#eef6ff"
-                        : "#fff",
+                      dragOverProductId === product.id ? "#eef6ff" : "#fff",
                     cursor: pending ? "default" : "grab",
-                    opacity:
-                      draggedProductId === product.id ? 0.45 : 1,
+                    opacity: draggedProductId === product.id ? 0.45 : 1,
                     transition: "background 120ms ease, opacity 120ms ease",
                   }}
                 >
@@ -673,7 +661,6 @@ export default function DynamicRulesField({
 
                   <span>
                     {product.name}
-
                     <small style={{ display: "block" }}>
                       {[product.brand, product.slug]
                         .filter(Boolean)
@@ -692,7 +679,6 @@ export default function DynamicRulesField({
 
                   <span>
                     {product.name}
-
                     <small>
                       {[product.brand, product.slug]
                         .filter(Boolean)
@@ -710,11 +696,7 @@ export default function DynamicRulesField({
                 type="button"
                 className={styles.secondary}
                 onClick={handleLoadMorePreview}
-                disabled={
-                  pending ||
-                  previewLoading ||
-                  loadingMorePreview
-                }
+                disabled={pending || previewLoading || loadingMorePreview}
               >
                 {loadingMorePreview
                   ? "Loading products…"
@@ -722,8 +704,8 @@ export default function DynamicRulesField({
               </button>
 
               <small style={{ marginLeft: 8 }}>
-                Showing {previewProducts.length} of {previewCount}{" "}
-                matching products
+                Showing {previewProducts.length} of {previewCount} matching
+                products
               </small>
             </div>
           )}

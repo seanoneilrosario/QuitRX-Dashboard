@@ -332,12 +332,15 @@ function CollectionCreateFields({
   );
 }
 
+
 export function CollectionCreateForm({
   products,
+  selectedProductDetails = [],
   productPagination,
   initial,
 }: {
   products: ProductOption[];
+  selectedProductDetails?: ProductOption[];
   productPagination?: {
     page: number;
     limit: number;
@@ -398,6 +401,10 @@ export function CollectionCreateForm({
     setRules,
   ] = useState<DynamicRule[]>(
     () => initialRules(initial),
+  );
+
+  const [manualOrderReady, setManualOrderReady] = useState(
+    initial?.type !== "DYNAMIC",
   );
 
   return (
@@ -472,9 +479,10 @@ export function CollectionCreateForm({
               checked={
                 type === "MANUAL"
               }
-              onChange={() =>
-                setType("MANUAL")
-              }
+              onChange={() => {
+                setType("MANUAL");
+                setManualOrderReady(true);
+              }}
             />
 
             <span>
@@ -495,9 +503,10 @@ export function CollectionCreateForm({
               checked={
                 type === "DYNAMIC"
               }
-              onChange={() =>
-                setType("DYNAMIC")
-              }
+              onChange={() => {
+                setType("DYNAMIC");
+                setManualOrderReady(false);
+              }}
             />
 
             <span>
@@ -552,6 +561,7 @@ export function CollectionCreateForm({
         {type === "MANUAL" ? (
           <ManualProductsField
             products={products}
+            selectedProductDetails={selectedProductDetails}
             productPagination={productPagination}
             selected={selected}
             pending={pending}
@@ -559,15 +569,29 @@ export function CollectionCreateForm({
           />
         ) : (
           <DynamicRulesField
+            products={products}
+            collectionId={editing ? String(initial?.id ?? "") : undefined}
+            onManualOrderReady={setManualOrderReady}
             rules={rules}
             match={match}
             pending={pending}
-            onRulesChange={
-              setRules
+            initialSortBy={
+              typeof initial?.sortBy === "string"
+                ? (initial.sortBy as
+                    | "RELEVANCE"
+                    | "MANUAL"
+                    | "BEST_SELLING"
+                    | "TITLE_ASC"
+                    | "TITLE_DESC"
+                    | "PRICE_ASC"
+                    | "PRICE_DESC"
+                    | "NEWEST"
+                    | "OLDEST")
+                : "RELEVANCE"
             }
-            onMatchChange={
-              setMatch
-            }
+            selectedProductDetails={selectedProductDetails}
+            onRulesChange={setRules}
+            onMatchChange={setMatch}
           />
         )}
       </div>
@@ -584,7 +608,8 @@ export function CollectionCreateForm({
           type === "MANUAL"
             ? !editing &&
               !selected.length
-            : rules.some(
+            : !manualOrderReady ||
+            rules.some(
                 (rule) =>
                   !isValidCollectionRule(
                     {

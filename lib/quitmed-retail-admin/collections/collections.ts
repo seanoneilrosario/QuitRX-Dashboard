@@ -340,6 +340,7 @@ export async function safeCollectionPage(
   }
 }
 
+
 /**
  * Collection Edit - Fetch all products.
  */
@@ -392,8 +393,7 @@ export async function getCollectionEditProducts(
     Number(rawPagination.limit) || limit;
 
   const total =
-    Number(rawPagination.total) ||
-    data.length;
+    Number(rawPagination.total) || data.length;
 
   const totalPagesFromApi =
     Number(rawPagination.totalPages);
@@ -404,9 +404,7 @@ export async function getCollectionEditProducts(
       ? totalPagesFromApi
       : Math.max(
           1,
-          Math.ceil(
-            total / paginationLimit,
-          ),
+          Math.ceil(total / paginationLimit),
         );
 
   return {
@@ -419,6 +417,106 @@ export async function getCollectionEditProducts(
     },
   };
 }
+
+// For Editing
+export async function getCollectionProductsForEdit(
+  collectionId: string,
+  sortBy: string,
+  page = 1,
+  limit = 50,
+) {
+  const params = new URLSearchParams({
+    sort: sortBy,
+    page: String(page),
+    limit: String(limit),
+    productFields: "id,name,brand,slug",
+  });
+
+  const payload = await retailRequest<unknown>(
+    `/collections/${encodeURIComponent(collectionId)}?${params.toString()}`,
+    {
+      cache: "no-store",
+    },
+  );
+
+  // Extract the response wrapper.
+  const wrapper =
+    payload &&
+    typeof payload === "object" &&
+    !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : {};
+
+  // Collection details are inside wrapper.data.
+  const collectionData =
+    wrapper.data &&
+    typeof wrapper.data === "object" &&
+    !Array.isArray(wrapper.data)
+      ? (wrapper.data as Record<string, unknown>)
+      : {};
+
+  // Products are inside wrapper.data.products.
+  const data = Array.isArray(collectionData.products)
+    ? collectionData.products.filter(
+        (item): item is RetailRecord =>
+          Boolean(
+            item &&
+              typeof item === "object" &&
+              !Array.isArray(item),
+          ),
+      )
+    : [];
+
+  // Pagination is inside wrapper.pagination.
+  const rawPagination =
+    wrapper.pagination &&
+    typeof wrapper.pagination === "object" &&
+    !Array.isArray(wrapper.pagination)
+      ? (wrapper.pagination as Record<string, unknown>)
+      : {};
+
+  const rawPage = Number(rawPagination.page);
+  const rawLimit = Number(rawPagination.limit);
+  const rawTotal = Number(rawPagination.total);
+  const rawTotalPages = Number(rawPagination.totalPages);
+
+  const paginationPage =
+    Number.isFinite(rawPage) && rawPage > 0
+      ? rawPage
+      : page;
+
+  const paginationLimit =
+    Number.isFinite(rawLimit) && rawLimit > 0
+      ? rawLimit
+      : limit;
+
+  const total =
+    Number.isFinite(rawTotal) && rawTotal >= 0
+      ? rawTotal
+      : data.length;
+
+  const totalPages =
+    Number.isFinite(rawTotalPages) && rawTotalPages >= 0
+      ? rawTotalPages
+      : Math.ceil(total / paginationLimit);
+
+  const hasNextPage =
+    typeof rawPagination.hasNextPage === "boolean"
+      ? rawPagination.hasNextPage
+      : paginationPage < totalPages;
+
+  return {
+    data,
+    pagination: {
+      page: paginationPage,
+      limit: paginationLimit,
+      total,
+      totalPages,
+      hasNextPage,
+    },
+  };
+}
+
 
 export async function getAllCollectionProductIds(
   id: string,

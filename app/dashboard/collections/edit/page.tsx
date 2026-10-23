@@ -1,3 +1,4 @@
+
 import Link from "next/link";
 
 import styles from "@/app/components/dashboard.module.css";
@@ -5,11 +6,10 @@ import styles from "@/app/components/dashboard.module.css";
 import {
   safeCollectionForEdit,
   getCollectionEditProducts,
-  getAllCollectionProductIds,
+  getCollectionProductsForEdit,
 } from "@/lib/quitmed-retail-admin/collections/collections";
 
 import CollectionEdit from "../collection-component/CollectionEdit";
-import { loadCollectionProductsByIds } from "@/lib/quitmed-retail-admin/collections/actions";
 
 type Props = {
   searchParams: Promise<{
@@ -70,25 +70,54 @@ export default async function CollectionEditPage({
     );
   }
 
-  const [collection, products, collectionProductIds] =
-    await Promise.all([
-      safeCollectionForEdit(id),
-      getCollectionEditProducts(1, 50),
-      getAllCollectionProductIds(id),
-    ]);
+  // Fetch the collection to get its saved sort preference.
+  const collection = await safeCollectionForEdit(id);
 
-  // Fetch the actual records for products assigned to this collection.
-  const selectedProductResult = await loadCollectionProductsByIds(
-    collectionProductIds,
+  const sortBy =
+    typeof collection.data?.sortBy === "string"
+      ? collection.data.sortBy
+      : "RELEVANCE";
+
+  // Fetch the collection products in the saved sort order.
+  const sortedCollection = await getCollectionProductsForEdit(
+    id,
+    sortBy,
+    1,
+    50,
   );
 
-  const selectedProductDetails = selectedProductResult.data.map(
-    (product) => ({
-      id: product.id,
-      name: product.name || "Unnamed product",
-      slug: product.slug || "",
-      brand: "",
-    }),
+  // Fetch the general product catalogue for the product selector.
+  const products = await getCollectionEditProducts(1, 50);
+
+  // Map the returned products into the format required by the UI.
+  const selectedProductDetails = sortedCollection.data.flatMap(
+    (item) => {
+      if (typeof item.id !== "string" || !item.id) {
+        return [];
+      }
+
+      return [
+        {
+          id: item.id,
+          name:
+            typeof item.name === "string"
+              ? item.name
+              : "Unnamed product",
+          slug:
+            typeof item.slug === "string"
+              ? item.slug
+              : "",
+          brand:
+            typeof item.brand === "string"
+              ? item.brand
+              : "",
+        },
+      ];
+    },
+  );
+
+  const collectionProductIds = selectedProductDetails.map(
+    (product) => product.id,
   );
 
   return (

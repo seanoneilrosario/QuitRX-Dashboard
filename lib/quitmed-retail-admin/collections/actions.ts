@@ -41,6 +41,17 @@ export type CollectionRule = {
   value: string | number;
 };
 
+type CollectionSortBy =
+  | "RELEVANCE"
+  | "MANUAL"
+  | "BEST_SELLING"
+  | "TITLE_ASC"
+  | "TITLE_DESC"
+  | "PRICE_ASC"
+  | "PRICE_DESC"
+  | "NEWEST"
+  | "OLDEST";
+
 type CollectionPayload = {
   name: string;
   slug: string;
@@ -49,6 +60,7 @@ type CollectionPayload = {
   seoDescription?: string;
   type: "MANUAL" | "DYNAMIC";
   match: "ALL" | "ANY";
+  sortBy: CollectionSortBy;
   productIds: string[];
   rules: CollectionRule[];
 };
@@ -150,6 +162,8 @@ function buildCollectionPayload(
       | "ALL"
       | "ANY";
 
+  const sortBy = getString(formData, "sortBy") as CollectionSortBy;
+
   const productIds =
     parseJson<string[]>(
       formData.get("productIds"),
@@ -166,22 +180,14 @@ function buildCollectionPayload(
     name,
     slug,
     description:
-      getString(
-        formData,
-        "description",
-      ) || undefined,
+      getString(formData, "description") || undefined,
     seoTitle:
-      getString(
-        formData,
-        "seoTitle",
-      ) || undefined,
+      getString(formData, "seoTitle") || undefined,
     seoDescription:
-      getString(
-        formData,
-        "seoDescription",
-      ) || undefined,
+      getString(formData, "seoDescription") || undefined,
     type,
     match,
+    sortBy,
     productIds,
     rules,
   };
@@ -212,6 +218,34 @@ function validateCollection(
   ) {
     throw new Error(
       "Choose whether all or any rules must match.",
+    );
+  }
+
+    if (
+    body.match !== "ALL" &&
+    body.match !== "ANY"
+  ) {
+    throw new Error(
+      "Choose whether all or any rules must match.",
+    );
+  }
+
+  // Validate the selected collection sort option.
+  const validSortOptions: CollectionSortBy[] = [
+    "RELEVANCE",
+    "MANUAL",
+    "BEST_SELLING",
+    "TITLE_ASC",
+    "TITLE_DESC",
+    "PRICE_ASC",
+    "PRICE_DESC",
+    "NEWEST",
+    "OLDEST",
+  ];
+
+  if (!validSortOptions.includes(body.sortBy)) {
+    throw new Error(
+      "Choose a valid collection sort option.",
     );
   }
 
@@ -479,211 +513,185 @@ export async function createCollection(
   redirect("/dashboard/collections");
 }
 
+type PreviewSort =
+  | "RELEVANCE"
+  | "MANUAL"
+  | "BEST_SELLING"
+  | "TITLE_ASC"
+  | "TITLE_DESC"
+  | "PRICE_ASC"
+  | "PRICE_DESC"
+  | "NEWEST"
+  | "OLDEST";
+
+type ApiPreviewSort =
+  | "relevance"
+  | "manual"
+  | "best_selling"
+  | "title_asc"
+  | "title_desc"
+  | "price_asc"
+  | "price_desc"
+  | "newest"
+  | "oldest";
+
+function toApiPreviewSort(sortBy: PreviewSort): ApiPreviewSort {
+  const sortMap: Record<PreviewSort, ApiPreviewSort> = {
+    RELEVANCE: "relevance",
+    MANUAL: "manual",
+    BEST_SELLING: "best_selling",
+    TITLE_ASC: "title_asc",
+    TITLE_DESC: "title_desc",
+    PRICE_ASC: "price_asc",
+    PRICE_DESC: "price_desc",
+    NEWEST: "newest",
+    OLDEST: "oldest",
+  };
+
+  return sortMap[sortBy];
+}
+
 export async function previewCollection(
-  match: 'ALL' | 'ANY',
+  match: "ALL" | "ANY",
   rules: CollectionRule[],
   page = 1,
   limit = 50,
-  sortBy:
-    | 'RELEVANCE'
-    | 'BEST_SELLING'
-    | 'TITLE_ASC'
-    | 'TITLE_DESC'
-    | 'PRICE_ASC'
-    | 'PRICE_DESC'
-    | 'NEWEST'
-    | 'OLDEST' = 'RELEVANCE',
+  sortBy: PreviewSort = "RELEVANCE",
+  collectionId?: string,
 ) {
-  // In your existing retailRequest call, use:
-  body: JSON.stringify({
-    match,
-    rules,
-    page,
-    limit,
-    sortBy,
-  });
-  try {
-    const safePage = Math.max(
-      1,
-      Math.floor(page),
-    );
+const safePage = Math.max(1, Math.floor(page));
 
-    const safeLimit = Math.min(
-      100,
-      Math.max(1, Math.floor(limit)),
-    );
+const safeLimit = Math.min(
+100,
+Math.max(1, Math.floor(limit)),
+);
 
-    const payload =
-      await retailRequest<unknown>(
-        "/collections/preview",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            match,
-            rules,
-            page: safePage,
-            limit: safeLimit,
-            sortBy,
-          }),
-          cache: "no-store",
-        },
-      );
+try {
+const payload = await retailRequest<unknown>(
+'/collections/preview',
+{
+method: 'POST',
+body: JSON.stringify({
+  match,
+  rules,
+  page: safePage,
+  limit: safeLimit,
+  sortBy: toApiPreviewSort(sortBy),
+  ...(collectionId ? { collectionId } : {}),
+}),
+cache: 'no-store',
+},
+);
 
-    if (
-      !payload ||
-      typeof payload !== "object" ||
-      Array.isArray(payload)
-    ) {
-      return {
-        data: [],
-        count: 0,
-        pagination: {
-          page: safePage,
-          limit: safeLimit,
-          total: 0,
-          totalPages: 1,
-        },
-        error: undefined,
-      };
-    }
-
-    const wrapper =
-      payload as Record<string, unknown>;
-
-    const rawData = Array.isArray(
-      wrapper.data,
-    )
-      ? wrapper.data
-      : [];
-
-    const data =
-      rawData.flatMap((item) => {
-        if (
-          !item ||
-          typeof item !== "object" ||
-          Array.isArray(item)
-        ) {
-          return [];
-        }
-
-        const product =
-          item as Record<
-            string,
-            unknown
-          >;
-
-        const brand =
-          product.brand;
-
-        return [
-          {
-            id:
-              typeof product.id ===
-              "string"
-                ? product.id
-                : "",
-
-            name:
-              typeof product.name ===
-              "string"
-                ? product.name
-                : "Unnamed product",
-
-            slug:
-              typeof product.slug ===
-              "string"
-                ? product.slug
-                : "",
-
-            brand:
-              brand &&
-              typeof brand === "object"
-                ? String(
-                    (
-                      brand as Record<
-                        string,
-                        unknown
-                      >
-                    ).name ?? "",
-                  )
-                : typeof brand === "string"
-                  ? brand
-                  : "",
-          },
-        ];
-      });
-
-    const rawPagination =
-      wrapper.pagination &&
-      typeof wrapper.pagination ===
-        "object" &&
-      !Array.isArray(
-        wrapper.pagination,
-      )
-        ? (wrapper.pagination as Record<
-            string,
-            unknown
-          >)
-        : {};
-
-    const total =
-      Number(rawPagination.total) ||
-      Number(wrapper.count) ||
-      data.length;
-
-    const paginationLimit =
-      Number(rawPagination.limit) ||
-      safeLimit;
-
-    const totalPagesFromApi =
-      Number(
-        rawPagination.totalPages,
-      );
-
-    const totalPages =
-      Number.isFinite(
-        totalPagesFromApi,
-      ) &&
-      totalPagesFromApi > 0
-        ? totalPagesFromApi
-        : Math.max(
-            1,
-            Math.ceil(
-              total / paginationLimit,
-            ),
-          );
-
-    return {
-      data,
-      count: total,
-      pagination: {
-        page:
-          Number(
-            rawPagination.page,
-          ) || safePage,
-        limit: paginationLimit,
-        total,
-        totalPages,
-      },
-      error: undefined,
-    };
-  } catch (error) {
-    return {
-      data: [],
-      count: 0,
-      pagination: {
-        page,
-        limit,
-        total: 0,
-        totalPages: 1,
-      },
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unable to preview collection products.",
-    };
-  }
+if (
+  !payload ||
+  typeof payload !== 'object' ||
+  Array.isArray(payload)
+) {
+  return {
+    data: [],
+    count: 0,
+    pagination: {
+      page: safePage,
+      limit: safeLimit,
+      total: 0,
+      totalPages: 1,
+    },
+    error: undefined,
+  };
 }
+
+const wrapper = payload as Record<string, unknown>;
+
+const rawData = Array.isArray(wrapper.data)
+  ? wrapper.data
+  : [];
+
+const data = rawData.flatMap((item) => {
+  if (
+    !item ||
+    typeof item !== 'object' ||
+    Array.isArray(item)
+  ) {
+    return [];
+  }
+
+  const product = item as Record<string, unknown>;
+  const brand = product.brand;
+
+  return [
+    {
+      id: typeof product.id === 'string' ? product.id : '',
+      name:
+        typeof product.name === 'string'
+          ? product.name
+          : 'Unnamed product',
+      slug: typeof product.slug === 'string' ? product.slug : '',
+      brand:
+        brand && typeof brand === 'object'
+          ? String(
+              (brand as Record<string, unknown>).name ?? '',
+            )
+          : typeof brand === 'string'
+            ? brand
+            : '',
+    },
+  ];
+});
+
+const rawPagination =
+  wrapper.pagination &&
+  typeof wrapper.pagination === 'object' &&
+  !Array.isArray(wrapper.pagination)
+    ? (wrapper.pagination as Record<string, unknown>)
+    : {};
+
+const total =
+  Number(rawPagination.total) ||
+  Number(wrapper.count) ||
+  data.length;
+
+const paginationLimit =
+  Number(rawPagination.limit) || safeLimit;
+
+const totalPagesFromApi = Number(rawPagination.totalPages);
+
+const totalPages =
+  Number.isFinite(totalPagesFromApi) && totalPagesFromApi > 0
+    ? totalPagesFromApi
+    : Math.max(1, Math.ceil(total / paginationLimit));
+
+return {
+  data,
+  count: total,
+  pagination: {
+    page: Number(rawPagination.page) || safePage,
+    limit: paginationLimit,
+    total,
+    totalPages,
+  },
+  error: undefined,
+};
+
+} catch (error) {
+return {
+data: [],
+count: 0,
+pagination: {
+page: safePage,
+limit: safeLimit,
+total: 0,
+totalPages: 1,
+},
+error:
+error instanceof Error
+? error.message
+: 'Unable to preview collection products.',
+};
+}
+}
+
+
 
 export async function loadCollectionEditProducts(
   page: number,
@@ -712,6 +720,8 @@ export async function loadCollectionEditProducts(
     pagination: result.pagination,
   };
 }
+
+
 
 
 export async function deleteCollection(

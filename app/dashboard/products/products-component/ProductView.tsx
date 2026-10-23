@@ -260,7 +260,7 @@ export default function ProductView({
 
     process.env.STOREFRONT_BASE_URL ??
 
-    "https://quitrx-website-front-ecru.vercel.app"
+    "https://quitrx.com.au"
 
   ).replace(/\/$/, "");
 
@@ -355,6 +355,18 @@ export default function ProductView({
             </a>
 
           )}
+
+          <Link
+
+            className={styles.secondary}
+
+            href={`/dashboard/products/edit?id=${item.id}`}
+
+          >
+
+            Edit
+
+          </Link>
 
         </div>
 

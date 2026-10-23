@@ -599,25 +599,27 @@ export default function DynamicRulesField({
 
               const productDetails = (
                 <>
-                  <img
-                    src={product.image || "/placeholder-product.png"}
-                    alt={product.imageAlt || product.name}
-                    width={56}
-                    height={56}
-                    loading="lazy"
-                    style={{
-                      width: 56,
-                      height: 56,
-                      objectFit: "contain",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 6,
-                      background: "#fff",
-                      flexShrink: 0,
-                    }}
-                    onError={(event) => {
-                      event.currentTarget.style.visibility = "hidden";
-                    }}
-                  />
+                  <a style={{textDecoration: "none"}} href={`/dashboard/products/view?id=${product.id}`}>
+                    <img
+                      src={product.image || "/placeholder-product.png"}
+                      alt={product.imageAlt || product.name}
+                      width={56}
+                      height={56}
+                      loading="lazy"
+                      style={{
+                        width: 56,
+                        height: 56,
+                        objectFit: "contain",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 6,
+                        background: "#fff",
+                        flexShrink: 0,
+                      }}
+                      onError={(event) => {
+                        event.currentTarget.style.visibility = "hidden";
+                      }}
+                    />
+                  </ a>
 
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <strong
@@ -627,7 +629,10 @@ export default function DynamicRulesField({
                         overflowWrap: "anywhere",
                       }}
                     >
-                      {product.name}
+                      <a style={{textDecoration: "underline", color: "#073f46", fontWeight: "600"}} href={`/dashboard/products/view?id=${product.id}`}>
+                        {product.name}
+                      </a>
+                      
                     </strong>
 
                     <small

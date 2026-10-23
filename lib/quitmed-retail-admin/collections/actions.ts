@@ -583,6 +583,8 @@ cache: 'no-store',
 },
 );
 
+console.log(payload)
+
 if (
   !payload ||
   typeof payload !== 'object' ||
@@ -635,7 +637,21 @@ const data = rawData.flatMap((item) => {
           : typeof brand === 'string'
             ? brand
             : '',
-    },
+      image:
+        typeof product.image === 'string'
+          ? product.image
+          : '',
+      imageAlt:
+        typeof product.imageAlt === 'string'
+          ? product.imageAlt
+          : typeof product.name === 'string'
+            ? product.name
+            : 'Product image',
+      status:
+        typeof product.status === "string"
+          ? product.status
+          : "UNKNOWN",
+    }
   ];
 });
 

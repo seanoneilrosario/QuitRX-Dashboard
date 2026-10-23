@@ -26,6 +26,9 @@ type ProductOption = {
   name: string;
   slug: string;
   brand: string;
+  image?: string;
+  imageAlt?: string;
+  status?: string;
 };
 
 type PreviewSort =
@@ -388,6 +391,8 @@ export default function DynamicRulesField({
     }
   }
 
+  console.log(previewProducts)
+
   return (
     <section className={styles.collectionProducts}>
       <input type="hidden" name="sortBy" value={sortBy} />
@@ -451,13 +456,11 @@ export default function DynamicRulesField({
               }}
               disabled={pending}
             >
-              {Object.entries(collectionRuleLabels).map(
-                ([field, label]) => (
-                  <option key={field} value={field}>
-                    {label}
-                  </option>
-                ),
-              )}
+              {Object.entries(collectionRuleLabels).map(([field, label]) => (
+                <option key={field} value={field}>
+                  {label}
+                </option>
+              ))}
             </select>
 
             <select
@@ -590,11 +593,79 @@ export default function DynamicRulesField({
               borderRadius: sortBy === "MANUAL" ? 8 : undefined,
             }}
           >
-            {previewProducts.map((product, index) =>
-              sortBy === "MANUAL" ? (
+            {previewProducts.map((product, index) => {
+              const isActive =
+                product.status?.toLowerCase() === "active";
+
+              const productDetails = (
+                <>
+                  <img
+                    src={product.image || "/placeholder-product.png"}
+                    alt={product.imageAlt || product.name}
+                    width={56}
+                    height={56}
+                    loading="lazy"
+                    style={{
+                      width: 56,
+                      height: 56,
+                      objectFit: "contain",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 6,
+                      background: "#fff",
+                      flexShrink: 0,
+                    }}
+                    onError={(event) => {
+                      event.currentTarget.style.visibility = "hidden";
+                    }}
+                  />
+
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <strong
+                      style={{
+                        display: "block",
+                        fontWeight: 500,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {product.name}
+                    </strong>
+
+                    <small
+                      style={{
+                        display: "block",
+                        color: "#6b7280",
+                        marginTop: 4,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {[product.brand, product.slug]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </small>
+                  </span>
+
+                  <span
+                    style={{
+                      fontSize: 12,
+                      padding: "4px 8px",
+                      borderRadius: 12,
+                      background: isActive ? "#dcfce7" : "#f3f4f6",
+                      color: isActive ? "#166534" : "#4b5563",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {product.status || "Unknown"}
+                  </span>
+                </>
+              );
+
+              return sortBy === "MANUAL" ? (
                 <div
                   key={product.id}
-                  draggable={!pending && !previewLoading && !loadingMorePreview}
+                  draggable={
+                    !pending && !previewLoading && !loadingMorePreview
+                  }
                   onDragStart={(event) => {
                     setDraggedProductId(product.id);
                     event.dataTransfer.effectAllowed = "move";
@@ -624,16 +695,20 @@ export default function DynamicRulesField({
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 10,
+                    gap: 12,
                     padding: 12,
                     marginBottom: 6,
                     border: "1px solid #ddd",
-                    borderRadius: 6,
+                    borderRadius: 8,
                     background:
-                      dragOverProductId === product.id ? "#eef6ff" : "#fff",
+                      dragOverProductId === product.id
+                        ? "#eef6ff"
+                        : "#fff",
                     cursor: pending ? "default" : "grab",
-                    opacity: draggedProductId === product.id ? 0.45 : 1,
-                    transition: "background 120ms ease, opacity 120ms ease",
+                    opacity:
+                      draggedProductId === product.id ? 0.45 : 1,
+                    transition:
+                      "background 120ms ease, opacity 120ms ease",
                   }}
                 >
                   <span
@@ -659,17 +734,20 @@ export default function DynamicRulesField({
                     ⠿
                   </span>
 
-                  <span>
-                    {product.name}
-                    <small style={{ display: "block" }}>
-                      {[product.brand, product.slug]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </small>
-                  </span>
+                  {productDetails}
                 </div>
               ) : (
-                <label key={product.id}>
+                <label
+                  key={product.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: 10,
+                    borderBottom: "1px solid #eee",
+                    cursor: "default",
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked
@@ -677,17 +755,10 @@ export default function DynamicRulesField({
                     aria-label={`${product.name} matches the collection rules`}
                   />
 
-                  <span>
-                    {product.name}
-                    <small>
-                      {[product.brand, product.slug]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </small>
-                  </span>
+                  {productDetails}
                 </label>
-              ),
-            )}
+              );
+            })}
           </div>
 
           {previewPage < previewTotalPages && (

@@ -224,7 +224,7 @@ export async function safeCollectionPage(
   status?: string,
 ) {
   const productFields =
-    "id,name,slug,status,brand,productType";
+    "id,name,slug,status,brand,productType,images";
 
   const params = new URLSearchParams({
     productFields,

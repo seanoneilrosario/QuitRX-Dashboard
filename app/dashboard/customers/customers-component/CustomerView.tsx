@@ -22,6 +22,17 @@ type CustomerViewProps = {
   returnTo: string;
 };
 
+type CustomerOrder = {
+  id: string;
+  orderNumber: string;
+  createdAt: string;
+  paymentStatus: string;
+  fulfillmentStatus: string;
+  status: string;
+  currencyCode: string | null;
+  total: string | number;
+};
+
 function displayValue(input: unknown, fallback = "—"): string {
   if (input === null || input === undefined || input === "") {
     return fallback;
@@ -140,6 +151,14 @@ export default function CustomerView({
   const addresses = Array.isArray(customer.addresses)
     ? (customer.addresses as Array<Record<string, unknown>>)
     : [];
+
+  const orders = Array.isArray(customer.orders)
+  ? [...(customer.orders as CustomerOrder[])].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() -
+        new Date(a.createdAt).getTime(),
+    )
+  : [];
 
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -433,6 +452,68 @@ export default function CustomerView({
           </div>
         </section>
       </div>
+
+      {/* Orders */}
+      <section
+        className={`${style.card} ${style.addressSection} ${style.customerAddressSection}`}
+      >
+        <div className={style.addressHeader}>
+          <h2>Orders ({orders.length})</h2>
+        </div>
+
+        {orders.length > 0 ? (
+          <div className={style.ordersTableWrapper}>
+            <table className={style.ordersTable}>
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Date</th>
+                  <th>Payment</th>
+                  <th>Fulfillment</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id}>
+                    <td>
+                      <a target="_blank" href={`/dashboard/orders/view?id=${order.id}`}>
+                        <strong>{order.orderNumber}</strong>
+                      </a>
+                    </td>
+
+                    <td>{displayDate(order.createdAt)}</td>
+
+                    <td>
+                      <span
+                        className={`${style.orderBadge} ${
+                          order.paymentStatus === "PAID"
+                            ? style.paid
+                            : style.pending
+                        }`}
+                      >
+                        {order.paymentStatus}
+                      </span>
+                    </td>
+
+                    <td>{order.fulfillmentStatus}</td>
+
+                    <td>{order.status}</td>
+
+                    <td>
+                      {displayMoney(order.total, order.currencyCode)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p>No orders found for this customer.</p>
+        )}
+      </section>
 
       {/* Addresses */}
 

@@ -2090,3 +2090,55 @@
     flex-wrap: wrap;
   }
 }
+
+
+
+
+/* Customer - orders */
+.ordersTableWrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.ordersTable {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.ordersTable th,
+.ordersTable td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.ordersTable th {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f9fafb;
+}
+
+.ordersTable td {
+  font-size: 14px;
+  color: #374151;
+}
+
+.orderBadge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.paid {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.pending {
+  color: #92400e;
+  background: #fef3c7;
+}

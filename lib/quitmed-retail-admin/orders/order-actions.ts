@@ -1,6 +1,6 @@
 "use server";
 
-import { deleteOrder } from "./client";
+import { deleteOrder, Order } from "./client";
 
 export async function deleteOrderAction(orderId: string) {
   try {
@@ -77,4 +77,181 @@ export async function cancelOrderAction(
           : "Unable to cancel order.",
     };
   }
+}
+
+
+export type CreateOrderPayload = {
+  customerId: string;
+  status: string;
+  paymentStatus: string;
+  fulfillmentStatus: string;
+  source: "NATIVE";
+  currencyCode: string;
+  subtotal: number;
+  discountTotal: number;
+  shippingTotal: number;
+  shippingMethod: string;
+  taxTotal: number;
+  total: number;
+  billingFirstName?: string;
+  billingLastName?: string;
+  billingCompany?: string;
+  billingAddress1?: string;
+  billingAddress2?: string;
+  billingCity?: string;
+  billingProvince?: string;
+  billingCountry?: string;
+  billingZip?: string;
+  billingPhone?: string;
+  shippingFirstName?: string;
+  shippingLastName?: string;
+  shippingCompany?: string;
+  shippingAddress1?: string;
+  shippingAddress2?: string;
+  shippingCity?: string;
+  shippingProvince?: string;
+  shippingCountry?: string;
+  shippingZip?: string;
+  shippingPhone?: string;
+  discountCode?: string;
+  items: {
+    variantId: string;
+    quantity: number;
+  }[];
+};
+
+export async function createOrderAction(
+  payload: CreateOrderPayload,
+) {
+  try {
+    const result = await retailRequest<Order>(
+      "/orders",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+        cache: "no-store",
+      },
+    );
+
+    console.log("[createOrderAction] result:", result);
+
+    return {
+      success: true,
+      data: result,
+    };
+  } catch (error) {
+    console.error("[createOrderAction]", error);
+
+    return {
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unable to create order.",
+    };
+  }
+}
+
+export async function searchOrderCustomers(
+  search: string,
+) {
+  const query = new URLSearchParams({
+    page: "1",
+    limit: "20",
+  });
+
+  if (search.trim()) {
+    query.set("search", search.trim());
+  }
+
+  const response = await retailRequest<unknown>(
+    `/customers?${query.toString()}`,
+    { cache: "no-store" },
+  );
+
+  return extractRecords(response);
+}
+
+export async function searchOrderVariants(
+  search: string,
+) {
+  const query = new URLSearchParams({
+    page: "1",
+    limit: "50",
+    fields: "id,sku,name,price,product",
+  });
+
+  if (search.trim()) {
+    query.set("search", search.trim());
+  }
+
+  const response = await retailRequest<unknown>(
+    `/product-variants?${query.toString()}`,
+    { cache: "no-store" },
+  );
+
+  return extractRecords(response);
+}
+
+export async function getOrderCustomer(
+  customerId: string,
+) {
+  const response = await retailRequest<unknown>(
+    `/customers/${encodeURIComponent(customerId)}`,
+    { cache: "no-store" },
+  );
+
+  if (
+    response &&
+    typeof response === "object" &&
+    !Array.isArray(response)
+  ) {
+    const wrapper = response as Record<string, unknown>;
+
+    if (
+      wrapper.data &&
+      typeof wrapper.data === "object" &&
+      !Array.isArray(wrapper.data)
+    ) {
+      return wrapper.data as Record<string, unknown>;
+    }
+
+    return wrapper;
+  }
+
+  return null;
+}
+
+function extractRecords(payload: unknown): Record<string, unknown>[] {
+  if (Array.isArray(payload)) {
+    return payload.filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(
+          item &&
+          typeof item === "object" &&
+          !Array.isArray(item),
+        ),
+    );
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const wrapper = payload as Record<string, unknown>;
+
+  for (const key of [
+    "data",
+    "customers",
+    "products",
+    "variants",
+    "items",
+    "results",
+  ]) {
+    if (Array.isArray(wrapper[key])) {
+      return extractRecords(wrapper[key]);
+    }
+  }
+
+  return [];
 }

@@ -1,6 +1,6 @@
 import "server-only";
 
-const API_BASE = (
+export const API_BASE = (
   process.env.QUITHERO_API_BASE_URL ??
   "https://retail-api.quithero.com.au"
 ).replace(/\/$/, "");

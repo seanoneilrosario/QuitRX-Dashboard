@@ -10,10 +10,7 @@ export async function deleteOrderAction(orderId: string) {
       success: true,
     };
   } catch (error) {
-    console.error(
-      "[order-actions] delete failed",
-      error,
-    );
+    console.error("[order-actions] delete failed", error);
 
     return {
       success: false,
@@ -27,8 +24,7 @@ import { auth } from "@/auth";
 import { retailRequest } from "../collections/client";
 
 type CancelOrderResult =
-  | { success: true; message: string }
-  | { success: false; error: string };
+  { success: true; message: string } | { success: false; error: string };
 
 export async function cancelOrderAction(
   orderId: string,
@@ -42,22 +38,15 @@ export async function cancelOrderAction(
 
     // Only allow signed-in staff to cancel orders.
     const session = await auth();
-    const staffUser = session?.user as
-      | { isStaff?: boolean }
-      | undefined;
+    const staffUser = session?.user as { isStaff?: boolean } | undefined;
 
     if (!staffUser?.isStaff) {
-      throw new Error(
-        "You must be signed in as staff to cancel orders.",
-      );
+      throw new Error("You must be signed in as staff to cancel orders.");
     }
 
-    await retailRequest(
-      `/orders/${encodeURIComponent(id)}/cancel`,
-      {
-        method: "POST",
-      },
-    );
+    await retailRequest(`/orders/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+    });
 
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/orders");
@@ -71,14 +60,10 @@ export async function cancelOrderAction(
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unable to cancel order.",
+      error: error instanceof Error ? error.message : "Unable to cancel order.",
     };
   }
 }
-
 
 export type CreateOrderPayload = {
   customerId: string;
@@ -120,18 +105,13 @@ export type CreateOrderPayload = {
   }[];
 };
 
-export async function createOrderAction(
-  payload: CreateOrderPayload,
-) {
+export async function createOrderAction(payload: CreateOrderPayload) {
   try {
-    const result = await retailRequest<Order>(
-      "/orders",
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-        cache: "no-store",
-      },
-    );
+    const result = await retailRequest<Order>("/orders", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
 
     console.log("[createOrderAction] result:", result);
 
@@ -145,16 +125,82 @@ export async function createOrderAction(
     return {
       success: false,
       message:
-        error instanceof Error
-          ? error.message
-          : "Unable to create order.",
+        error instanceof Error ? error.message : "Unable to create order.",
     };
   }
 }
 
-export async function searchOrderCustomers(
-  search: string,
-) {
+export type InvoiceStatus = "NOT_SENT" | "SENT" | "FAILED";
+
+export type OrderInvoice = {
+  id: string;
+  invoiceNumber: string;
+  customerEmail: string;
+  status: InvoiceStatus;
+  createdAt: string;
+  lastSentAt?: string | null;
+  previewUrl?: string | null;
+};
+
+type InvoiceActionResult =
+  { success: true; data: OrderInvoice } | { success: false; message: string };
+
+async function requireStaff() {
+  const session = await auth();
+  const user = session?.user as { isStaff?: boolean } | undefined;
+
+  if (!user?.isStaff) {
+    throw new Error("You must be signed in as staff to manage invoices.");
+  }
+}
+
+function invoiceError(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : "Unable to manage this invoice.";
+}
+
+export async function getOrCreateOrderInvoiceAction(
+  orderId: string,
+): Promise<InvoiceActionResult> {
+  try {
+    await requireStaff();
+    const id = orderId.trim();
+
+    if (!id) throw new Error("Order ID is required.");
+
+    const data = await retailRequest<OrderInvoice>(
+      `/orders/${encodeURIComponent(id)}/invoice`,
+      { method: "POST", cache: "no-store" },
+    );
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, message: invoiceError(error) };
+  }
+}
+
+export async function sendOrderInvoiceAction(
+  orderId: string,
+): Promise<InvoiceActionResult> {
+  try {
+    await requireStaff();
+    const id = orderId.trim();
+
+    if (!id) throw new Error("Order ID is required.");
+
+    const data = await retailRequest<OrderInvoice>(
+      `/orders/${encodeURIComponent(id)}/invoice/send`,
+      { method: "POST", cache: "no-store" },
+    );
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, message: invoiceError(error) };
+  }
+}
+
+export async function searchOrderCustomers(search: string) {
   const query = new URLSearchParams({
     page: "1",
     limit: "20",
@@ -172,9 +218,7 @@ export async function searchOrderCustomers(
   return extractRecords(response);
 }
 
-export async function searchOrderVariants(
-  search: string,
-) {
+export async function searchOrderVariants(search: string) {
   const query = new URLSearchParams({
     page: "1",
     limit: "50",
@@ -193,19 +237,13 @@ export async function searchOrderVariants(
   return extractRecords(response);
 }
 
-export async function getOrderCustomer(
-  customerId: string,
-) {
+export async function getOrderCustomer(customerId: string) {
   const response = await retailRequest<unknown>(
     `/customers/${encodeURIComponent(customerId)}`,
     { cache: "no-store" },
   );
 
-  if (
-    response &&
-    typeof response === "object" &&
-    !Array.isArray(response)
-  ) {
+  if (response && typeof response === "object" && !Array.isArray(response)) {
     const wrapper = response as Record<string, unknown>;
 
     if (
@@ -224,13 +262,8 @@ export async function getOrderCustomer(
 
 function extractRecords(payload: unknown): Record<string, unknown>[] {
   if (Array.isArray(payload)) {
-    return payload.filter(
-      (item): item is Record<string, unknown> =>
-        Boolean(
-          item &&
-          typeof item === "object" &&
-          !Array.isArray(item),
-        ),
+    return payload.filter((item): item is Record<string, unknown> =>
+      Boolean(item && typeof item === "object" && !Array.isArray(item)),
     );
   }
 

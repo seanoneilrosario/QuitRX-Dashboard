@@ -10,11 +10,13 @@ import {
   searchOrderCustomers,
   searchOrderVariants,
   getOrderCustomer,
+  getOrCreateOrderInvoiceAction,
+  sendOrderInvoiceAction,
   type CreateOrderPayload,
+  type OrderInvoice,
 } from "@/lib/quitmed-retail-admin/orders/order-actions";
 
-
-type RecordData = Record<string, any>;
+type RecordData = Record<string, unknown>;
 
 type SelectedItem = {
   variantId: string;
@@ -64,9 +66,10 @@ function getText(value: unknown): string {
 }
 
 function getCustomerName(customer: RecordData) {
-  return [customer.firstName, customer.lastName]
-    .filter(Boolean)
-    .join(" ") || "Unnamed customer";
+  return (
+    [customer.firstName, customer.lastName].filter(Boolean).join(" ") ||
+    "Unnamed customer"
+  );
 }
 
 function mapAddress(address: RecordData): Address {
@@ -90,7 +93,7 @@ function Field({
   onChange,
   required = false,
   type = "text",
-  placeholder
+  placeholder,
 }: {
   label: string;
   value: string;
@@ -151,7 +154,12 @@ function AddressForm({
     { key: "province", label: "State / Province" },
     { key: "zip", label: "Postcode", required: true },
     { key: "country", label: "Country", required: true },
-    { key: "phone", label: "Phone", required: true, placeholder: "+61400000000" },
+    {
+      key: "phone",
+      label: "Phone",
+      required: true,
+      placeholder: "+61400000000",
+    },
   ];
 
   return (
@@ -210,8 +218,9 @@ export default function CreateOrderPage() {
 
   const [customerSearch, setCustomerSearch] = useState("");
   const [customers, setCustomers] = useState<RecordData[]>([]);
-  const [selectedCustomer, setSelectedCustomer] =
-    useState<RecordData | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<RecordData | null>(
+    null,
+  );
 
   const [showCustomers, setShowCustomers] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
@@ -240,10 +249,16 @@ export default function CreateOrderPage() {
 
   const [status, setStatus] = useState("PENDING");
   const [paymentStatus, setPaymentStatus] = useState("PAID");
-  const [fulfillmentStatus, setFulfillmentStatus] =
-    useState("UNFULFILLED");
+  const [fulfillmentStatus, setFulfillmentStatus] = useState("UNFULFILLED");
 
   const [error, setError] = useState("");
+  const [createdOrderId, setCreatedOrderId] = useState("");
+  const [invoice, setInvoice] = useState<OrderInvoice | null>(null);
+  const [invoiceBusy, setInvoiceBusy] = useState<"preview" | "send" | null>(
+    null,
+  );
+  const [invoiceMessage, setInvoiceMessage] = useState("");
+  const [showSendConfirmation, setShowSendConfirmation] = useState(false);
 
   // Customer search
   useEffect(() => {
@@ -330,9 +345,8 @@ export default function CreateOrderPage() {
         : [];
 
       const defaultAddress =
-        addresses.find(
-          (address: RecordData) => address.isDefault === true,
-        ) ?? addresses[0];
+        addresses.find((address: RecordData) => address.isDefault === true) ??
+        addresses[0];
 
       if (defaultAddress) {
         const mapped = mapAddress(defaultAddress);
@@ -344,8 +358,7 @@ export default function CreateOrderPage() {
         const customerAddress = {
           ...emptyAddress,
           firstName: getText(fullCustomer.firstName) || name[0] || "",
-          lastName:
-            getText(fullCustomer.lastName) || name.slice(1).join(" "),
+          lastName: getText(fullCustomer.lastName) || name.slice(1).join(" "),
           phone: getText(fullCustomer.phone),
         };
 
@@ -374,9 +387,9 @@ export default function CreateOrderPage() {
         ),
       );
     } else {
-      const product =
+      const product: RecordData =
         variant.product && typeof variant.product === "object"
-          ? variant.product
+          ? (variant.product as RecordData)
           : {};
 
       setItems((previous) => [
@@ -413,11 +426,7 @@ export default function CreateOrderPage() {
   }
 
   const subtotal = useMemo(
-    () =>
-      items.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0,
-      ),
+    () => items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     [items],
   );
 
@@ -428,6 +437,8 @@ export default function CreateOrderPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+
+    if (createdOrderId) return;
 
     if (!selectedCustomer?.id) {
       setError("Please select a customer.");
@@ -449,9 +460,7 @@ export default function CreateOrderPage() {
       return;
     }
 
-    const billing = sameAsShipping
-      ? shippingAddress
-      : billingAddress;
+    const billing = sameAsShipping ? shippingAddress : billingAddress;
 
     if (!billing.address1.trim()) {
       setError("Billing address is required.");
@@ -497,9 +506,7 @@ export default function CreateOrderPage() {
       shippingZip: shippingAddress.zip,
       shippingPhone: shippingAddress.phone,
 
-      ...(discountCode.trim()
-        ? { discountCode: discountCode.trim() }
-        : {}),
+      ...(discountCode.trim() ? { discountCode: discountCode.trim() } : {}),
 
       items: items.map((item) => ({
         variantId: item.variantId,
@@ -517,26 +524,83 @@ export default function CreateOrderPage() {
         }
 
         const createdOrder = result.data as RecordData;
-        const orderId = createdOrder?.id ?? createdOrder?.data?.id;
+        const nestedOrder =
+          createdOrder.data &&
+          typeof createdOrder.data === "object" &&
+          !Array.isArray(createdOrder.data)
+            ? (createdOrder.data as RecordData)
+            : null;
+        const orderId = createdOrder.id ?? nestedOrder?.id;
 
         if (orderId) {
-          router.push(
-            `/dashboard/orders/view?id=${encodeURIComponent(
-              String(orderId),
-            )}`,
-          );
+          const id = String(orderId);
+          setCreatedOrderId(id);
+          const invoiceResult = await getOrCreateOrderInvoiceAction(id);
+
+          if (invoiceResult.success) {
+            setInvoice(invoiceResult.data);
+            setInvoiceMessage(
+              "Order created. The invoice is ready to preview or send.",
+            );
+          } else {
+            setInvoiceMessage(invoiceResult.message);
+          }
         } else {
           router.push("/dashboard/orders");
           router.refresh();
         }
       } catch (err) {
         setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to create order.",
+          err instanceof Error ? err.message : "Unable to create order.",
         );
       }
     });
+  }
+
+  async function previewInvoice() {
+    if (!createdOrderId) return;
+    setInvoiceBusy("preview");
+    setInvoiceMessage("");
+
+    try {
+      const result = await getOrCreateOrderInvoiceAction(createdOrderId);
+
+      if (!result.success) {
+        setInvoiceMessage(result.message);
+        return;
+      }
+
+      setInvoice(result.data);
+      if (result.data.previewUrl) {
+        window.open(result.data.previewUrl, "_blank", "noopener,noreferrer");
+      } else {
+        setInvoiceMessage(
+          "The invoice was generated, but no preview URL was returned.",
+        );
+      }
+    } finally {
+      setInvoiceBusy(null);
+    }
+  }
+
+  async function sendInvoice() {
+    if (!createdOrderId) return;
+    setShowSendConfirmation(false);
+    setInvoiceBusy("send");
+    setInvoiceMessage("");
+
+    try {
+      const result = await sendOrderInvoiceAction(createdOrderId);
+
+      if (result.success) {
+        setInvoice(result.data);
+        setInvoiceMessage(`Invoice sent to ${result.data.customerEmail}.`);
+      } else {
+        setInvoiceMessage(result.message);
+      }
+    } finally {
+      setInvoiceBusy(null);
+    }
   }
 
   return (
@@ -678,10 +742,9 @@ export default function CreateOrderPage() {
                       </p>
                     ) : variants.length ? (
                       variants.map((variant) => {
-                        const product =
-                          variant.product &&
-                          typeof variant.product === "object"
-                            ? variant.product
+                        const product: RecordData =
+                          variant.product && typeof variant.product === "object"
+                            ? (variant.product as RecordData)
                             : {};
 
                         return (
@@ -697,9 +760,7 @@ export default function CreateOrderPage() {
                               </span>
                               <span className="order-product-result-meta">
                                 {getText(variant.name)}
-                                {variant.sku
-                                  ? ` · SKU: ${variant.sku}`
-                                  : ""}
+                                {variant.sku ? ` · SKU: ${variant.sku}` : ""}
                               </span>
                             </span>
 
@@ -762,9 +823,7 @@ export default function CreateOrderPage() {
                           </td>
 
                           <td className="text-right">
-                            <strong>
-                              {money(item.price * item.quantity)}
-                            </strong>
+                            <strong>{money(item.price * item.quantity)}</strong>
                           </td>
 
                           <td className="text-right">
@@ -815,9 +874,7 @@ export default function CreateOrderPage() {
                 <input
                   type="checkbox"
                   checked={sameAsShipping}
-                  onChange={(event) =>
-                    setSameAsShipping(event.target.checked)
-                  }
+                  onChange={(event) => setSameAsShipping(event.target.checked)}
                 />
                 <span>Same as shipping address</span>
               </label>
@@ -840,14 +897,10 @@ export default function CreateOrderPage() {
 
               <div className="order-field-grid">
                 <label className="order-field">
-                  <span className="order-field-label">
-                    Shipping method
-                  </span>
+                  <span className="order-field-label">Shipping method</span>
                   <select
                     value={shippingMethod}
-                    onChange={(event) =>
-                      setShippingMethod(event.target.value)
-                    }
+                    onChange={(event) => setShippingMethod(event.target.value)}
                     className="order-input"
                   >
                     <option value="standard">Standard</option>
@@ -877,8 +930,8 @@ export default function CreateOrderPage() {
               </div>
 
               <p className="order-help-text">
-                Discount codes are validated by the backend when the order
-                is created.
+                Discount codes are validated by the backend when the order is
+                created.
               </p>
             </section>
 
@@ -914,13 +967,92 @@ export default function CreateOrderPage() {
                   label="Fulfillment status"
                   value={fulfillmentStatus}
                   onChange={setFulfillmentStatus}
-                  options={[
-                    "UNFULFILLED",
-                    "PARTIALLY_FULFILLED",
-                    "FULFILLED",
-                  ]}
+                  options={["UNFULFILLED", "PARTIALLY_FULFILLED", "FULFILLED"]}
                 />
               </div>
+            </section>
+
+            <section className="order-card">
+              <div className="order-card-heading">
+                <span className="order-step-number">7</span>
+                <h2>Invoice Management</h2>
+              </div>
+
+              <div className="invoice-details-grid">
+                <div className="invoice-detail">
+                  <span>Customer email</span>
+                  <strong>
+                    {invoice?.customerEmail ||
+                      getText(selectedCustomer?.email) ||
+                      "Select a customer"}
+                  </strong>
+                </div>
+                <div className="invoice-detail">
+                  <span>Invoice number</span>
+                  <strong>
+                    {invoice?.invoiceNumber || "Generated after order creation"}
+                  </strong>
+                </div>
+                <div className="invoice-detail">
+                  <span>Invoice status</span>
+                  <strong
+                    className={`invoice-status invoice-status-${(invoice?.status || "NOT_SENT").toLowerCase().replace("_", "-")}`}
+                  >
+                    {(invoice?.status || "NOT_SENT").replace("_", " ")}
+                  </strong>
+                </div>
+                <div className="invoice-detail">
+                  <span>Last sent</span>
+                  <strong>
+                    {invoice?.lastSentAt
+                      ? new Intl.DateTimeFormat("en-AU", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        }).format(new Date(invoice.lastSentAt))
+                      : "Not sent"}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="invoice-actions">
+                <button
+                  type="button"
+                  className="order-secondary-button"
+                  disabled={!createdOrderId || invoiceBusy !== null}
+                  onClick={previewInvoice}
+                >
+                  {invoiceBusy === "preview"
+                    ? "Preparing Invoice..."
+                    : "Preview Invoice"}
+                </button>
+                <button
+                  type="button"
+                  className="order-primary-button"
+                  disabled={
+                    !createdOrderId ||
+                    invoiceBusy !== null ||
+                    !(
+                      invoice?.customerEmail || getText(selectedCustomer?.email)
+                    )
+                  }
+                  onClick={() => setShowSendConfirmation(true)}
+                >
+                  {invoiceBusy === "send"
+                    ? "Sending Invoice..."
+                    : "Send Invoice to Customer"}
+                </button>
+              </div>
+
+              {!createdOrderId && (
+                <p className="order-help-text">
+                  Create the order first to generate and send its invoice.
+                </p>
+              )}
+              {invoiceMessage && (
+                <p className="invoice-message" role="status">
+                  {invoiceMessage}
+                </p>
+              )}
             </section>
           </div>
 
@@ -935,11 +1067,7 @@ export default function CreateOrderPage() {
               <div className="order-summary-lines">
                 <div className="order-summary-line">
                   <span>
-                    Items (
-                    {items.reduce(
-                      (sum, item) => sum + item.quantity,
-                      0,
-                    )}
+                    Items ({items.reduce((sum, item) => sum + item.quantity, 0)}
                     )
                   </span>
                   <strong>{money(subtotal)}</strong>
@@ -961,28 +1089,74 @@ export default function CreateOrderPage() {
                 <strong>{money(total)}</strong>
               </div>
 
-              <p className="order-summary-currency">
-                Prices are in AUD
-              </p>
+              <p className="order-summary-currency">Prices are in AUD</p>
 
               <button
                 type="submit"
                 disabled={
-                  isPending || !items.length || !selectedCustomer
+                  isPending ||
+                  Boolean(createdOrderId) ||
+                  !items.length ||
+                  !selectedCustomer
                 }
                 className="order-primary-button"
               >
-                {isPending ? "Creating Order..." : "Create Order"}
+                {isPending
+                  ? "Creating Order..."
+                  : createdOrderId
+                    ? "Order Created"
+                    : "Create Order"}
               </button>
 
               <p className="order-summary-note">
-                This will create the order and trigger your configured
-                backend integrations.
+                This will create the order and trigger your configured backend
+                integrations.
               </p>
             </div>
           </aside>
         </div>
       </form>
+
+      {showSendConfirmation && (
+        <div
+          className="invoice-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setShowSendConfirmation(false)}
+        >
+          <div
+            className="invoice-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invoice-confirm-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="invoice-confirm-title">Send invoice?</h2>
+            <p>
+              The PDF invoice will be emailed to{" "}
+              <strong>
+                {invoice?.customerEmail || getText(selectedCustomer?.email)}
+              </strong>
+              .
+            </p>
+            <div className="invoice-modal-actions">
+              <button
+                type="button"
+                className="order-secondary-button"
+                onClick={() => setShowSendConfirmation(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="order-primary-button"
+                onClick={sendInvoice}
+              >
+                Send Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

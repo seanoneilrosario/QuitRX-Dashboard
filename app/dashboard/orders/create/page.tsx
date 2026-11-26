@@ -7,13 +7,11 @@ import "../orders-components/create-order.css";
 
 import {
   createOrderAction,
+  sendOrderInvoiceAction,
   searchOrderCustomers,
   searchOrderVariants,
   getOrderCustomer,
-  getOrCreateOrderInvoiceAction,
-  sendOrderInvoiceAction,
   type CreateOrderPayload,
-  type OrderInvoice,
 } from "@/lib/quitmed-retail-admin/orders/order-actions";
 
 type RecordData = Record<string, unknown>;
@@ -248,17 +246,13 @@ export default function CreateOrderPage() {
   const [discountCode, setDiscountCode] = useState("");
 
   const [status, setStatus] = useState("PENDING");
+  const [sendInvoice, setSendInvoice] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState("PAID");
   const [fulfillmentStatus, setFulfillmentStatus] = useState("UNFULFILLED");
 
   const [error, setError] = useState("");
-  const [createdOrderId, setCreatedOrderId] = useState("");
-  const [invoice, setInvoice] = useState<OrderInvoice | null>(null);
-  const [invoiceBusy, setInvoiceBusy] = useState<"preview" | "send" | null>(
-    null,
-  );
-  const [invoiceMessage, setInvoiceMessage] = useState("");
-  const [showSendConfirmation, setShowSendConfirmation] = useState(false);
+  const [orderCreated, setOrderCreated] = useState(false);
+  const [orderMessage, setOrderMessage] = useState("");
 
   // Customer search
   useEffect(() => {
@@ -438,7 +432,7 @@ export default function CreateOrderPage() {
     event.preventDefault();
     setError("");
 
-    if (createdOrderId) return;
+    if (orderCreated) return;
 
     if (!selectedCustomer?.id) {
       setError("Please select a customer.");
@@ -472,6 +466,7 @@ export default function CreateOrderPage() {
 
       status,
       paymentStatus,
+      sendInvoice: sendInvoice ? "true" : "false",
       fulfillmentStatus,
 
       source: "NATIVE",
@@ -523,6 +518,7 @@ export default function CreateOrderPage() {
           return;
         }
 
+        setOrderCreated(true);
         const createdOrder = result.data as RecordData;
         const nestedOrder =
           createdOrder.data &&
@@ -534,18 +530,24 @@ export default function CreateOrderPage() {
 
         if (orderId) {
           const id = String(orderId);
-          setCreatedOrderId(id);
-          const invoiceResult = await getOrCreateOrderInvoiceAction(id);
-
-          if (invoiceResult.success) {
-            setInvoice(invoiceResult.data);
-            setInvoiceMessage(
-              "Order created. The invoice is ready to preview or send.",
-            );
-          } else {
-            setInvoiceMessage(invoiceResult.message);
+          console.log("[Create Order] Order ID:", id);
+          setOrderMessage(`Order created with payment status ${payload.paymentStatus}.`);
+          if (sendInvoice) {
+            setOrderMessage("Order created. Sending invoice...");
+            try {
+              const invoiceResult = await sendOrderInvoiceAction(id);
+              setOrderMessage(invoiceResult.success
+                ? "Order created. Invoice send request completed successfully."
+                : `Order created, but invoice sending failed: ${invoiceResult.message}`);
+            } catch (error) {
+              setOrderMessage(`Order created, but invoice sending failed: ${error instanceof Error ? error.message : "Please check the order before trying again."}`);
+            }
           }
         } else {
+          if (sendInvoice) {
+            setOrderMessage("Order created, but no order ID was returned, so the invoice could not be sent. Check the orders list before creating another order.");
+            return;
+          }
           router.push("/dashboard/orders");
           router.refresh();
         }
@@ -555,52 +557,6 @@ export default function CreateOrderPage() {
         );
       }
     });
-  }
-
-  async function previewInvoice() {
-    if (!createdOrderId) return;
-    setInvoiceBusy("preview");
-    setInvoiceMessage("");
-
-    try {
-      const result = await getOrCreateOrderInvoiceAction(createdOrderId);
-
-      if (!result.success) {
-        setInvoiceMessage(result.message);
-        return;
-      }
-
-      setInvoice(result.data);
-      if (result.data.previewUrl) {
-        window.open(result.data.previewUrl, "_blank", "noopener,noreferrer");
-      } else {
-        setInvoiceMessage(
-          "The invoice was generated, but no preview URL was returned.",
-        );
-      }
-    } finally {
-      setInvoiceBusy(null);
-    }
-  }
-
-  async function sendInvoice() {
-    if (!createdOrderId) return;
-    setShowSendConfirmation(false);
-    setInvoiceBusy("send");
-    setInvoiceMessage("");
-
-    try {
-      const result = await sendOrderInvoiceAction(createdOrderId);
-
-      if (result.success) {
-        setInvoice(result.data);
-        setInvoiceMessage(`Invoice sent to ${result.data.customerEmail}.`);
-      } else {
-        setInvoiceMessage(result.message);
-      }
-    } finally {
-      setInvoiceBusy(null);
-    }
   }
 
   return (
@@ -954,13 +910,7 @@ export default function CreateOrderPage() {
                   label="Payment status"
                   value={paymentStatus}
                   onChange={setPaymentStatus}
-                  options={[
-                    "PENDING",
-                    "PAID",
-                    "PARTIALLY_PAID",
-                    "REFUNDED",
-                    "FAILED",
-                  ]}
+                  options={["PENDING", "PAID", "PARTIALLY_PAID", "REFUNDED", "FAILED"]}
                 />
 
                 <StatusSelect
@@ -978,80 +928,27 @@ export default function CreateOrderPage() {
                 <h2>Invoice Management</h2>
               </div>
 
-              <div className="invoice-details-grid">
-                <div className="invoice-detail">
-                  <span>Customer email</span>
-                  <strong>
-                    {invoice?.customerEmail ||
-                      getText(selectedCustomer?.email) ||
-                      "Select a customer"}
-                  </strong>
-                </div>
-                <div className="invoice-detail">
-                  <span>Invoice number</span>
-                  <strong>
-                    {invoice?.invoiceNumber || "Generated after order creation"}
-                  </strong>
-                </div>
-                <div className="invoice-detail">
-                  <span>Invoice status</span>
-                  <strong
-                    className={`invoice-status invoice-status-${(invoice?.status || "NOT_SENT").toLowerCase().replace("_", "-")}`}
-                  >
-                    {(invoice?.status || "NOT_SENT").replace("_", " ")}
-                  </strong>
-                </div>
-                <div className="invoice-detail">
-                  <span>Last sent</span>
-                  <strong>
-                    {invoice?.lastSentAt
-                      ? new Intl.DateTimeFormat("en-AU", {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                        }).format(new Date(invoice.lastSentAt))
-                      : "Not sent"}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="invoice-actions">
-                <button
-                  type="button"
-                  className="order-secondary-button"
-                  disabled={!createdOrderId || invoiceBusy !== null}
-                  onClick={previewInvoice}
-                >
-                  {invoiceBusy === "preview"
-                    ? "Preparing Invoice..."
-                    : "Preview Invoice"}
-                </button>
-                <button
-                  type="button"
-                  className="order-primary-button"
-                  disabled={
-                    !createdOrderId ||
-                    invoiceBusy !== null ||
-                    !(
-                      invoice?.customerEmail || getText(selectedCustomer?.email)
-                    )
-                  }
-                  onClick={() => setShowSendConfirmation(true)}
-                >
-                  {invoiceBusy === "send"
-                    ? "Sending Invoice..."
-                    : "Send Invoice to Customer"}
-                </button>
-              </div>
-
-              {!createdOrderId && (
-                <p className="order-help-text">
-                  Create the order first to generate and send its invoice.
-                </p>
-              )}
-              {invoiceMessage && (
-                <p className="invoice-message" role="status">
-                  {invoiceMessage}
-                </p>
+              <label className="order-checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={sendInvoice}
+                  disabled={isPending || orderCreated}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setSendInvoice(checked);
+                    setPaymentStatus(checked ? "PENDING" : "PAID");
+                  }}
+                />
+                <span>Send invoice to customer when creating the order</span>
+              </label>
+              <p className="order-help-text">
+                {sendInvoice
+                  ? "An invoice will be requested when you create the order."
+                  : "No invoice email will be requested."}
+                {" "}You can change the payment status above before creating the order.
+              </p>
+              {orderMessage && (
+                <p className="invoice-message" role="status">{orderMessage}</p>
               )}
             </section>
           </div>
@@ -1095,7 +992,7 @@ export default function CreateOrderPage() {
                 type="submit"
                 disabled={
                   isPending ||
-                  Boolean(createdOrderId) ||
+                  orderCreated ||
                   !items.length ||
                   !selectedCustomer
                 }
@@ -1103,7 +1000,7 @@ export default function CreateOrderPage() {
               >
                 {isPending
                   ? "Creating Order..."
-                  : createdOrderId
+                  : orderCreated
                     ? "Order Created"
                     : "Create Order"}
               </button>
@@ -1117,46 +1014,7 @@ export default function CreateOrderPage() {
         </div>
       </form>
 
-      {showSendConfirmation && (
-        <div
-          className="invoice-modal-backdrop"
-          role="presentation"
-          onMouseDown={() => setShowSendConfirmation(false)}
-        >
-          <div
-            className="invoice-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="invoice-confirm-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <h2 id="invoice-confirm-title">Send invoice?</h2>
-            <p>
-              The PDF invoice will be emailed to{" "}
-              <strong>
-                {invoice?.customerEmail || getText(selectedCustomer?.email)}
-              </strong>
-              .
-            </p>
-            <div className="invoice-modal-actions">
-              <button
-                type="button"
-                className="order-secondary-button"
-                onClick={() => setShowSendConfirmation(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="order-primary-button"
-                onClick={sendInvoice}
-              >
-                Send Invoice
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

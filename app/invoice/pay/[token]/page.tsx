@@ -3,7 +3,7 @@ import {
   getPublicInvoice,
   PublicInvoiceError,
   type PublicInvoice,
-} from "@/lib/quitmed-retail-admin/invoices/public-client";
+} from "../../../../../../quitrx-website-front/lib/invoices/public-client";
 import PaymentButton from "./payment-button";
 import styles from "./invoice-payment.module.css";
 
@@ -91,9 +91,7 @@ function InvoiceDetails({ invoice }: { invoice: PublicInvoice }) {
         </div>
         <div className={styles.outstanding}>
           <span>Outstanding balance</span>
-          <strong>
-            {money(invoice.outstandingBalance, invoice.currencyCode)}
-          </strong>
+          <strong>{money(invoice.outstandingBalance, invoice.currencyCode)}</strong>
         </div>
       </div>
     </>
@@ -125,24 +123,19 @@ export default async function InvoicePaymentPage({
           </div>
           <h1>Invoice unavailable</h1>
           <p>{message}</p>
-          <p>
-            Please use the latest link from your invoice email or contact QuitRX
-            support.
-          </p>
+          <p>Please use the latest link from your invoice email or contact QuitRX support.</p>
         </section>
       </main>
     );
   }
 
-  const isPaid =
-    invoice.paymentStatus === "PAID" || Number(invoice.outstandingBalance) <= 0;
+  const isPaid = invoice.paymentStatus === "PAID" || Number(invoice.outstandingBalance) <= 0;
   const isPending = invoice.paymentStatus === "PENDING";
   const canPay =
     !isPaid &&
     !isPending &&
     (payableStatuses.has(invoice.paymentStatus) ||
-      ((invoice.paymentStatus === "FAILED" ||
-        invoice.paymentStatus === "CANCELLED") &&
+      ((invoice.paymentStatus === "FAILED" || invoice.paymentStatus === "CANCELLED") &&
         invoice.canRetryPayment === true));
 
   return (
@@ -167,10 +160,7 @@ export default async function InvoicePaymentPage({
           {isPaid && (
             <div className={styles.success} role="status">
               <strong>Payment complete</strong>
-              <span>
-                This invoice has been paid in full. No further payment is
-                required.
-              </span>
+              <span>This invoice has been paid in full. No further payment is required.</span>
             </div>
           )}
 
@@ -178,8 +168,7 @@ export default async function InvoicePaymentPage({
             <div className={styles.pending} role="status">
               <strong>Payment is being verified</strong>
               <span>
-                Please wait while QuitRX confirms the transaction. Do not submit
-                another payment.
+                Please wait while QuitRX confirms the transaction. Do not submit another payment.
               </span>
             </div>
           )}
@@ -201,19 +190,13 @@ export default async function InvoicePaymentPage({
             {invoice.supportEmail ? (
               <>
                 {" "}
-                at{" "}
-                <a href={`mailto:${invoice.supportEmail}`}>
-                  {invoice.supportEmail}
-                </a>
+                at <a href={`mailto:${invoice.supportEmail}`}>{invoice.supportEmail}</a>
               </>
             ) : null}
             {invoice.supportPhone ? (
               <>
                 {" "}
-                or{" "}
-                <a href={`tel:${invoice.supportPhone}`}>
-                  {invoice.supportPhone}
-                </a>
+                or <a href={`tel:${invoice.supportPhone}`}>{invoice.supportPhone}</a>
               </>
             ) : null}
             .

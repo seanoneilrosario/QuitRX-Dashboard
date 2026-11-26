@@ -66,6 +66,7 @@ export async function cancelOrderAction(
 }
 
 export type CreateOrderPayload = {
+  sendInvoice?: string;
   customerId: string;
   status: string;
   paymentStatus: string;
@@ -140,6 +141,18 @@ export type OrderInvoice = {
   createdAt: string;
   lastSentAt?: string | null;
   previewUrl?: string | null;
+  paymentStatus?: string;
+};
+
+type InvoicePaymentLink = {
+  success: boolean;
+  orderId: string;
+  invoiceNumber: string;
+  customer: { email: string | null };
+  paymentStatus: string;
+  previewUrl: string;
+  paymentUrl: string;
+  createdAt: string;
 };
 
 type InvoiceActionResult =
@@ -169,10 +182,24 @@ export async function getOrCreateOrderInvoiceAction(
 
     if (!id) throw new Error("Order ID is required.");
 
-    const data = await retailRequest<OrderInvoice>(
-      `/orders/${encodeURIComponent(id)}/invoice`,
+    const link = await retailRequest<InvoicePaymentLink>(
+      `/orders/${encodeURIComponent(id)}/invoice/token`,
       { method: "POST", cache: "no-store" },
     );
+
+    if (!link.success || !(link.previewUrl || link.paymentUrl)) {
+      throw new Error("Unable to generate the invoice preview link.");
+    }
+
+    const data: OrderInvoice = {
+      id: link.orderId,
+      invoiceNumber: link.invoiceNumber,
+      customerEmail: link.customer?.email ?? "",
+      status: "NOT_SENT",
+      paymentStatus: link.paymentStatus,
+      previewUrl: link.previewUrl || link.paymentUrl,
+      createdAt: link.createdAt,
+    };
 
     return { success: true, data };
   } catch (error) {
@@ -182,19 +209,19 @@ export async function getOrCreateOrderInvoiceAction(
 
 export async function sendOrderInvoiceAction(
   orderId: string,
-): Promise<InvoiceActionResult> {
+): Promise<{ success: true; data: Partial<OrderInvoice> } | { success: false; message: string }> {
   try {
     await requireStaff();
     const id = orderId.trim();
 
     if (!id) throw new Error("Order ID is required.");
 
-    const data = await retailRequest<OrderInvoice>(
+    const data = await retailRequest<Partial<OrderInvoice> | null>(
       `/orders/${encodeURIComponent(id)}/invoice/send`,
-      { method: "POST", cache: "no-store" },
+      { method: "POST", body: JSON.stringify({ sendInvoice: "true" }), cache: "no-store" },
     );
 
-    return { success: true, data };
+    return { success: true, data: data ?? {} };
   } catch (error) {
     return { success: false, message: invoiceError(error) };
   }

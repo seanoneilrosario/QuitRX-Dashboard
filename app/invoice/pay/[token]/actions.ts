@@ -1,6 +1,6 @@
 "use server";
 
-import { createInvoicePaymentSession } from "@/lib/quitmed-retail-admin/invoices/public-client";
+import { createInvoicePaymentSession } from "../../../../../../quitrx-website-front/lib/invoices/public-client";
 
 type StartPaymentResult =
   { success: true; redirectUrl: string } | { success: false; message: string };
@@ -10,17 +10,14 @@ function isEwayUrl(value: string) {
     const url = new URL(value);
     return (
       url.protocol === "https:" &&
-      (url.hostname === "ewaypayments.com" ||
-        url.hostname.endsWith(".ewaypayments.com"))
+      (url.hostname === "ewaypayments.com" || url.hostname.endsWith(".ewaypayments.com"))
     );
   } catch {
     return false;
   }
 }
 
-export async function startInvoicePayment(
-  token: string,
-): Promise<StartPaymentResult> {
+export async function startInvoicePayment(token: string): Promise<StartPaymentResult> {
   try {
     if (!token.trim()) {
       return { success: false, message: "This payment link is invalid." };
@@ -40,9 +37,7 @@ export async function startInvoicePayment(
     return {
       success: false,
       message:
-        error instanceof Error
-          ? error.message
-          : "Payment could not be started. Please try again.",
+        error instanceof Error ? error.message : "Payment could not be started. Please try again.",
     };
   }
 }
